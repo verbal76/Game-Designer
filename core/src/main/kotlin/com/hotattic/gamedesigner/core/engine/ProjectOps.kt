@@ -63,6 +63,14 @@ object ProjectOps {
         return p.copy(references = all, decisions = dec, updatedAt = now)
     }
 
+    /** Attaches a repository and turns what inspection verified into proposals (never into confirmed facts). */
+    fun applyInspection(p: Project, owner: String, repo: String, ins: com.hotattic.gamedesigner.core.model.RepoInspection, now: Long): Project {
+        var next = p.copy(repo = com.hotattic.gamedesigner.core.model.RepoLink(owner, repo, ins.defaultBranch, ins), updatedAt = now)
+        if (ins.detectedEngine.isNotBlank()) next = setDecision(next, Keys.ENGINE, ins.detectedEngine, DecisionSource.INFERRED, now, DecisionStatus.PROPOSED, "Detected in repository")
+        if (next.value(Keys.CI_BUILD) == null && ins.hasCi) next = setDecision(next, Keys.CI_BUILD, "github_actions", DecisionSource.INFERRED, now, DecisionStatus.PROPOSED, "Workflows exist in the repository")
+        return next
+    }
+
     fun updateReference(p: Project, ref: ReferenceGame): Project =
         p.copy(references = p.references.map { if (it.name.equals(ref.name, true)) ref else it })
 
