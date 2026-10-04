@@ -13,6 +13,7 @@ object Keys {
     const val CORE_FANTASY = "core_fantasy"
     const val PLAYER_FEELING = "player_feeling"
     const val REFERENCES = "references"
+    const val REFERENCE_ASPECTS = "reference_aspects"
     const val CORE_LOOP = "core_loop"
     const val SESSION_STRUCTURE = "session_structure"
     const val WORLD_STRUCTURE = "world_structure"
@@ -207,7 +208,7 @@ object Fields {
             "In one or two sentences: who is the player and what power or experience are they enjoying?",
             "The core fantasy is the north star that settles every later design argument.",
             50, relevant = { it.genresKnown },
-            suggest = { t -> t.value(Keys.CONCEPT)?.let { Suggestion(it.trim(), "Restating your own idea as the fantasy; refine it any time.") } },
+            suggest = { t -> t.value(Keys.CONCEPT)?.let { Suggestion(ConceptText.fantasy(it), "Drawn from how you described the idea; refine it any time.") } },
             validate = { _, v -> if (v.trim().length < 12) "A bit more detail please - one full sentence." else null }),
 
         Field(Keys.PLAYER_FEELING, Category.GAMEPLAY, FieldKind.TEXT, "Intended feeling",
@@ -220,6 +221,16 @@ object Fields {
             "Named references let me research what makes them work. We take the ideas, never their art, characters or music.",
             55, modes = Field.ALL_MODES, relevant = { it.genresKnown },
             suggest = { Suggestion("none", "No reference games; the design stands on its own.") }),
+
+
+        Field(Keys.REFERENCE_ASPECTS, Category.GAMEPLAY, FieldKind.TEXT, "What to take from the references",
+            "What exactly do you want from those games - the structure, the pacing, the feel of the combat, the progression? One line per game is plenty.",
+            "Knowing which part of each reference you love stops me copying the wrong thing.",
+            57, relevant = { it.genresKnown && it.value(Keys.REFERENCES).let { v -> v != null && v != "none" } },
+            suggest = { t ->
+                val names = t.project.references.map { it.name }.ifEmpty { listOf(t.value(Keys.REFERENCES).orEmpty()) }
+                Suggestion(names.joinToString(" ") { "From $it: its core loop structure, pacing and the way build choices compound." } + " Take design ideas only, never characters, art, maps, music or writing.", "A safe default; correct me if you meant something else.")
+            }),
 
         Field(Keys.CORE_LOOP, Category.GAMEPLAY, FieldKind.TEXT, "Core gameplay loop",
             "Describe the loop the player repeats minute to minute. I can draft it from the genre if you want.",
@@ -309,7 +320,7 @@ object Fields {
             "What do enemies and bosses look like and how do they behave?",
             "A distinct, readable roster is a big part of the content volume.",
             82, relevant = { it.has(Tag.COMBAT) },
-            suggest = { t -> Suggestion("A roster of distinct enemy archetypes (chaser, ranged, swarm, tank, elite) with telegraphed attacks, plus bosses with phase-based patterns. Theme and names derived from: ${t.value(Keys.CONCEPT)?.take(120) ?: "the concept"}.", "Archetype-based roster scales cleanly with scope.") }),
+            suggest = { t -> Suggestion("A roster of distinct enemy archetypes (chaser, ranged, swarm, tank, elite) with telegraphed attacks, plus bosses with phase-based patterns. Theme: ${t.value(Keys.CONCEPT)?.let { c -> ConceptText.theme(c) } ?: "the concept"}. Names and designs are original and fit that theme.", "Archetype-based roster scales cleanly with scope.") }),
 
         Field(Keys.CHARACTERS, Category.GAMEPLAY, FieldKind.SINGLE, "Characters / classes",
             "One hero, several heroes, or classes with loadouts?",
@@ -548,7 +559,7 @@ object Fields {
             "The target sets the budget for effects, entity counts and battery use.",
             145, relevant = { it.platformsKnown },
             options = { listOf(o("30fps", "30 fps"), o("60fps", "60 fps"), o("60fps_adaptive", "60 fps with graceful degradation to 30"), o("120fps_capable", "120 fps on capable displays")) },
-            suggest = { t -> Suggestion(if (t.dimension == "3D" && t.isMobile) "60fps_adaptive" else "60fps", "Smooth play; 3D phone games degrade gracefully.") }),
+            suggest = { t -> if (t.dimension == "3D" && t.isMobile) Suggestion("60fps_adaptive", "3D on phones needs graceful degradation to stay smooth.") else Suggestion("60fps", "Smooth, responsive play that a 2D game can hold easily.") }),
 
         Field(Keys.MIN_HARDWARE, Category.TECHNICAL, FieldKind.TEXT, "Minimum hardware",
             "What is the oldest/weakest device it should run on?",
@@ -750,9 +761,10 @@ object TitleSuggester {
 
     fun suggest(t: Traits): String {
         val concept = t.value(Keys.CONCEPT) ?: return fallback(t)
-        val words = concept.split(Regex("[^A-Za-z']+")).map { it.trim('\'') }.filter { it.length > 2 && it.lowercase() !in stop }
-            .distinct()
-        val picked = words.take(2)
+        var text = ConceptText.fantasy(concept)
+        t.project.references.forEach { r -> text = text.replace(r.name, " ", ignoreCase = true) }
+        val words = text.split(Regex("[^A-Za-z']+")).map { it.trim('\'') }.filter { it.length > 2 && it.lowercase() !in stop }
+        val picked = words.takeLast(2)
         if (picked.isEmpty()) return fallback(t)
         return picked.joinToString(" ") { it.lowercase().replaceFirstChar(Char::uppercase) }.take(30)
     }
