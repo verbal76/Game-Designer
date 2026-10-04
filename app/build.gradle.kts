@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.hotattic.gamedesigner"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.hotatticgames.gamedesigner"
