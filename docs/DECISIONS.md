@@ -5,7 +5,7 @@ Each entry: decision, date verified, reasoning, how to revisit.
 
 ## D1. Android stack (verified 2026-10-04)
 - **AGP 9.4.1**, **Gradle 9.8.0** (AGP 9.4 requires Gradle >= 9.6.0; 9.8.0 is the current release per services.gradle.org), **JDK 17+** (CI uses 17; the cloud authoring sandbox has 21).
-- **Kotlin 2.3.21** (2.4.x was tried first but its KotlinAndroidTarget still references the removed AGP BaseVariant class and breaks AGP 9 built-in Kotlin in CI; 2.3.x is the line recommended for AGP 9) with the Compose compiler plugin and kotlinx.serialization plugin at the same version. AGP 9 has built-in Kotlin, so the `kotlin-android` plugin is NOT applied in `:app`.
+- **Kotlin 2.4.20**. NOTE: AGP (root buildscript classpath, by id without version in :app) and the Kotlin plugins must share the root classloader or AGP 9 built-in Kotlin fails with NoClassDefFoundError: BaseVariant; changing the Kotlin version does NOT fix that with the Compose compiler plugin and kotlinx.serialization plugin at the same version. AGP 9 has built-in Kotlin, so the `kotlin-android` plugin is NOT applied in `:app`.
 - **compileSdk/targetSdk 36**, **minSdk 28** (Android 9; covers essentially all active phones; needed for modern Keystore + file APIs). AGP 9.4 supports API 37; we stay on 36 until we have a device to verify behavior changes of 37.
 - **Jetpack Compose** (BOM), Material 3, Navigation Compose, `androidx.core:core-splashscreen`.
 - Versions live in `gradle/libs.versions.toml`. The cloud sandbox cannot reach `dl.google.com` (Google Maven + Android SDK), so androidx/AGP/litertlm versions in the catalog were taken from web search + release notes and are validated by **CI**, not locally. If CI reports a missing artifact version, fix it in the catalog.
