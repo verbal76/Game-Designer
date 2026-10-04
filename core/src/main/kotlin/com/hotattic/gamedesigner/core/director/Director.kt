@@ -64,6 +64,7 @@ private const val PENDING_PROPOSALS = "__proposals__"
 private const val PENDING_ASSET_PLAN = "__asset_plan__"
 private const val PENDING_CONFLICT_PREFIX = "__conflict:"
 private const val PENDING_READY = "__ready__"
+private const val MODEL_TIMEOUT_MS = 60_000L
 
 /**
  * The conversational AI Director ("Bob" unless renamed). Decision order, validation, conflict handling and state
@@ -99,12 +100,32 @@ class Director(private val deps: DirectorDeps) {
         }
     }
 
+    /** Switches an existing project between designing and playtest feedback, with an orienting message. */
+    fun enterMode(project: Project, settings: AppSettings, mode: ProjectMode): Project {
+        val now = deps.clock()
+        val p = ProjectOps.setMode(project, mode, now)
+        return when (mode) {
+            ProjectMode.PLAYTEST_CONTINUE -> {
+                val last = p.versions.lastOrNull()
+                if (last == null) ProjectOps.addMessage(ProjectOps.setMode(p, ProjectMode.NEW_GAME, now), Role.DIRECTOR, "There's no generated spec yet, so there's nothing to playtest. Let's finish the design first.", now)
+                else ProjectOps.addMessage(p, Role.DIRECTOR, "Playtest mode. Tell me how v${last.number} went - what felt wrong, what broke, what you'd change. Text or voice is fine; send as many messages as you like, then say \"generate\" for a continuation spec.", now,
+                    quick = listOf(QuickReply("Generate continuation spec", "generate"), QuickReply("Back to designing", "back to designing")))
+            }
+            else -> askNext(ProjectOps.addMessage(p, Role.DIRECTOR, "Back to designing. Tell me what you'd like to change or add, or say \"status\".", now), settings)
+        }
+    }
+
+    private suspend fun <T> timed(block: suspend () -> T): T? = kotlinx.coroutines.withTimeoutOrNull(MODEL_TIMEOUT_MS) { block() }
+
     suspend fun handleUserMessage(project: Project, settings: AppSettings, text: String): DirectorTurn {
         val now = deps.clock()
         var p = ProjectOps.addMessage(project, Role.USER, text.trim(), now)
         val lower = text.trim().lowercase()
 
-        if (p.mode == ProjectMode.PLAYTEST_CONTINUE) return playtestTurn(p, settings, text.trim())
+        if (p.mode == ProjectMode.PLAYTEST_CONTINUE) {
+            if (lower in setOf("back to designing", "back to design", "design mode")) return DirectorTurn(enterMode(p, settings, ProjectMode.NEW_GAME))
+            return playtestTurn(p, settings, text.trim())
+        }
 
         // Global commands
         if (isStatusCommand(lower)) return DirectorTurn(reply(p, Messages.status(p, name(settings))))
@@ -243,8 +264,8 @@ class Director(private val deps: DirectorDeps) {
         val base = Messages.explain(field, Traits(p))
         if (provider != null) {
             val ctx = "Current question: ${field.prompt}\nWhy it matters: ${field.why}\nOptions: ${field.options(Traits(p)).joinToString { it.label }}\nProject concept: ${p.value(Keys.CONCEPT) ?: "(none yet)"}"
-            val r = provider.complete(LlmRequest(DirectorPrompts.answerSystem(name(settings), p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER),
-                listOf(LlmMessage("user", "$ctx\n\nOwner asks: $question")), maxTokens = 220))
+            val r = timed { provider.complete(LlmRequest(DirectorPrompts.answerSystem(name(settings), p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER),
+                listOf(LlmMessage("user", "$ctx\n\nOwner asks: $question")), maxTokens = 220)) }
             if (r is LlmResult.Ok && r.text.isNotBlank()) return (r.text.trim() + "\n\n" + Messages.reask(field)) to provider.displayName
         }
         return base to null
@@ -263,7 +284,7 @@ class Director(private val deps: DirectorDeps) {
         val provider = if (text.length >= 20) readyProvider() else null
         if (provider != null) {
             val r = runCatching {
-                provider.complete(LlmRequest(DirectorPrompts.extractionSystem(), listOf(LlmMessage("user", text)), maxTokens = 400, temperature = 0f))
+                timed { provider.complete(LlmRequest(DirectorPrompts.extractionSystem(), listOf(LlmMessage("user", text)), maxTokens = 400, temperature = 0f)) }
             }.getOrNull()
             if (r is LlmResult.Ok) {
                 val (raw, refs) = DirectorPrompts.parseExtraction(r.text)

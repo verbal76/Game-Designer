@@ -107,6 +107,8 @@ object ProjectOps {
         return p.copy(messages = p.messages + msg, updatedAt = now)
     }
 
+    fun setMode(p: Project, mode: ProjectMode, now: Long): Project = p.copy(mode = mode, pendingFieldKey = null, updatedAt = now)
+
     fun setPending(p: Project, key: String?): Project = p.copy(pendingFieldKey = key)
 
     fun acknowledge(p: Project, conflictId: String, choice: AckChoice, now: Long): Project =

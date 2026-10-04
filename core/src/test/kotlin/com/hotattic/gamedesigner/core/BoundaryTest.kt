@@ -111,3 +111,17 @@ class BoundaryTest {
         assertTrue(c.missingRequired.size <= 1, c.missingRequired.map { it.key }.toString())
     }
 }
+
+class ModeSwitchTest {
+    @Test fun playtestAndBackToDesigning() = runBlocking {
+        val d = director()
+        val (p, _) = driveToReady(d, newProject(), "A cozy 2D puzzle game for my android phone about arranging cats")
+        val v = com.hotattic.gamedesigner.core.generate.SpecVersioning.createVersion(p, com.hotattic.gamedesigner.core.model.VersionKind.INITIAL, 10L, "2026-10-04")
+        val pt = d.enterMode(v, settings, com.hotattic.gamedesigner.core.model.ProjectMode.PLAYTEST_CONTINUE)
+        assertEquals(com.hotattic.gamedesigner.core.model.ProjectMode.PLAYTEST_CONTINUE, pt.mode)
+        val back = d.handleUserMessage(pt, settings, "back to designing").project
+        assertEquals(com.hotattic.gamedesigner.core.model.ProjectMode.NEW_GAME, back.mode)
+        val noSpec = d.enterMode(newProject(), settings, com.hotattic.gamedesigner.core.model.ProjectMode.PLAYTEST_CONTINUE)
+        assertEquals(com.hotattic.gamedesigner.core.model.ProjectMode.NEW_GAME, noSpec.mode)
+    }
+}

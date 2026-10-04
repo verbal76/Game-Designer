@@ -7,4 +7,4 @@ RES=app/src/main/res
 # In-app splash (wide, full logo)
 convert "$SRC" -resize 1280x -quality 90 -define webp:lossless=false "$RES/drawable-nodpi/hot_attic_logo.webp"
 # Android 12+ system splash icon: square canvas, logo inside the circular safe zone
-convert "$SRC" -resize 600x -background none -gravity center -extent 1152x1152 -quality 92 "$RES/drawable-nodpi/splash_icon.png"
+convert "$SRC" -resize 600x -background none -gravity center -extent 1152x1152 -quality 92 "$RES/drawable-nodpi/splash_icon_raster.png"
