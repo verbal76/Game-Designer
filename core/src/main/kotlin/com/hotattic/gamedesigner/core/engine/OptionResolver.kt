@@ -17,7 +17,7 @@ object OptionResolver {
     private val wordNumbers = mapOf("one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10)
     private val ordinals = mapOf("first" to 1, "second" to 2, "third" to 3, "fourth" to 4, "fifth" to 5, "sixth" to 6, "seventh" to 7, "eighth" to 8, "ninth" to 9, "tenth" to 10,
         "1st" to 1, "2nd" to 2, "3rd" to 3, "4th" to 4, "5th" to 5, "6th" to 6, "7th" to 7, "8th" to 8, "9th" to 9, "10th" to 10)
-    private val stop = setOf("the", "a", "an", "of", "and", "or", "to", "for", "in", "on", "with", "my", "it", "is", "ill", "i'll", "go", "want", "like", "please", "just", "that", "this", "those", "these", "them", "one", "ones", "i", "id", "i'd", "pick", "choose", "take", "use", "let", "lets", "let's", "me", "also", "too", "as", "be", "about", "around", "roughly")
+    private val stop = setOf("the", "a", "an", "of", "and", "or", "to", "for", "in", "on", "with", "my", "it", "is", "ill", "i'll", "go", "want", "like", "please", "just", "that", "this", "those", "these", "them", "one", "ones", "i", "id", "i'd", "pick", "choose", "take", "use", "let", "lets", "let's", "me", "also", "too", "as", "be", "about", "around", "roughly", "only", "just", "exclusively", "solely")
     private val unitMinutes = mapOf("minute" to 1.0, "minutes" to 1.0, "min" to 1.0, "mins" to 1.0, "hour" to 60.0, "hours" to 60.0, "hr" to 60.0, "hrs" to 60.0, "h" to 60.0)
 
     private val allCue = Regex("\\b(all|everything|every one|every single|each of them|each|the lot|whole list|entire list)\\b")
@@ -151,6 +151,14 @@ object OptionResolver {
         val utt = tokens(t)
         val optTokens = options.associate { it.id to (tokens(it.label) + tokens(it.id.replace('_', ' '))) }
         val padded = " ${t.replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ")} "
+        // Declared aliases are whole-phrase matches; the longest (most specific) alias wins, a tie is ambiguous.
+        val aliasHits = options.mapNotNull { o -> o.aliases.map { norm(it).replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() && padded.contains(" $it ") }.maxOfOrNull { it.length }?.let { o.id to it } }
+        if (aliasHits.isNotEmpty()) {
+            val longest = aliasHits.maxOf { it.second }
+            val winners = aliasHits.filter { it.second == longest }
+            if (!multi || winners.size == 1) return if (winners.size == 1) listOf(winners.first().first) to true else emptyList<String>() to false
+            return winners.map { it.first } to true
+        }
         val scored = options.map { o ->
             val mine = optTokens.getValue(o.id)
             val others = options.filter { it.id != o.id }.flatMap { optTokens.getValue(it.id) }.toSet()

@@ -7,6 +7,9 @@ import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hotattic.gamedesigner.core.director.DirectorAction
+import com.hotattic.gamedesigner.core.attach.AttachmentIngest
+import com.hotattic.gamedesigner.core.attach.IngestFailure
+import com.hotattic.gamedesigner.core.attach.IngestResult
 import com.hotattic.gamedesigner.core.engine.AuditEngine
 import com.hotattic.gamedesigner.core.engine.InterpreterKind
 import com.hotattic.gamedesigner.core.engine.ProjectOps
@@ -20,13 +23,14 @@ import com.hotattic.gamedesigner.core.model.AppSettings
 import com.hotattic.gamedesigner.core.model.BrandingAsset
 import com.hotattic.gamedesigner.core.model.BrandingMode
 import com.hotattic.gamedesigner.core.model.BrandingSlot
-import com.hotattic.gamedesigner.core.model.DecisionSource
+import com.hotattic.gamedesigner.core.model.Provenance
 import com.hotattic.gamedesigner.core.model.Project
 import com.hotattic.gamedesigner.core.model.ProjectMode
 import com.hotattic.gamedesigner.core.model.ProjectPrefs
 import com.hotattic.gamedesigner.core.model.ResearchKind
 import com.hotattic.gamedesigner.core.model.Role
 import com.hotattic.gamedesigner.core.persist.ProjectSummary
+import com.hotattic.gamedesigner.core.session.ProjectSession
 import com.hotattic.gamedesigner.core.persist.UnsupportedSchemaException
 import com.hotattic.gamedesigner.core.research.ResearchOutcome
 import com.hotattic.gamedesigner.core.schema.Keys
@@ -55,13 +59,18 @@ sealed class UiEvent {
 
 /** Single ViewModel for the whole app: owns settings, the project list, the open project and long-running work. */
 class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewModel(app) {
-    private val lock = Mutex()
+    private val session = ProjectSession { p ->
+        withContext(Dispatchers.IO) { c.store.save(p) }
+        _projects.value = withContext(Dispatchers.IO) { c.store.list() }
+    }
+    private val inFlightPicks = HashSet<String>()
+    /** Which branding slot the open picker is for. Lives in the ViewModel, so it survives configuration changes. */
+    private var pickSlot: String? = null
 
     val settings: StateFlow<AppSettings> = c.settings
     private val _projects = MutableStateFlow<List<ProjectSummary>>(emptyList())
     val projects = _projects.asStateFlow()
-    private val _current = MutableStateFlow<Project?>(null)
-    val current = _current.asStateFlow()
+    val current = session.current
     private val _busy = MutableStateFlow<String?>(null)
     /** Non-null text while something is running ("Bob is thinking..."). */
     val busy = _busy.asStateFlow()
@@ -86,10 +95,11 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
 
     // ---- Projects ----
 
-    private suspend fun commit(p: Project) {
+    /** Saves a brand-new project and makes it the open one. */
+    private suspend fun adopt(p: Project) {
         withContext(Dispatchers.IO) { c.store.save(p) }
-        if (_current.value?.id == p.id) _current.value = p
         _projects.value = withContext(Dispatchers.IO) { c.store.list() }
+        session.open(p)
     }
 
     fun createProject(mode: ProjectMode, onCreated: (String) -> Unit = {}) = viewModelScope.launch {
@@ -98,111 +108,112 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         val prefs = ProjectPrefs(s.defaultExperience, s.defaultClaudePlan, s.defaultUsageStyle)
         var p = ProjectOps.newProject(UUID.randomUUID().toString(), "", mode, prefs, now)
         if (mode != ProjectMode.EXISTING_GAME) p = c.director().start(p, s)
-        commit(p)
-        _current.value = p
+        adopt(p)
         onCreated(p.id)
     }
 
     fun open(id: String) = viewModelScope.launch {
         val p = try { withContext(Dispatchers.IO) { c.store.load(id) } } catch (e: UnsupportedSchemaException) { toast(e.message ?: "Newer project format"); null } catch (e: Exception) { toast("Could not open this project: ${e.message}"); null }
-        _current.value = p
+        session.open(p)
         refreshInterpreter()
     }
 
     fun deleteProject(id: String) = viewModelScope.launch {
         withContext(Dispatchers.IO) { c.store.delete(id) }
-        if (_current.value?.id == id) _current.value = null
+        if (current.value?.id == id) session.open(null)
         refresh()
     }
 
-    fun renameProject(name: String) = viewModelScope.launch { _current.value?.let { commit(it.copy(name = name.trim(), updatedAt = System.currentTimeMillis())) } }
+    fun renameProject(name: String) = viewModelScope.launch { session.update { it.copy(name = name.trim(), updatedAt = System.currentTimeMillis()) } }
 
-    fun setProjectPrefs(prefs: ProjectPrefs) = viewModelScope.launch { _current.value?.let { commit(it.copy(prefs = prefs)) } }
+    fun setProjectPrefs(prefs: ProjectPrefs) = viewModelScope.launch { session.update { it.copy(prefs = prefs) } }
 
     fun setMode(mode: ProjectMode) = viewModelScope.launch {
-        val p = _current.value ?: return@launch
-        commit(c.director().enterMode(p, c.settings.value, mode))
+        session.update { p -> c.director().enterMode(p, c.settings.value, mode) }
     }
 
     // ---- Conversation ----
 
-    fun send(text: String) {
+    /**
+     * One owner action = one transaction on the freshest project, under the session lock. [turnId] identifies the action, so a
+     * repeated callback or replay is ignored by the Director instead of being applied twice.
+     */
+    fun send(text: String, turnId: String = UUID.randomUUID().toString()) {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
-            lock.withLock {
-                val p = _current.value ?: return@withLock
-                _busy.value = "${c.settings.value.directorName} is thinking..."
-                try {
-                    val turn = c.director().handleUserMessage(p, c.settings.value, trimmed)
-                    commit(turn.project)
-                    when (val a = turn.action) {
-                        DirectorAction.GenerateSpec -> generateLocked()
-                        is DirectorAction.RequestUpload -> _events.tryEmit(UiEvent.PickImage(a.slot))
-                        null -> Unit
-                    }
-                } catch (t: Throwable) {
-                    toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
-                } finally { _busy.value = null }
-            }
+            _busy.value = "${c.settings.value.directorName} is thinking..."
+            try {
+                val action = session.mutate { p ->
+                    val turn = c.director().handleUserMessage(p, c.settings.value, trimmed, turnId)
+                    turn.project to turn.action
+                }
+                dispatch(action)
+            } catch (t: Throwable) {
+                toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
+            } finally { _busy.value = null }
         }
     }
 
     /** Structured answer from the question card (single tap or multi-select Continue). */
     fun submitSelection(fieldKey: String, ids: List<String>) {
         viewModelScope.launch {
-            lock.withLock {
-                val p = _current.value ?: return@withLock
-                _busy.value = "${c.settings.value.directorName} is thinking..."
-                try {
+            _busy.value = "${c.settings.value.directorName} is thinking..."
+            try {
+                val action = session.mutate { p ->
                     val turn = c.director().submitSelection(p, c.settings.value, fieldKey, ids)
-                    commit(turn.project)
-                    when (val a = turn.action) {
-                        DirectorAction.GenerateSpec -> generateLocked()
-                        is DirectorAction.RequestUpload -> _events.tryEmit(UiEvent.PickImage(a.slot))
-                        null -> Unit
-                    }
-                } catch (t: Throwable) {
-                    toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
-                } finally { _busy.value = null }
-            }
+                    turn.project to turn.action
+                }
+                dispatch(action)
+            } catch (t: Throwable) {
+                toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
+            } finally { _busy.value = null }
+        }
+    }
+
+    private suspend fun dispatch(a: DirectorAction?) {
+        when (a) {
+            DirectorAction.GenerateSpec -> generateNow()
+            is DirectorAction.RequestUpload -> { pickSlot = a.slot; _events.tryEmit(UiEvent.PickImage(a.slot)) }
+            null -> Unit
         }
     }
 
     // ---- Spec generation ----
 
-    fun generate() = viewModelScope.launch { lock.withLock { _busy.value = "Generating spec..."; try { generateLocked() } finally { _busy.value = null } } }
+    fun generate() = viewModelScope.launch { _busy.value = "Generating spec..."; try { generateNow() } finally { _busy.value = null } }
 
-    private suspend fun generateLocked() {
-        var p = _current.value ?: return
-        val s = c.settings.value
-        // Capture current toolchain facts (with sources) so the spec can pin versions, when permitted.
-        val engine = p.value(Keys.ENGINE)
-        if (s.internetResearchAllowed && engine != null) {
-            _busy.value = "Checking current toolchain versions..."
-            when (val r = c.research.toolchainFacts(engine)) {
-                is ResearchOutcome.Found -> p = p.copy(research = p.research.filter { n -> r.value.none { it.topic == n.topic } || n.kind != ResearchKind.TOOLCHAIN_VERSION } + r.value)
-                else -> Unit
+    private suspend fun generateNow() {
+        val opened = session.mutate { p0 ->
+            var p = p0
+            val s = c.settings.value
+            // Capture current toolchain facts (with sources) so the spec can pin versions, when permitted.
+            val engine = p.value(Keys.ENGINE)
+            if (s.internetResearchAllowed && engine != null) {
+                _busy.value = "Checking current toolchain versions..."
+                when (val r = c.research.toolchainFacts(engine)) {
+                    is ResearchOutcome.Found -> p = p.copy(research = p.research.filter { n -> r.value.none { it.topic == n.topic } || n.kind != ResearchKind.TOOLCHAIN_VERSION } + r.value)
+                    else -> Unit
+                }
+                _busy.value = "Generating spec..."
             }
-            _busy.value = "Generating spec..."
+            val now = System.currentTimeMillis()
+            val gen = SpecVersioning.generate(p, SpecVersioning.suggestedKind(p), now, LocalDate.now().toString())
+            if (gen.blocked) {
+                val msg = "I can't export yet - the consistency review found contradictions:\n" + gen.review.errors.take(6).joinToString("\n") { "- ${it.message}" } + "\n\nTell me which way each should go; your latest word wins."
+                ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now), null) to false
+            } else {
+                val next = gen.project
+                val v = next.versions.last()
+                ProjectOps.addMessage(next, Role.DIRECTOR, "Generated spec v${v.number} (${v.kind.label}). ${v.auditSummary} Open the Spec screen to copy, share or export it.", now) to true
+            }
         }
-        val now = System.currentTimeMillis()
-        val gen = SpecVersioning.generate(p, SpecVersioning.suggestedKind(p), now, LocalDate.now().toString())
-        if (gen.blocked) {
-            val msg = "I can't export yet - the consistency review found contradictions:\n" + gen.review.errors.take(6).joinToString("\n") { "- ${it.message}" } + "\n\nTell me which way each should go; your latest word wins."
-            commit(ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now), null))
-            return
-        }
-        val next = gen.project
-        val v = next.versions.last()
-        val done = ProjectOps.addMessage(next, Role.DIRECTOR, "Generated spec v${v.number} (${v.kind.label}). ${v.auditSummary} Open the Spec screen to copy, share or export it.", now)
-        commit(done)
-        _events.tryEmit(UiEvent.OpenSpec(done.id))
+        if (opened == true) current.value?.id?.let { _events.tryEmit(UiEvent.OpenSpec(it)) }
     }
 
     /** Optional cloud review of a generated spec (needs a configured provider). */
     fun reviewWithCloud(versionNumber: Int, onResult: (String) -> Unit) = viewModelScope.launch {
-        val p = _current.value ?: return@launch
+        val p = current.value ?: return@launch
         val v = p.versions.firstOrNull { it.number == versionNumber } ?: return@launch
         if (!c.cloudConfigured()) { onResult("No cloud provider is configured. Add an API key in Settings to use Claude for a deeper review."); return@launch }
         _busy.value = "Asking Claude to review the spec..."
@@ -217,43 +228,71 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
 
     // ---- Branding ----
 
-    fun importBranding(slot: String, uri: Uri) = viewModelScope.launch {
-        val p = _current.value ?: return@launch
-        val ctx = getApplication<Application>()
+    private fun slotFromPending(): String? {
+        val k = current.value?.pendingFieldKey ?: return null
+        return Keys.brandingKeyForSlot.entries.firstOrNull { it.value == k }?.key
+    }
+
+    /**
+     * The picker returned (or was cancelled). The slot comes from the Branding screen if it launched the picker, else from the
+     * ViewModel, else from the open question itself - so an activity recreated while Files was open still knows what this is for.
+     */
+    fun onImagePicked(uri: Uri?, slotHint: String? = null) = viewModelScope.launch {
+        val slot = slotHint ?: pickSlot ?: slotFromPending()
+        pickSlot = null
+        if (uri == null) { toast("No image was chosen. The question is still open - tap Upload to try again."); return@launch }
+        if (slot == null) { toast("I lost track of which image this was for. Please choose it again."); return@launch }
+        ingestImage(slot, uri)
+    }
+
+    /** Success is reported only after the bytes are read, validated, saved in app storage and the conversation has advanced. */
+    private suspend fun ingestImage(slot: String, uri: Uri) {
+        val key = "$slot|$uri"
+        if (!inFlightPicks.add(key)) return // the same result delivered twice while the first is still being saved
+        _busy.value = "Saving your image..."
         try {
-            val asset = withContext(Dispatchers.IO) {
-                val name = ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "image"
-                val bytes = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
-                require(bytes.size in 1..(25 * 1024 * 1024)) { "The image must be under 25 MB." }
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
-                require(opts.outWidth > 0 && opts.outHeight > 0) { "That file isn't a readable image (PNG, JPEG or WebP)." }
-                val sha = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-                val ext = when (opts.outMimeType) { "image/png" -> "png"; "image/webp" -> "webp"; else -> "jpg" }
-                val dir = File(c.store.assetsDir(p.id), "branding").also { it.mkdirs() }
-                p.branding[slot]?.localFile?.let { File(dir, File(it).name).delete() }
-                val file = File(dir, "${slot}_${sha.take(8)}.$ext")
-                file.writeBytes(bytes)
-                BrandingAsset(slot, BrandingMode.UPLOADED, "branding/${file.name}", name, sha, opts.outWidth, opts.outHeight, System.currentTimeMillis())
+            val p0 = current.value ?: return
+            val ctx = getApplication<Application>()
+            val resolver = ctx.contentResolver
+            val name = try { resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } } catch (e: Exception) { null } ?: "image"
+            try { resolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (e: Exception) { /* not every provider offers a persistable grant; we copy the bytes now instead */ }
+            val dir = File(c.store.assetsDir(p0.id), "branding")
+            val result = withContext(Dispatchers.IO) { AttachmentIngest.ingest(slot, name, { resolver.openInputStream(uri) }, dir, System.currentTimeMillis()) }
+            when (result) {
+                is IngestResult.Failed -> reportIngestFailure(result.message)
+                is IngestResult.Ok -> {
+                    val decodable = withContext(Dispatchers.IO) { val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }; BitmapFactory.decodeFile(result.file.path, o); o.outWidth > 0 && o.outHeight > 0 }
+                    if (!decodable) { withContext(Dispatchers.IO) { result.file.delete() }; reportIngestFailure(IngestResult.Failed(IngestFailure.CORRUPT).message); return }
+                    val turn = session.mutate { p ->
+                        val old = p.branding[slot]?.localFile
+                        if (old != null && old != result.asset.localFile) withContext(Dispatchers.IO) { File(c.store.assetsDir(p.id), old).delete() }
+                        val t = c.director().attachmentReceived(p, c.settings.value, slot, result.asset)
+                        t.project to t.duplicate
+                    }
+                    toast(if (turn == true) "That image is already attached." else "Saved. The original is kept untouched as the master.")
+                }
             }
-            val key = Keys.brandingKeyForSlot.getValue(slot)
-            val now = System.currentTimeMillis()
-            commit(ProjectOps.setDecision(p.copy(branding = p.branding + (slot to asset)), key, "upload", DecisionSource.USER, now))
-            toast("Image added. The original is kept untouched as the master.")
-        } catch (e: IllegalArgumentException) { toast(e.message ?: "Could not use that image.") }
-        catch (e: Exception) { toast("Could not import the image: ${e.message}") }
+        } catch (e: Exception) {
+            reportIngestFailure("Something went wrong saving the image (${e.message ?: e.javaClass.simpleName}).")
+        } finally { inFlightPicks.remove(key); _busy.value = null }
+    }
+
+    private suspend fun reportIngestFailure(message: String) {
+        toast(message)
+        session.update { p -> ProjectOps.addMessage(p, Role.SYSTEM, "I couldn't use that file. $message Try another image, or say \"create one for me\".", System.currentTimeMillis()) }
     }
 
     fun setBrandingChoice(slot: String, choice: String) = viewModelScope.launch {
-        val p = _current.value ?: return@launch
-        val mode = when (choice) { "generate_original" -> BrandingMode.GENERATE_ORIGINAL; "generic_temporary" -> BrandingMode.GENERIC_TEMPORARY; "skip" -> BrandingMode.SKIP; else -> BrandingMode.UNSET }
-        p.branding[slot]?.localFile?.let { rel -> withContext(Dispatchers.IO) { File(c.store.assetsDir(p.id), rel).delete() } }
-        val b = BrandingAsset(slot, mode, addedAt = System.currentTimeMillis())
-        commit(ProjectOps.setDecision(p.copy(branding = p.branding + (slot to b)), Keys.brandingKeyForSlot.getValue(slot), choice, DecisionSource.USER, System.currentTimeMillis()))
+        session.update { p ->
+            p.branding[slot]?.localFile?.let { rel -> withContext(Dispatchers.IO) { File(c.store.assetsDir(p.id), rel).delete() } }
+            val mode = when (choice) { "generate_original" -> BrandingMode.GENERATE_ORIGINAL; "generic_temporary" -> BrandingMode.GENERIC_TEMPORARY; "skip" -> BrandingMode.SKIP; else -> BrandingMode.UNSET }
+            val b = BrandingAsset(slot, mode, addedAt = System.currentTimeMillis())
+            ProjectOps.setDecision(p.copy(branding = p.branding + (slot to b)), Keys.brandingKeyForSlot.getValue(slot), choice, Provenance.OWNER_EXPLICIT, System.currentTimeMillis())
+        }
     }
 
     fun brandingFile(slot: String): File? {
-        val p = _current.value ?: return null
+        val p = current.value ?: return null
         val rel = p.branding[slot]?.localFile ?: return null
         return File(c.store.assetsDir(p.id), rel).takeIf { it.exists() }
     }
@@ -261,10 +300,11 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
     // ---- Export / backup ----
 
     fun exportPackage(versionNumber: Int, out: Uri) = viewModelScope.launch {
-        val p = _current.value ?: return@launch
+        val p = current.value ?: return@launch
         val v = p.versions.firstOrNull { it.number == versionNumber } ?: return@launch
         withContext(Dispatchers.IO) {
-            getApplication<Application>().contentResolver.openOutputStream(out)!!.use { it.write(ExportPackage.zip(ExportPackage.files(p, v))) }
+            val masters = ExportPackage.binaryFiles(p) { b -> b.localFile?.let { File(c.store.assetsDir(p.id), it).takeIf { f -> f.exists() }?.readBytes() } }
+            getApplication<Application>().contentResolver.openOutputStream(out)!!.use { it.write(ExportPackage.zip(ExportPackage.files(p, v), masters)) }
         }
         toast("Exported spec package.")
     }
@@ -335,7 +375,7 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
             val facts = (ins.verifiedFacts.take(6).map { "- $it" } + ins.assumptions.take(2).map { "- (unverified) $it" }).joinToString("\n")
             p = ProjectOps.addMessage(p, Role.SYSTEM, "Inspected ${repo.owner}/${repo.name} (branch ${ins.defaultBranch}):\n$facts", now)
             p = c.director().start(p, s)
-            commit(p); _current.value = p; onCreated(p.id)
+            adopt(p); onCreated(p.id)
         } catch (e: Exception) { toast(e.message ?: "Inspection failed") } finally { _busy.value = null }
     }
 

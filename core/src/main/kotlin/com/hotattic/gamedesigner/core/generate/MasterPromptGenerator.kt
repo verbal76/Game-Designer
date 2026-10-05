@@ -1,5 +1,7 @@
 package com.hotattic.gamedesigner.core.generate
 
+import com.hotattic.gamedesigner.core.engine.BuildObjective
+import com.hotattic.gamedesigner.core.engine.ProjectObjective
 import com.hotattic.gamedesigner.core.engine.ResourceLevel
 import com.hotattic.gamedesigner.core.engine.ScopeEngine
 import com.hotattic.gamedesigner.core.model.FeedbackStatus
@@ -35,7 +37,8 @@ object MasterPromptGenerator {
             appendLine("If `CLAUDE.md` is missing, tell the owner it must be added at the repository root before you proceed.")
             appendLine()
             when (project.mode) {
-                ProjectMode.NEW_GAME -> appendLine("MISSION: build the complete, genuinely playable first version described in `CLAUDE.md`. Not a prototype, mockup or gray-box. Implement, integrate, test, repair and polish everything practical before involving the owner.")
+                ProjectMode.NEW_GAME -> appendLine(if (ProjectObjective.of(project) == BuildObjective.PROTOTYPE) "MISSION: build the fully functional PROTOTYPE described in `CLAUDE.md`: the intended game and core loop genuinely playable, with only the content needed to prove the design (see section 5). Not a mockup or gray-box, and not a full production game. Implement, integrate, test and repair everything the prototype needs before involving the owner."
+                else "MISSION: build the complete, genuinely playable first version described in `CLAUDE.md`. Not a prototype, mockup or gray-box. Implement, integrate, test, repair and polish everything practical before involving the owner.")
                 ProjectMode.EXISTING_GAME -> appendLine("MISSION: continue the existing game as described in `CLAUDE.md` section 17. Inspect the repository first, separate verified facts from assumptions, create a rollback tag/branch, preserve working systems, then implement the plan.")
                 ProjectMode.PLAYTEST_CONTINUE -> appendLine("MISSION: apply the playtest feedback in `CLAUDE.md` section 17 ($openFeedback open item(s)). Reproduce each issue first, fix root causes, verify, and keep everything that already works.")
             }

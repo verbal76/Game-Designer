@@ -33,6 +33,16 @@ object ExportPackage {
             appendLine("| ${a.needId} | ${a.resolution.name.lowercase().replace('_', ' ')} | ${a.license.ifBlank { "-" }} | ${(a.source + " " + a.notes).trim().replace("|", "/").replace("\n", " ")} |")
         }
         appendLine()
+        val uploaded = p.branding.values.filter { it.mode == com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED }
+        if (uploaded.isNotEmpty()) {
+            appendLine()
+            appendLine("## Owner-supplied branding (use as-is; never replace or regenerate)")
+            appendLine()
+            appendLine("| Slot | File in this package | Original name | Size | SHA-256 | License |")
+            appendLine("|---|---|---|---|---|---|")
+            uploaded.forEach { b -> appendLine("| ${b.slot} | `${masterPath(b)}` | ${b.originalName} | ${b.width}x${b.height} | ${b.sha256} | owner-supplied |") }
+        }
+        appendLine()
         appendLine("## Actual files")
         appendLine()
         appendLine("| File | Source URL | Creator | License | Downloaded |")
@@ -66,12 +76,26 @@ object ExportPackage {
         }
     }
 
-    fun zip(files: Map<String, String>): ByteArray {
+    fun masterPath(b: com.hotattic.gamedesigner.core.model.BrandingAsset) = "branding/master/${b.localFile?.substringAfterLast('/') ?: b.slot}"
+
+    /** The owner's untouched master images, read through [read] (which returns null if a file is missing). */
+    fun binaryFiles(project: Project, read: (com.hotattic.gamedesigner.core.model.BrandingAsset) -> ByteArray?): LinkedHashMap<String, ByteArray> {
+        val out = linkedMapOf<String, ByteArray>()
+        project.branding.values.filter { it.mode == com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED }.forEach { b -> read(b)?.let { out[masterPath(b)] = it } }
+        return out
+    }
+
+    fun zip(files: Map<String, String>, binaries: Map<String, ByteArray> = emptyMap()): ByteArray {
         val bos = ByteArrayOutputStream()
         ZipOutputStream(bos).use { z ->
             files.forEach { (name, text) ->
                 z.putNextEntry(ZipEntry(name))
                 z.write(text.toByteArray(Charsets.UTF_8))
+                z.closeEntry()
+            }
+            binaries.forEach { (name, bytes) ->
+                z.putNextEntry(ZipEntry(name))
+                z.write(bytes)
                 z.closeEntry()
             }
         }

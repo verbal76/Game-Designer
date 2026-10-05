@@ -49,6 +49,13 @@ object ConsistencyReview {
                 notes += "${f.title}: you said \"${d.rawAnswer.take(40)}\", so I included all ${opts.size} options (was ${have.size})."
             }
         }
+        // Talk about using the app is never a requirement.
+        val meta = p.activeFacts().filter { MetaConversation.isMeta(it.text) }
+        if (meta.isNotEmpty()) {
+            val ids = meta.map { it.id }.toSet()
+            p = ProjectOps.retractFacts(p, "Conversation about using Game Designer, not a design requirement", now) { it.id in ids }
+            notes += "Dropped ${meta.size} remark(s) about using the app from the requirements."
+        }
         return p to notes
     }
 
@@ -109,6 +116,36 @@ object ConsistencyReview {
             if (d.ownerAuthored && d.list().size == 1 && Regex("(?i)\\b(and|,|all|both)\\b").containsMatchIn(d.rawAnswer) && d.rawAnswer.split(Regex("(?i)\\band\\b|,")).count { it.isNotBlank() } >= 2 && !hasExceptionCue(d.rawAnswer))
                 out += ReviewFinding(ReviewLevel.ERROR, "menus_truncated", "Several menus were requested (\"${d.rawAnswer.take(60)}\") but only one is recorded.")
         }
+        // 7. Owner-stated answer disagrees with what was stored (e.g. "CC0 only" recorded as "original only").
+        for ((key, d) in p.decisions) {
+            val f = Fields.get(key) ?: continue
+            if (f.kind != FieldKind.SINGLE || !d.ownerAuthored || d.rawAnswer.isBlank() || d.rawAnswer.length > 48) continue
+            val r = OptionResolver.resolve(f.options(t), false, d.rawAnswer)
+            if (r.mode == OptionResolver.Mode.SELECT && r.confident && r.ids.size == 1 && r.ids.first() != d.value && d.value != "upload")
+                out += ReviewFinding(ReviewLevel.ERROR, "owner_answer_mismatch", "${f.title}: the owner said \"${d.rawAnswer}\" but \"${d.value}\" is recorded.")
+        }
+        // 8. Asset policy text must match the recorded policy.
+        val policy = p.value(Keys.ASSET_POLICY)
+        if (policy != null && policy != "original_only") for (l in lines) if ("Only original/procedural assets".lowercase() in l.lowercase() && !negationOnLine.containsMatchIn(l.lowercase()))
+            out += ReviewFinding(ReviewLevel.ERROR, "asset_policy_contradiction", "The spec says original/procedural-only but the owner's policy is $policy.", l.trim().take(160))
+        if (policy == "original_only") for (l in lines) if (Regex("(?i)cc0 / public domain, else original").containsMatchIn(l))
+            out += ReviewFinding(ReviewLevel.ERROR, "asset_policy_contradiction", "The spec offers external CC0 assets but the owner's policy is original-only.", l.trim().take(160))
+        // 9. Prototype stays a prototype.
+        if (ProjectObjective.of(p) == BuildObjective.PROTOTYPE) for (l in lines) {
+            val low = l.lowercase()
+            if (listOf("complete game", "not a prototype", "genuinely playable, complete", "full commercial", "complete, genuinely playable").any { it in low } && !low.contains("full commercial game")) out += ReviewFinding(ReviewLevel.ERROR, "prototype_scope_escalation", "The owner asked for a fully functional prototype but the spec implies a complete game.", l.trim().take(160))
+        }
+        // 10. Owner-supplied branding wins over generated/default branding.
+        for ((slot, key) in Keys.brandingKeyForSlot) {
+            val b = p.branding[slot]
+            val choice = p.value(key)
+            if (b?.mode == com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED && choice != "upload")
+                out += ReviewFinding(ReviewLevel.ERROR, "uploaded_asset_ignored", "An owner-supplied $slot exists but the recorded choice is \"$choice\".")
+            if (choice == "upload" && b?.mode != com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED)
+                out += ReviewFinding(ReviewLevel.ERROR, "upload_without_file", "The owner chose to upload a $slot but no file was received.")
+        }
+        // 11. Meta-conversation must not be a requirement.
+        for (f in p.activeFacts()) if (MetaConversation.isMeta(f.text)) out += ReviewFinding(ReviewLevel.ERROR, "meta_conversation", "A remark about using the app is recorded as a requirement.", f.text.take(120))
         return ReviewReport(out.distinctBy { it.code + it.message + it.line })
     }
 

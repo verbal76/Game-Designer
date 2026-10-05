@@ -4,7 +4,9 @@ import com.hotattic.gamedesigner.core.engine.AssetPlan
 import com.hotattic.gamedesigner.core.engine.AuditEngine
 import com.hotattic.gamedesigner.core.engine.AuditReport
 import com.hotattic.gamedesigner.core.engine.ConflictEngine
+import com.hotattic.gamedesigner.core.engine.BuildObjective
 import com.hotattic.gamedesigner.core.engine.ConsistencyReview
+import com.hotattic.gamedesigner.core.engine.ProjectObjective
 import com.hotattic.gamedesigner.core.engine.ScopeEngine
 import com.hotattic.gamedesigner.core.model.AssetResolution
 import com.hotattic.gamedesigner.core.model.BrandingMode
@@ -36,6 +38,7 @@ object ClaudeMdGenerator {
     fun generate(project: Project, versionNumber: Int, versionLabel: String, nowIso: String, audit: AuditReport = AuditEngine.audit(project)): String {
         val t = Traits(project)
         val scope = ScopeEngine.recommend(project)
+        val prototype = ProjectObjective.of(project) == BuildObjective.PROTOTYPE
         val title = project.value(Keys.DISPLAY_NAME) ?: project.name
         val sb = StringBuilder()
         fun h1(s: String) = sb.append("# ").append(s).append("\n\n")
@@ -55,7 +58,7 @@ object ClaudeMdGenerator {
         h2("0. Authority and how to use this file")
         p("This file is the authoritative specification for **$title**. Read it completely before making decisions. Preserve the owner's intent over convenience. " +
             "If repository reality conflicts with this document, investigate, preserve recoverable working state, and take the safest path that satisfies this specification. " +
-            "Never silently reduce scope to a prototype, toy, mockup or gray-box. Where this file is explicit, follow it; where it is silent on a non-creative engineering detail, make the best reversible decision and record it in `docs/DECISIONS.md`.")
+            (if (prototype) "The owner defined the first build as a FULLY FUNCTIONAL PROTOTYPE: the intended game and core loop genuinely playable, but not full production content. Never reduce it below that to a mockup, toy, or gray-box, and never inflate it into a full commercial game. " else "Never silently reduce scope to a prototype, toy, mockup or gray-box. ") + "Where this file is explicit, follow it; where it is silent on a non-creative engineering detail, make the best reversible decision and record it in `docs/DECISIONS.md`.")
         p("The owner is Kevin. Creative and product decisions belong to the owner; engineering decisions belong to you.")
         if (project.mode != ProjectMode.NEW_GAME) {
             h3("Project mode")
@@ -75,6 +78,9 @@ object ClaudeMdGenerator {
         if (ownerFacts.isEmpty() && ownerDecisions.isEmpty()) p("The owner specified nothing beyond the concept above.")
         bullets(ownerFacts.map { it.text })
         bullets(ownerDecisions.map { (k, d) ->
+            val slotOf = Keys.brandingKeyForSlot.entries.firstOrNull { it.value == k }?.key
+            val up = slotOf?.let { project.branding[it] }?.takeIf { it.mode == BrandingMode.UPLOADED }
+            if (up != null) return@map "**${Fields.get(k)?.title ?: k}:** owner-supplied file `${up.originalName}` (${up.width}x${up.height}, sha256 ${up.sha256.take(16)}...), kept untouched at `branding/master/${up.localFile?.substringAfterLast('/')}`. Use it; do not generate a replacement."
             val corr = if (d.prov == Provenance.OWNER_CORRECTION) " [owner correction - supersedes anything earlier]" else ""
             "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}$corr" + if (d.rawAnswer.isNotBlank() && d.rawAnswer.length < 160) " (owner said: \"${d.rawAnswer.trim()}\")" else ""
         })
@@ -131,9 +137,10 @@ object ClaudeMdGenerator {
         }
         h3("Non-negotiables")
         bullets(listOf(
-            "The first build is a genuinely playable, complete game - the full intended core loop with real visuals, input, audio (if specified), menus, settings, saves, win/failure/progression - not a prototype.",
+            if (prototype) "The first build is a fully functional prototype, as the owner defined it: the intended core loop genuinely playable end to end with real input, feedback, win/failure and progression, proving the design. It is not required to contain full production content (every eventual level, enemy, boss or final art), and it is not a mockup or a block moving on a screen."
+            else "The first build is a genuinely playable, complete game - the full intended core loop with real visuals, input, audio (if specified), menus, settings, saves, win/failure/progression - not a prototype.",
             "No unfinished-work markers, placeholder gameplay or stubbed systems ship in the first build. Anything deferred is listed in section 16 and nowhere else.",
-            "Everything in this file is implemented, validated by automation, repaired and polished before asking the owner to playtest.",
+            if (prototype) "Everything this file specifies for the prototype is implemented, validated by automation and repaired before asking the owner to playtest." else "Everything in this file is implemented, validated by automation, repaired and polished before asking the owner to playtest.",
             "No secrets (API keys, tokens, signing keys, passwords) are ever committed.",
             "All external assets satisfy the license policy in section 8 and are logged with provenance.",
         ))
@@ -164,7 +171,7 @@ object ClaudeMdGenerator {
             v(Keys.AUTOMATION_SIM)?.let { "**Simulation/building:** $it" },
         )
         if (specifics.isNotEmpty()) { h3("Specified design (who decided each item is in Parts A and B)"); bullets(specifics) }
-        val systems = t.genres.flatMap { g -> g.systems.map { g to it } }.distinctBy { it.second.id }
+        val systems = t.systems()
         if (systems.isNotEmpty()) {
             h3("Required systems (genre completeness checklist - adapt each item to this game's real design)")
             bullets(systems.map { (g, s) -> "**${s.name}** (${g.label.substringBefore(" (").substringBefore(" /")}): ${s.detail}" })
@@ -180,8 +187,9 @@ object ClaudeMdGenerator {
         ))
 
         // 5. Scope
-        h2("5. Content scope (recommended sizing)")
+        h2(if (prototype) "5. Content scope (prototype now; production sizing for later)" else "5. Content scope (recommended sizing)")
         p("Scope tier: **${scope.effectiveTier.label}** (recommended: ${scope.recommendedTier.label}). ${scope.rationale.joinToString(" ")}")
+        if (prototype) p("PROTOTYPE SCOPE: build only enough content to prove each specified system and the core loop (for example one complete playable stretch of the world and a few representative enemies/obstacles), data-driven so production content can be added later without rework. The counts below are the eventual production heuristics and are NOT required for this build.")
         p("These counts are Game Designer's UPPER-BOUND EFFORT HEURISTICS, not owner requirements, unless the owner stated numbers in Part A. Do not pad content to reach them. Map each unit onto this game's real structure (for example depth zones instead of levels in a descent game) and size content so the intended loop is complete and replayable. Author content as data (tables/resources), validated by automated checks; no content slot may be an empty stub.")
         bullets(scope.targets.map { "${it.label}: **${it.count}**" })
 
@@ -316,12 +324,13 @@ object ClaudeMdGenerator {
             "Static checks: lint/format/type checks for the chosen toolchain.",
             "Unit tests for all rules, simulations, data validation (content tables complete, references resolve, no negative or infinite values).",
             "Persistence tests: save/load round trip, corrupt save recovery, migration from fixtures.",
-            "Headless smoke playtest(s): " + (t.genres.flatMap { it.smokeChecks }.distinct().joinToString(" ").ifBlank { "scripted playthrough of the core loop completes without crash or soft-lock." }),
+            "Headless smoke playtest(s): " + (t.smokeChecks().joinToString(" ").ifBlank { "scripted playthrough of the core loop completes without crash or soft-lock." }),
             "Build the real artifact for every target platform in CI and confirm it installs/launches (emulator or headless where available). Report only what you actually ran.",
             "UI inspection: capture screenshots of every screen at phone and tablet aspect ratios and review them for clipping, overlap and unreadable text.",
         ))
         h3("Definition of done for the first build")
         p(v(Keys.DONE) ?: "The complete core loop is playable start to finish; all systems in this file are implemented; automated validation is green; installable artifact produced.")
+        if (prototype) p("Interpretation: this is a fully functional PROTOTYPE of the game described in Part A. Done means the intended game and core loop are really playable and the automated validation is green with an installable build; it does not mean full production content.")
 
         // 14. Release
         h2("14. Packaging, identity and release")

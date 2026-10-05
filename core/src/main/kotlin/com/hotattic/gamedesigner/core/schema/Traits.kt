@@ -19,6 +19,33 @@ class Traits(val project: Project) {
     val tags: Set<Tag> = genres.flatMap { it.tags }.toSet() - rejectedTags
     fun has(tag: Tag) = tag in tags
     fun perspectiveIsScroller(): Boolean = project.value(Keys.PERSPECTIVE) in setOf("vertical_scroll", "side_view")
+    /**
+     * One continuous world (a shaft, a tower, an endless fall) rather than a string of discrete levels. True when the owner chose
+     * it, or while the world structure is still open and the design is a vertical scroller.
+     */
+    val continuousWorld: Boolean
+        get() {
+            val w = project.value(Keys.WORLD_STRUCTURE)
+            return w == "vertical_shaft" || (w == null && project.value(Keys.PERSPECTIVE) == "vertical_scroll")
+        }
+
+    /** Genre checklist adapted to the owner's actual structure: no level sets or level select in a continuous world. */
+    fun systems(): List<Pair<Genre, SystemReq>> = genres.flatMap { g ->
+        val list = if (continuousWorld && g.id == "platformer") g.systems.filter { it.id !in setOf("level_set", "level_select_progress") } + listOf(
+            SystemReq("continuous_world", "Continuous vertical world", "One continuous traversable world in contiguous depth zones with checkpoints by depth; no level boundaries or level-select."),
+            SystemReq("depth_progress_save", "Depth and progress save", "Persist depth reached, checkpoints and unlocks."),
+        ) else g.systems
+        list.map { g to it }
+    }.distinctBy { it.second.id }
+
+    fun loopText(g: Genre): String =
+        if (continuousWorld && g.id == "platformer") "Move through the continuous vertical world using tight movement, avoid hazards and enemies, and progress toward the far end of the world."
+        else g.loopTemplate
+
+    fun smokeChecks(): List<String> = genres.flatMap { g ->
+        if (continuousWorld && g.id == "platformer") listOf("A scripted run traverses the continuous world between its extremes with no unreachable section (automated reachability check).") else g.smokeChecks
+    }.distinct()
+
     fun hasGenre(id: String) = genres.any { it.id == id }
 
     val dimension: String? = project.value(Keys.DIMENSION)

@@ -362,6 +362,8 @@ data class Project(
      * TURN_BASED). Inference may not reintroduce them; only an explicit owner statement lifts a rejection.
      */
     val rejected: Map<String, List<String>> = emptyMap(),
+    /** Ids of owner actions already committed (newest last, capped). A repeated callback with a known id is a no-op. Additive. */
+    val processedTurns: List<String> = emptyList(),
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }

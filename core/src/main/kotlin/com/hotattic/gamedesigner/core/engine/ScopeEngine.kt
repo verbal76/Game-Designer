@@ -85,6 +85,8 @@ object ScopeEngine {
         if (cap < 0) { idx -= 1; rationale += "Claude plan and conservative usage preference reduce the single-pass scope by one tier." }
         else { if (cap >= 2 && idx < 3) idx += 1; rationale += "Claude plan/usage preference supports this tier as a durable multi-checkpoint build." }
         idx = idx.coerceIn(0, 3)
+        val prototype = ProjectObjective.of(project) == BuildObjective.PROTOTYPE
+        if (prototype) { idx = 0; rationale += "The owner defined the first build as a fully functional prototype, so content is sized to prove the design, not to ship it." }
         val recommended = tiers[idx]
 
         val choice = project.value(Keys.SCOPE_CHOICE)
@@ -98,7 +100,8 @@ object ScopeEngine {
 
         val genres = t.genres.ifEmpty { listOf(com.hotattic.gamedesigner.core.schema.GenreKnowledge.other) }
         val primary = genres.first()
-        val targets = (genreTargets[primary.id] ?: genreTargets.getValue("other")).map { (label, arr) -> ContentTarget(label, arr[eff]) }.toMutableList()
+        val relabel = if (t.continuousWorld) mapOf("Levels" to "Depth zones along the continuous world", "Worlds / themes" to "Visual themes") else emptyMap()
+        val targets = (genreTargets[primary.id] ?: genreTargets.getValue("other")).map { (label, arr) -> ContentTarget(relabel[label] ?: label, arr[eff]) }.toMutableList()
         // Hybrid designs add a smaller contribution from the secondary genre so both halves of the hybrid are really present.
         val have = targets.map { it.label }.toSet()
         genres.drop(1).take(1).forEach { g ->
@@ -106,7 +109,7 @@ object ScopeEngine {
                 targets += ContentTarget(label, maxOf(1, arr[maxOf(0, eff - 1)]))
             }
         }
-        return ScopeRecommendation(recommended, effective, complexity, rationale, targets, resourceEstimate(effective, complexity, t, project), phases(effective, complexity))
+        return ScopeRecommendation(recommended, effective, complexity, rationale, targets, resourceEstimate(effective, complexity, t, project), phases(effective, complexity, prototype))
     }
 
     fun resourceEstimate(tier: ScopeTier, complexity: Int, t: Traits, project: Project): ResourceEstimate {
@@ -138,13 +141,15 @@ object ScopeEngine {
         return ResourceEstimate(level, why, strategy)
     }
 
-    fun phases(tier: ScopeTier, complexity: Int): List<String> = buildList {
+    fun phases(tier: ScopeTier, complexity: Int, prototype: Boolean = false): List<String> = buildList {
         add("Phase 0 - Foundations: toolchain pinned and verified, repository layout, CI pipeline producing an installable artifact, data schemas, test harness.")
         add("Phase 1 - Complete core loop: the full intended core loop playable end to end with real (not placeholder) visuals, input and feedback.")
         add("Phase 2 - Systems: every required system from this spec implemented and integrated (progression, saves, UI, settings, win/loss).")
-        add("Phase 3 - Content: author the content volume in the Scope section using data-driven tables; validate with automated checks.")
+        add(if (prototype) "Phase 3 - Prototype content: author only the content needed to prove each specified system (see Scope), data-driven so more can be added later; validate with automated checks."
+            else "Phase 3 - Content: author the content volume in the Scope section using data-driven tables; validate with automated checks.")
         add("Phase 4 - Polish: audio, VFX/game feel, accessibility, performance tuning, onboarding.")
-        add("Phase 5 - Release candidate: full validation, repair pass, final build artifact, handoff for human playtesting.")
+        add(if (prototype) "Phase 5 - Prototype candidate: full validation, repair pass, installable build artifact, handoff for human playtesting."
+            else "Phase 5 - Release candidate: full validation, repair pass, final build artifact, handoff for human playtesting.")
         if (tier == ScopeTier.EPIC || complexity >= 9) add("Between phases: refresh HANDOFF.md and stop cleanly if the usage window is nearly spent; resume from the checkpoint.")
     }
 }

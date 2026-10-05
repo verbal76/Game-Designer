@@ -4,6 +4,10 @@ import com.hotattic.gamedesigner.core.engine.Alternative
 import com.hotattic.gamedesigner.core.engine.Answer
 import com.hotattic.gamedesigner.core.engine.AnswerIntent
 import com.hotattic.gamedesigner.core.engine.Interpretation
+import com.hotattic.gamedesigner.core.engine.MetaConversation
+import com.hotattic.gamedesigner.core.model.BrandingAsset
+import com.hotattic.gamedesigner.core.model.BrandingMode
+import com.hotattic.gamedesigner.core.model.BrandingSlot
 import com.hotattic.gamedesigner.core.engine.InterpreterKind
 import com.hotattic.gamedesigner.core.engine.LlmInterpreter
 import com.hotattic.gamedesigner.core.engine.LocalInterpreter
@@ -62,6 +66,8 @@ data class DirectorTurn(
     val modelNote: String? = null,
     /** What interpreted the owner's words this turn (rules only, on-device model, cloud model). */
     val interpreter: InterpreterKind? = null,
+    /** True when this action had already been committed (same turn id); nothing was changed. */
+    val duplicate: Boolean = false,
 )
 
 class DirectorDeps(
@@ -128,7 +134,19 @@ class Director(private val deps: DirectorDeps) {
 
     private suspend fun <T> timed(block: suspend () -> T): T? = kotlinx.coroutines.withTimeoutOrNull(MODEL_TIMEOUT_MS) { block() }
 
-    suspend fun handleUserMessage(project: Project, settings: AppSettings, text: String): DirectorTurn {
+    private fun Project.withTurn(id: String?): Project = if (id == null) this else copy(processedTurns = (processedTurns + id).takeLast(64))
+
+    /**
+     * One owner message is one logical transaction: interpret, mutate, respond, ask the next question. A repeated
+     * [turnId] (a duplicated callback, a retry, a replay after restoration) returns the project untouched.
+     */
+    suspend fun handleUserMessage(project: Project, settings: AppSettings, text: String, turnId: String? = null): DirectorTurn {
+        if (turnId != null && turnId in project.processedTurns) return DirectorTurn(project, duplicate = true)
+        val t = handleUserMessageOnce(project, settings, text)
+        return if (turnId == null) t else t.copy(project = t.project.withTurn(turnId))
+    }
+
+    private suspend fun handleUserMessageOnce(project: Project, settings: AppSettings, text: String): DirectorTurn {
         val now = deps.clock()
         var p = ProjectOps.addMessage(project, Role.USER, text.trim(), now)
         val lower = text.trim().lowercase()
@@ -151,6 +169,28 @@ class Director(private val deps: DirectorDeps) {
         var action: DirectorAction? = null
         var note: String? = null
         var kind: InterpreterKind? = null
+
+        // Conversation repair: talk about the app ("I already uploaded it", "I already answered that") never becomes a requirement.
+        if (pending != null && !pending.startsWith("__") && MetaConversation.isMeta(text.trim())) {
+            val field = Fields.get(pending)
+            if (field != null) {
+                val slot = Keys.brandingKeyForSlot.entries.firstOrNull { it.value == pending }?.key
+                val uploaded = slot?.let { p.branding[it] }?.takeIf { it.mode == BrandingMode.UPLOADED }
+                val have = p.decision(pending)?.takeIf { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() }
+                when {
+                    uploaded != null -> {
+                        p = ProjectOps.setDecision(p, pending, "upload", Provenance.OWNER_EXPLICIT, now, raw = "uploaded ${uploaded.originalName}")
+                        p = ProjectOps.addMessage(p, Role.DIRECTOR, "You're right - I have your ${slotTitle(slot!!)} (${uploaded.originalName}, ${uploaded.width}x${uploaded.height}). Moving on.", now)
+                        return DirectorTurn(askNext(ProjectOps.setPending(p, null), settings))
+                    }
+                    have != null -> {
+                        p = ProjectOps.addMessage(p, Role.DIRECTOR, "You're right - I already have that: ${Messages.display(p, pending, have.value)}. Moving on.", now)
+                        return DirectorTurn(askNext(ProjectOps.setPending(p, null), settings))
+                    }
+                    MetaConversation.designSentences(text).isEmpty() -> return DirectorTurn(replyField(p, "Sorry about that - I may have missed it. ${field.prompt}", field))
+                }
+            }
+        }
 
         suspend fun absorbInto(field: Field?) {
             val r = absorb(p, settings, text.trim(), field)
@@ -176,7 +216,7 @@ class Director(private val deps: DirectorDeps) {
                 if (AnswerParser.isAffirm(text) || AnswerParser.isDelegate(text)) {
                     p = p.copy(assets = p.assets + AssetPlan.resolveMissing(p, now))
                 } else when (val a = AnswerParser.parse(policyField, Traits(p), text)) {
-                    is Answer.Value -> p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, a.value, Provenance.OWNER_EXPLICIT, now, raw = text.trim()).copy(assets = emptyList())
+                    is Answer.Value -> { p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, a.value, Provenance.OWNER_EXPLICIT, now, raw = text.trim()).copy(assets = emptyList()); p = p.copy(assets = AssetPlan.resolveMissing(p, now)) }
                     else -> return DirectorTurn(reply(p, "Say \"looks good\" to accept the asset plan, or tell me to switch the policy (CC0 only / allow CC-BY / only original assets).", PENDING_ASSET_PLAN, assetPlanQuick()))
                 }
             }
@@ -216,8 +256,18 @@ class Director(private val deps: DirectorDeps) {
     }
 
     /** Structured answer from the question card (chips / toggles). No language interpretation is involved. */
-    suspend fun submitSelection(project: Project, settings: AppSettings, fieldKey: String, ids: List<String>): DirectorTurn {
+    suspend fun submitSelection(project: Project, settings: AppSettings, fieldKey: String, ids: List<String>, turnId: String? = null): DirectorTurn {
+        val qMsg = project.messages.lastOrNull { it.question?.fieldKey == fieldKey }
+        val tid = turnId ?: qMsg?.let { "sel:${it.id}" }
+        // A second tap on a question that was already answered (or is no longer open) must not act on the next question.
+        if ((tid != null && tid in project.processedTurns) || project.pendingFieldKey != fieldKey) return DirectorTurn(project, duplicate = true)
+        val t = submitSelectionOnce(project, settings, fieldKey, ids)
+        return t.copy(project = t.project.withTurn(tid))
+    }
+
+    private suspend fun submitSelectionOnce(project: Project, settings: AppSettings, fieldKey: String, ids: List<String>): DirectorTurn {
         val now = deps.clock()
+        if (fieldKey == PENDING_ASSET_PLAN) return assetPlanSelection(project, settings, ids.firstOrNull(), now)
         val field = Fields.get(fieldKey) ?: return DirectorTurn(project)
         val t = Traits(project)
         val options = field.options(t)
@@ -233,6 +283,40 @@ class Director(private val deps: DirectorDeps) {
         if (res.directReply != null) return DirectorTurn(replyField(res.project, res.directReply, field), res.action, res.modelNote)
         if (res.action != null) return DirectorTurn(replyField(res.project, "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it.", field), res.action, res.modelNote)
         return DirectorTurn(askNext(res.project, settings), res.action, res.modelNote)
+    }
+
+    /** Structured answer to the asset-plan card: accept the plan, or fix the licensing policy and accept the resulting plan. */
+    private fun assetPlanSelection(project: Project, settings: AppSettings, id: String?, now: Long): DirectorTurn {
+        val labels = mapOf("looks_good" to "Looks good", "cc0_default" to "CC0 only", "original_only" to "Original assets only")
+        var p = ProjectOps.addMessage(project, Role.USER, labels[id] ?: "Looks good", now)
+        if (id == "cc0_default" || id == "original_only") {
+            p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, id, Provenance.OWNER_EXPLICIT, now, raw = labels.getValue(id)).copy(assets = emptyList())
+        }
+        p = p.copy(assets = p.assets + AssetPlan.resolveMissing(p, now))
+        return DirectorTurn(askNext(ProjectOps.setPending(p, null), settings))
+    }
+
+    private fun slotTitle(slot: String) = when (slot) { BrandingSlot.ICON -> "game icon"; BrandingSlot.STUDIO_SPLASH -> "studio logo"; else -> "game splash image" }
+
+    /**
+     * A file was durably ingested for [slot]. Records the owner-supplied asset, satisfies that question, and advances the
+     * conversation exactly once (a repeated callback for the same bytes is a no-op).
+     */
+    fun attachmentReceived(project: Project, settings: AppSettings, slot: String, asset: BrandingAsset, turnId: String? = null): DirectorTurn {
+        val now = deps.clock()
+        val key = Keys.brandingKeyForSlot[slot] ?: return DirectorTurn(project)
+        val tid = turnId ?: "att:$slot:${asset.sha256}"
+        val existing = project.branding[slot]
+        val same = existing?.sha256 == asset.sha256 && existing.mode == BrandingMode.UPLOADED && project.value(key) == "upload"
+        if (tid in project.processedTurns || (same && project.pendingFieldKey != key)) return DirectorTurn(project, duplicate = true)
+        var p = project.copy(branding = project.branding + (slot to asset))
+        p = ProjectOps.setDecision(p, key, "upload", Provenance.OWNER_EXPLICIT, now, raw = "uploaded ${asset.originalName}")
+        val advancing = project.pendingFieldKey == key
+        val what = slotTitle(slot)
+        if (advancing) p = ProjectOps.addMessage(p, Role.USER, "Attached ${asset.originalName} (${asset.width}x${asset.height}) as the $what.", now)
+        p = ProjectOps.addMessage(p, if (advancing) Role.DIRECTOR else Role.SYSTEM, "Saved your $what (${asset.originalName}, ${asset.width}x${asset.height}). I keep it untouched as the master and derive every size from it.", now)
+        if (advancing) p = askNext(ProjectOps.setPending(p, null), settings)
+        return DirectorTurn(p.withTurn(tid))
     }
 
     // ---- Answering a specific field ----------------------------------------------------------------------------
@@ -375,8 +459,15 @@ class Director(private val deps: DirectorDeps) {
 
     private val negationWord = Regex("(?i)(\\bnot\\b|\\bno\\b|n't\\b|\\bnever\\b|\\bwithout\\b|\\bforget\\b)")
 
-    private fun sentences(text: String): List<String> =
-        text.split(Regex("(?<=[.!?])\\s+|\\n+")).map { it.trim() }.filter { it.length >= 12 }
+    private fun sentences(text: String): List<String> = MetaConversation.designSentences(text)
+
+    /** A fact an LLM proposes must be traceable to the owner's own words, or it is an invention. */
+    private fun grounded(fact: String, text: String): Boolean {
+        fun toks(x: String) = x.lowercase().split(Regex("[^a-z0-9]+")).filter { it.length >= 4 }.toSet()
+        val f = toks(fact); if (f.isEmpty() || MetaConversation.isMeta(fact)) return false
+        val t = toks(text)
+        return f.count { it in t }.toDouble() / f.size >= 0.7
+    }
 
     /**
      * Applies one owner message to the design with the right authority: rejections first (which also drop dependent
@@ -422,13 +513,13 @@ class Director(private val deps: DirectorDeps) {
             field == null && text.length >= 25 -> { category = "owner"; newFacts += sentences(text) }
             else -> category = "owner"
         }
-        newFacts += interp.facts
+        newFacts += interp.facts.filter { grounded(it, text) }
         p = ProjectOps.addFacts(p, newFacts, category, Provenance.OWNER_EXPLICIT, now)
 
         // Volunteered decisions: an explicit correction is owner-authored; otherwise they are proposals awaiting confirmation.
         for ((k, v) in interp.edits) {
             val existing = p.decision(k)
-            if (corrected) p = ProjectOps.setDecision(p, k, v, Provenance.OWNER_EXPLICIT, now, raw = text.take(200))
+            if (corrected) p = ProjectOps.setDecision(p, k, v, Provenance.OWNER_EXPLICIT, now)
             else if (!(existing != null && existing.status == DecisionStatus.CONFIRMED && existing.value.isNotBlank()))
                 p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED)
         }
@@ -564,6 +655,8 @@ class Director(private val deps: DirectorDeps) {
 
     // ---- Composing the next message ---------------------------------------------------------------------------
 
+    private fun assetPlanSpec() = QuestionSpec(PENDING_ASSET_PLAN, "SINGLE", listOf(ChoiceOption("looks_good", "Looks good"), ChoiceOption("cc0_default", "CC0 only"), ChoiceOption("original_only", "Original assets only")))
+
     private fun assetPlanQuick() = listOf(QuickReply("Looks good", "looks good"), QuickReply("CC0 only", "cc0 only"), QuickReply("Original assets only", "only original assets"))
 
     private fun quickFor(field: Field, t: Traits): List<QuickReply> = buildList {
@@ -632,7 +725,7 @@ class Director(private val deps: DirectorDeps) {
                     "- ${n.label}: " + if (r.resolution == com.hotattic.gamedesigner.core.model.AssetResolution.EXTERNAL_CC0) "CC0 sets from ${r.source.substringBefore(" (")} and similar, with original procedural fallback" else "original, generated by code"
                 }
                 val msg = "Asset plan (default policy: ${Messages.display(p, Keys.ASSET_POLICY, p.value(Keys.ASSET_POLICY) ?: "cc0_default")}):\n${lines.joinToString("\n")}\n\nThe build verifies each file's license, logs provenance, and builds an original procedural replacement for anything it can't find under a clean license. Okay?"
-                ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now, quick = assetPlanQuick()), PENDING_ASSET_PLAN)
+                ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now, quick = assetPlanQuick(), question = assetPlanSpec()), PENDING_ASSET_PLAN)
             }
             is NextStep.ResolveConflicts -> {
                 val c = step.conflicts.first()
