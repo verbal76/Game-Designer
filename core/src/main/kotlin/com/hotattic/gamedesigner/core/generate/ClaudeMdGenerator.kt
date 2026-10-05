@@ -4,16 +4,20 @@ import com.hotattic.gamedesigner.core.engine.AssetPlan
 import com.hotattic.gamedesigner.core.engine.AuditEngine
 import com.hotattic.gamedesigner.core.engine.AuditReport
 import com.hotattic.gamedesigner.core.engine.ConflictEngine
+import com.hotattic.gamedesigner.core.engine.ConsistencyReview
 import com.hotattic.gamedesigner.core.engine.ScopeEngine
 import com.hotattic.gamedesigner.core.model.AssetResolution
 import com.hotattic.gamedesigner.core.model.BrandingMode
 import com.hotattic.gamedesigner.core.model.BrandingSlot
 import com.hotattic.gamedesigner.core.model.DecisionSource
 import com.hotattic.gamedesigner.core.model.DecisionStatus
+import com.hotattic.gamedesigner.core.model.FactStatus
+import com.hotattic.gamedesigner.core.model.Provenance
 import com.hotattic.gamedesigner.core.model.FeedbackStatus
 import com.hotattic.gamedesigner.core.model.Project
 import com.hotattic.gamedesigner.core.model.ProjectMode
 import com.hotattic.gamedesigner.core.model.ResearchKind
+import com.hotattic.gamedesigner.core.schema.Dependencies
 import com.hotattic.gamedesigner.core.schema.EngineCatalog
 import com.hotattic.gamedesigner.core.schema.Field
 import com.hotattic.gamedesigner.core.schema.Fields
@@ -39,7 +43,9 @@ object ClaudeMdGenerator {
         fun h3(s: String) = sb.append("### ").append(s).append("\n\n")
         fun p(s: String) = sb.append(s).append("\n\n")
         fun bullets(items: Collection<String>) { if (items.isNotEmpty()) { items.forEach { sb.append("- ").append(it).append('\n') }; sb.append('\n') } }
-        fun v(key: String) = project.value(key)
+        // Only confirmed, still-relevant decisions are rendered; proposals and stale values never reach the spec.
+        fun active(key: String) = project.decision(key)?.takeIf { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() && (Fields.get(key)?.isRelevant(t) != false) }
+        fun v(key: String) = active(key)?.value
         fun label(key: String, value: String?): String = value?.let { raw -> raw.split("|").joinToString(", ") { optionLabel(t, key, it) } } ?: "(not specified)"
 
         h1("$title - AUTHORITATIVE BUILD SPECIFICATION")
@@ -56,11 +62,37 @@ object ClaudeMdGenerator {
             p(if (project.mode == ProjectMode.EXISTING_GAME) "EXISTING GAME: this specification continues an existing repository. Inspect it first; see section 17." else "PLAYTEST CONTINUATION: this specification updates an existing build after human playtesting; see section 17.")
         }
 
-        // 1. Owner decisions
-        h2("1. Owner decisions and overrides")
+        // PART A / B: who said what.
+        sb.append("# PART A - OWNER REQUIREMENTS (authoritative: implement exactly; nothing in Part B or C may contradict this)\n\n")
+        h2("A1. The owner's concept, in their own words")
+        val concept = project.originalConcept.ifBlank { project.value(Keys.CONCEPT).orEmpty() }
+        sb.append(ConsistencyReview.VERBATIM_OPEN).append('\n')
+        sb.append(concept.ifBlank { title }.lines().joinToString("\n") { "> $it" }).append('\n')
+        sb.append(ConsistencyReview.VERBATIM_CLOSE).append("\n\n")
+        val ownerFacts = project.activeFacts()
+        val ownerDecisions = project.decisions.filter { (k, d) -> d.ownerAuthored && d.status == DecisionStatus.CONFIRMED && d.value.isNotBlank() && active(k) != null && k != Keys.CONCEPT }
+        h2("A2. What the owner has specified")
+        if (ownerFacts.isEmpty() && ownerDecisions.isEmpty()) p("The owner specified nothing beyond the concept above.")
+        bullets(ownerFacts.map { it.text })
+        bullets(ownerDecisions.map { (k, d) ->
+            val corr = if (d.prov == Provenance.OWNER_CORRECTION) " [owner correction - supersedes anything earlier]" else ""
+            "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}$corr" + if (d.rawAnswer.isNotBlank() && d.rawAnswer.length < 160) " (owner said: \"${d.rawAnswer.trim()}\")" else ""
+        })
+        val retracted = project.facts.filter { it.status == FactStatus.RETRACTED }
+        val rejectedLines = project.rejected.flatMap { (k, ids) -> ids.map { id -> k to id } }.map { (k, id) ->
+            when (k) {
+                Dependencies.TAG -> "Rejected by the owner: ${id.lowercase().replace('_', '-')} design"
+                Keys.GENRE, "genre" -> "Rejected by the owner: genre ${GenreKnowledge.resolve(id).label}"
+                else -> "Rejected by the owner: ${Fields.get(k)?.title ?: k} = ${optionLabel(t, k, id)}"
+            }
+        }.distinct()
+        if (retracted.isNotEmpty() || rejectedLines.isNotEmpty()) {
+            h2("A3. Withdrawn or rejected by the owner (do NOT implement)")
+            bullets(retracted.map { "WITHDRAWN (do not implement): ${it.text}" } + rejectedLines)
+        }
         val overrides = project.decisions.filter { it.value.source == DecisionSource.OVERRIDE }
-        if (overrides.isEmpty()) p("No recommendation was overridden by the owner.")
-        else {
+        if (overrides.isNotEmpty()) {
+            h2("A4. Informed overrides")
             p("The owner was informed of the tradeoffs and knowingly chose the following. Implement them as stated; do not reopen them.")
             bullets(overrides.map { (k, d) -> "**${Fields.get(k)?.title ?: k}** = ${label(k, d.value)} (Director recommended: ${d.overrides ?: "an alternative"})." })
         }
@@ -69,15 +101,18 @@ object ClaudeMdGenerator {
             p("Acknowledged risks (owner proceeded after being warned):")
             bullets(acknowledged.map { "${it.title}: ${it.message}" })
         }
-        val delegated = project.decisions.filter { it.value.source == DecisionSource.DIRECTOR_CHOICE }
-        if (delegated.isNotEmpty()) {
-            p("Decisions the owner delegated to the Director (chosen as best practice; change only for a strong reason):")
-            bullets(delegated.map { (k, d) -> "**${Fields.get(k)?.title ?: k}**: ${label(k, d.value)} - ${d.note}" })
-        }
+
+        sb.append("# PART B - ACCEPTED RECOMMENDATIONS (Game Designer's suggestions the owner accepted or delegated; keep unless there is a strong engineering reason)\n\n")
+        val accepted = project.decisions.filter { (k, d) -> !d.ownerAuthored && d.status == DecisionStatus.CONFIRMED && d.value.isNotBlank() && active(k) != null && k != Keys.CONCEPT }
+        if (accepted.isEmpty()) p("None.")
+        else bullets(accepted.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" + (d.note.takeIf { it.isNotBlank() }?.let { " - $it" } ?: "") })
+
+        sb.append("# PART C - IMPLEMENTATION GUIDANCE (how to build it; derived from Parts A and B plus engineering practice)\n\n")
+        p("Where anything in this part appears to conflict with Part A, Part A wins.")
 
         // 2. Vision
         h2("2. Vision and non-negotiables")
-        p(v(Keys.CONCEPT) ?: title)
+        p("The owner's concept is quoted verbatim in section A1.")
         v(Keys.CORE_FANTASY)?.let { p("**Core fantasy:** $it") }
         v(Keys.PLAYER_FEELING)?.let { p("**Intended player feeling:** $it") }
         if (t.genresKnown) p("**Genre:** ${t.genres.joinToString(" + ") { it.label }}. **Dimension:** ${v(Keys.DIMENSION) ?: "n/a"}. **Perspective:** ${label(Keys.PERSPECTIVE, v(Keys.PERSPECTIVE))}.")
@@ -128,7 +163,7 @@ object ClaudeMdGenerator {
             v(Keys.SURVIVAL_CRAFTING)?.let { "**Survival and crafting:** $it" },
             v(Keys.AUTOMATION_SIM)?.let { "**Simulation/building:** $it" },
         )
-        if (specifics.isNotEmpty()) { h3("Owner-defined design"); bullets(specifics) }
+        if (specifics.isNotEmpty()) { h3("Specified design (who decided each item is in Parts A and B)"); bullets(specifics) }
         val systems = t.genres.flatMap { g -> g.systems.map { g to it } }.distinctBy { it.second.id }
         if (systems.isNotEmpty()) {
             h3("Required systems (genre completeness checklist)")
@@ -145,9 +180,9 @@ object ClaudeMdGenerator {
         ))
 
         // 5. Scope
-        h2("5. Content scope")
+        h2("5. Content scope (recommended sizing)")
         p("Scope tier: **${scope.effectiveTier.label}** (recommended: ${scope.recommendedTier.label}). ${scope.rationale.joinToString(" ")}")
-        p("Deliver at least this content volume in the first build. Author it as data (tables/resources), validated by automated checks for completeness and balance; no content slot may be an empty stub.")
+        p("These counts are Game Designer's SIZING RECOMMENDATIONS, not owner requirements, unless the owner stated numbers in Part A. Map each unit onto this game's real structure (for example depth zones instead of levels in a descent game) and size content so the intended loop is complete and replayable. Author content as data (tables/resources), validated by automated checks; no content slot may be an empty stub.")
         bullets(scope.targets.map { "${it.label}: **${it.count}**" })
 
         // 6. Controls
@@ -345,6 +380,13 @@ object ClaudeMdGenerator {
                 })
             }
         }
+
+        // PART D
+        sb.append("# PART D - UNRESOLVED QUESTIONS\n\n")
+        val unresolved = Fields.all.filter { f -> f.isRelevant(t) && f.required && f.key != Keys.CONCEPT && project.decision(f.key)?.let { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() } != true }
+            .map { f -> if (project.decision(f.key)?.status == DecisionStatus.PROPOSED) "${f.title}: inferred but not confirmed by the owner (${label(f.key, project.value(f.key))}); treat as a recommendation and make the least surprising reversible choice." else "${f.title}: not yet decided (${f.prompt})" }
+        val deferred = project.decisions.filter { it.value.status == DecisionStatus.DEFERRED }.keys.map { "${Fields.get(it)?.title ?: it}: deliberately deferred by the owner; do not build it." }
+        if (unresolved.isEmpty() && deferred.isEmpty()) p("None. Every required decision is resolved.") else bullets(unresolved + deferred)
 
         // 18. Human-only
         h2(if (project.mode == ProjectMode.NEW_GAME) "17. Human-only steps" else "18. Human-only steps")

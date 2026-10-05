@@ -2,6 +2,12 @@ package com.hotattic.gamedesigner.core.director
 
 import com.hotattic.gamedesigner.core.engine.Alternative
 import com.hotattic.gamedesigner.core.engine.Answer
+import com.hotattic.gamedesigner.core.engine.AnswerIntent
+import com.hotattic.gamedesigner.core.engine.Interpretation
+import com.hotattic.gamedesigner.core.engine.InterpreterKind
+import com.hotattic.gamedesigner.core.engine.LlmInterpreter
+import com.hotattic.gamedesigner.core.engine.LocalInterpreter
+import com.hotattic.gamedesigner.core.engine.Reconciler
 import com.hotattic.gamedesigner.core.engine.AnswerParser
 import com.hotattic.gamedesigner.core.engine.AssetPlan
 import com.hotattic.gamedesigner.core.engine.AuditEngine
@@ -26,7 +32,10 @@ import com.hotattic.gamedesigner.core.model.Decision
 import com.hotattic.gamedesigner.core.model.DecisionSource
 import com.hotattic.gamedesigner.core.model.DecisionStatus
 import com.hotattic.gamedesigner.core.model.FeedbackSeverity
+import com.hotattic.gamedesigner.core.model.ChoiceOption
 import com.hotattic.gamedesigner.core.model.PlaytestFeedback
+import com.hotattic.gamedesigner.core.model.Provenance
+import com.hotattic.gamedesigner.core.model.QuestionSpec
 import com.hotattic.gamedesigner.core.model.Project
 import com.hotattic.gamedesigner.core.model.ProjectMode
 import com.hotattic.gamedesigner.core.model.QuickReply
@@ -51,6 +60,8 @@ data class DirectorTurn(
     val action: DirectorAction? = null,
     /** Which engine produced model-assisted parts of this turn, if any ("local model", "cloud model"). */
     val modelNote: String? = null,
+    /** What interpreted the owner's words this turn (rules only, on-device model, cloud model). */
+    val interpreter: InterpreterKind? = null,
 )
 
 class DirectorDeps(
@@ -84,7 +95,7 @@ class Director(private val deps: DirectorDeps) {
             ProjectMode.NEW_GAME -> {
                 val f = Fields.get(Keys.CONCEPT)!!
                 val msg = "Hi, I'm ${name(settings)}. " + f.prompt
-                ProjectOps.setPending(ProjectOps.addMessage(project, Role.DIRECTOR, msg, now, f.key), f.key)
+                ProjectOps.setPending(ProjectOps.addMessage(project, Role.DIRECTOR, msg, now, f.key, question = QuestionSpec(f.key, "TEXT")), f.key)
             }
             ProjectMode.EXISTING_GAME -> {
                 val intro = "Hi, I'm ${name(settings)}. I'll look at what's really in your repository first, then we'll plan changes that don't break what already works."
@@ -139,25 +150,25 @@ class Director(private val deps: DirectorDeps) {
         val pending = p.pendingFieldKey
         var action: DirectorAction? = null
         var note: String? = null
+        var kind: InterpreterKind? = null
+
+        suspend fun absorbInto(field: Field?) {
+            val r = absorb(p, settings, text.trim(), field)
+            p = r.project; note = r.note; kind = r.kind
+        }
 
         when {
-            pending == null -> {
-                val (np, n) = absorbFreeText(p, settings, text.trim())
-                p = np; note = n
-                p = researchNewReferences(p, settings)
-            }
+            pending == null -> absorbInto(null)
             pending == PENDING_PROPOSALS -> {
+                val plain = DecisionExtractor.extract(text).isEmpty
                 when {
-                    AnswerParser.isAffirm(text) -> p = ProjectOps.confirmAllProposed(p, now)
-                    AnswerParser.isNegate(text) -> {
+                    AnswerParser.isAffirm(text) && plain -> p = ProjectOps.confirmAllProposed(p, now)
+                    AnswerParser.isNegate(text) && plain -> {
                         val cleared = ProjectOps.proposedKeys(p).fold(p) { acc, k -> if (acc.decision(k)?.source == DecisionSource.INFERRED) ProjectOps.clearDecision(acc, k, now) else acc }
                         p = ProjectOps.setPending(ProjectOps.addMessage(cleared, Role.DIRECTOR, "Okay - tell me what I got wrong, or just describe it again and I'll re-read it.", now), null)
                         return DirectorTurn(p)
                     }
-                    else -> {
-                        val (np, n) = absorbFreeText(p, settings, text.trim()); p = np; note = n
-                        p = researchNewReferences(p, settings)
-                    }
+                    else -> absorbInto(null)
                 }
             }
             pending == PENDING_ASSET_PLAN -> {
@@ -165,7 +176,7 @@ class Director(private val deps: DirectorDeps) {
                 if (AnswerParser.isAffirm(text) || AnswerParser.isDelegate(text)) {
                     p = p.copy(assets = p.assets + AssetPlan.resolveMissing(p, now))
                 } else when (val a = AnswerParser.parse(policyField, Traits(p), text)) {
-                    is Answer.Value -> p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, a.value, DecisionSource.USER, now).copy(assets = emptyList())
+                    is Answer.Value -> p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, a.value, Provenance.OWNER_EXPLICIT, now, raw = text.trim()).copy(assets = emptyList())
                     else -> return DirectorTurn(reply(p, "Say \"looks good\" to accept the asset plan, or tell me to switch the policy (CC0 only / allow CC-BY / only original assets).", PENDING_ASSET_PLAN, assetPlanQuick()))
                 }
             }
@@ -181,7 +192,7 @@ class Director(private val deps: DirectorDeps) {
             }
             pending == PENDING_READY -> {
                 if (AnswerParser.isAffirm(text) || "generate" in lower) return generateRequest(p, settings)
-                val (np, n) = absorbFreeText(p, settings, text.trim()); p = np; note = n
+                absorbInto(null)
             }
             else -> {
                 val field = Fields.get(pending)
@@ -190,80 +201,123 @@ class Director(private val deps: DirectorDeps) {
                     val r = answerField(p, settings, field, text.trim(), now)
                     p = r.project
                     note = r.modelNote
+                    kind = r.kind
                     action = r.action
-                    if (r.directReply != null) return DirectorTurn(reply(p, r.directReply, field.key, quickFor(field, Traits(p))), action, note)
+                    if (r.directReply != null) return DirectorTurn(replyField(p, r.directReply, field), action, note, kind)
                     if (action != null) {
                         // Upload requested: keep the question open until the file arrives or the owner changes their mind.
                         val ask = "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it."
-                        return DirectorTurn(reply(p, ask, field.key, quickFor(field, Traits(p))), action, note)
+                        return DirectorTurn(replyField(p, ask, field), action, note, kind)
                     }
                 }
             }
         }
-        return DirectorTurn(askNext(p, settings), action, note)
+        return DirectorTurn(askNext(p, settings), action, note, kind)
+    }
+
+    /** Structured answer from the question card (chips / toggles). No language interpretation is involved. */
+    suspend fun submitSelection(project: Project, settings: AppSettings, fieldKey: String, ids: List<String>): DirectorTurn {
+        val now = deps.clock()
+        val field = Fields.get(fieldKey) ?: return DirectorTurn(project)
+        val t = Traits(project)
+        val options = field.options(t)
+        val valid = ids.filter { id -> options.any { it.id == id } }
+        val labels = valid.map { id -> options.first { it.id == id }.label }
+        var p = ProjectOps.addMessage(project, Role.USER, if (labels.isEmpty()) "None of these" else labels.joinToString(", "), now)
+        if (valid.isEmpty()) {
+            val r = if (!field.required) ProjectOps.setPending(ProjectOps.defer(p, field.key, now), null) else ProjectOps.postpone(ProjectOps.addMessage(p, Role.DIRECTOR, "No problem, we'll come back to that.", now), field.key, now)
+            return DirectorTurn(askNext(r, settings))
+        }
+        val value = Decision.joinList(if (field.kind == FieldKind.SINGLE) valid.take(1) else valid)
+        val res = commitValue(p, settings, field, value, labels.joinToString(", "), now)
+        if (res.directReply != null) return DirectorTurn(replyField(res.project, res.directReply, field), res.action, res.modelNote)
+        if (res.action != null) return DirectorTurn(replyField(res.project, "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it.", field), res.action, res.modelNote)
+        return DirectorTurn(askNext(res.project, settings), res.action, res.modelNote)
     }
 
     // ---- Answering a specific field ----------------------------------------------------------------------------
 
-    private class FieldResult(val project: Project, val directReply: String? = null, val action: DirectorAction? = null, val modelNote: String? = null)
+    private data class FieldResult(val project: Project, val directReply: String? = null, val action: DirectorAction? = null, val modelNote: String? = null, val kind: InterpreterKind? = null)
+
+    private fun reconciled(before: Project, after: Project, now: Long): Project {
+        val r = Reconciler.reconcile(before, after, now)
+        return if (r.notices.isEmpty()) r.project else ProjectOps.addMessage(r.project, Role.DIRECTOR, r.notices.joinToString("\n"), now)
+    }
+
+    /** Records the answer for [field] as an owner decision (with their words kept as raw), then handles field-specific effects. */
+    private suspend fun commitValue(p0: Project, settings: AppSettings, field: Field, value: String, raw: String, now: Long, interp: Interpretation? = null): FieldResult {
+        var p = p0
+        p = ProjectOps.setDecision(p, field.key, value, Provenance.OWNER_EXPLICIT, now, raw = raw)
+        var note: String? = null
+        var kind: InterpreterKind? = null
+        if (field.key == Keys.CONCEPT) p = ProjectOps.setOriginalConcept(p, raw)
+        if (field.key == Keys.CONCEPT || field.key == Keys.CORE_FANTASY) {
+            val r = absorb(p, settings, raw, null, field, interp)
+            p = r.project; note = r.note; kind = r.kind
+            p = researchNewReferences(p, settings)
+        }
+        if (field.key == Keys.REFERENCES && value != "none") {
+            p = ProjectOps.addReferences(p, DecisionExtractor.referenceGames(value).ifEmpty { value.split(',', '+', '&').map { it.trim() }.filter { it.isNotEmpty() } }, now)
+            p = ProjectOps.setDecision(p, Keys.REFERENCES, p.references.joinToString(", ") { it.name }, Provenance.OWNER_EXPLICIT, now, raw = raw)
+        }
+        if (field.key == Keys.REFERENCES) p = researchNewReferences(p, settings)
+        if (field.key in Keys.brandingKeyForSlot.values && value == "upload") {
+            val slot = Keys.brandingKeyForSlot.entries.first { it.value == field.key }.key
+            return FieldResult(p, action = DirectorAction.RequestUpload(slot), modelNote = note, kind = kind)
+        }
+        return FieldResult(ProjectOps.setPending(reconciled(p0, p, now), null), modelNote = note, kind = kind)
+    }
 
     private suspend fun answerField(p0: Project, settings: AppSettings, field: Field, text: String, now: Long): FieldResult {
-        var p = p0
-        val traits = Traits(p)
-        // The concept (and other free text answers) also carry implicit decisions.
-        return when (val a = AnswerParser.parse(field, traits, text)) {
-            is Answer.Value -> {
-                val value = a.value
-                p = ProjectOps.setDecision(p, field.key, value, DecisionSource.USER, now)
-                var note: String? = null
-                if (field.key == Keys.CONCEPT || field.key == Keys.CORE_FANTASY) {
-                    val (np, n) = absorbFreeText(p, settings, text); p = np; note = n
-                    p = researchNewReferences(p, settings)
+        val traits = Traits(p0)
+        val interp = interpret(p0, settings, field, text)
+        val kind = interp.by
+        val model = if (kind == InterpreterKind.RULES) null else kind.label
+        // Corrections volunteered alongside the answer ("no, it's not turn based") apply first, so the answer is judged in their light.
+        var p = if (interp.hasCorrections || (field.key != Keys.CONCEPT && interp.edits.isNotEmpty() && interp.intent == AnswerIntent.UNCLEAR)) applyStatement(p0, text, interp, field, now).project else p0
+        return when (interp.intent) {
+            AnswerIntent.SELECT, AnswerIntent.ALL, AnswerIntent.FREEFORM -> {
+                val value = when {
+                    field.kind.isSelect -> Decision.joinList(interp.selected.ifEmpty { interp.value?.split(Decision.LIST_SEPARATOR).orEmpty() }.let { if (field.kind == FieldKind.SINGLE) it.take(1) else it })
+                    else -> interp.value ?: text
                 }
-                if (field.key == Keys.REFERENCES && value != "none") {
-                    p = ProjectOps.addReferences(p, DecisionExtractor.referenceGames(value).ifEmpty { value.split(',', '+', '&').map { it.trim() }.filter { it.isNotEmpty() } }, now)
-                    p = ProjectOps.setDecision(p, Keys.REFERENCES, p.references.joinToString(", ") { it.name }, DecisionSource.USER, now)
-                }
-                if (field.key == Keys.REFERENCES) p = researchNewReferences(p, settings)
-                if (field.key in Keys.brandingKeyForSlot.values && value == "upload") {
-                    val slot = Keys.brandingKeyForSlot.entries.first { it.value == field.key }.key
-                    return FieldResult(p, action = DirectorAction.RequestUpload(slot), modelNote = note)
-                }
-                if (field.key == Keys.SCOPE_CHOICE) { /* recorded; scope recalculated on demand */ }
-                FieldResult(ProjectOps.setPending(p, null), modelNote = note)
+                val err = if (value.isBlank()) "I need an answer for that one." else field.validate(Traits(p), value)
+                if (err != null) FieldResult(p, directReply = err, kind = kind)
+                else commitValue(p, settings, field, value, text, now, interp).let { r -> if (interp.hasCorrections) r else r.copy(modelNote = r.modelNote ?: model) }
             }
-            Answer.Delegate -> {
+            AnswerIntent.DELEGATE -> {
                 val d = ProjectOps.delegate(p, field.key, now)
-                if (d == null && !field.required) FieldResult(ProjectOps.setPending(ProjectOps.addMessage(ProjectOps.defer(p, field.key, now), Role.DIRECTOR, "Okay, I'll leave ${field.title.lowercase()} out.", now), null))
-                else if (d == null) FieldResult(p, directReply = "I can't pick that one for you - it's your idea. ${field.prompt}")
+                if (d == null && !field.required) FieldResult(ProjectOps.setPending(ProjectOps.addMessage(ProjectOps.defer(p, field.key, now), Role.DIRECTOR, "Okay, I'll leave ${field.title.lowercase()} out.", now), null), kind = kind)
+                else if (d == null) FieldResult(p, directReply = "I can't pick that one for you - it's your idea. ${field.prompt}", kind = kind)
                 else {
-                    var np = d.first
-                    if (field.key == Keys.REFERENCES) np = np.copy(decisions = np.decisions + (Keys.REFERENCES to np.decisions.getValue(Keys.REFERENCES).copy(source = DecisionSource.DIRECTOR_CHOICE)))
-                    FieldResult(ProjectOps.setPending(ProjectOps.addMessage(np, Role.DIRECTOR, "Going with: ${Messages.display(np, field.key, d.second.value)}. ${d.second.rationale}", now, field.key), null))
+                    val np = d.first
+                    FieldResult(ProjectOps.setPending(ProjectOps.addMessage(reconciled(p, np, now), Role.DIRECTOR, "Going with my recommendation: ${Messages.display(np, field.key, d.second.value)}. ${d.second.rationale}", now, field.key), null), kind = kind)
                 }
             }
-            Answer.Postpone -> FieldResult(ProjectOps.postpone(ProjectOps.addMessage(p, Role.DIRECTOR, "No problem, we'll come back to that.", now), field.key, now))
-            Answer.Skip -> FieldResult(ProjectOps.setPending(ProjectOps.defer(p, field.key, now), null))
-            is Answer.Question -> {
-                val (answer, note) = answerQuestion(p, settings, field, a.text)
-                FieldResult(p, directReply = answer, modelNote = note)
+            AnswerIntent.POSTPONE -> FieldResult(ProjectOps.postpone(ProjectOps.addMessage(p, Role.DIRECTOR, "No problem, we'll come back to that.", now), field.key, now), kind = kind)
+            AnswerIntent.SKIP, AnswerIntent.NONE -> {
+                if (!field.required || field.kind == FieldKind.MULTI) FieldResult(ProjectOps.setPending(ProjectOps.defer(p, field.key, now), null), kind = kind)
+                else FieldResult(ProjectOps.postpone(ProjectOps.addMessage(p, Role.DIRECTOR, "No problem, we'll come back to that.", now), field.key, now), kind = kind)
             }
-            is Answer.Invalid -> FieldResult(p, directReply = a.reason)
-            Answer.Affirm, Answer.Negate, Answer.Unclear -> {
+            AnswerIntent.QUESTION -> {
+                val (answer, qnote) = answerQuestion(p, settings, field, interp.question?.takeIf { it.isNotBlank() } ?: text)
+                FieldResult(p, directReply = answer, modelNote = qnote, kind = kind)
+            }
+            AnswerIntent.AFFIRM, AnswerIntent.NEGATE, AnswerIntent.UNCLEAR -> {
                 // Maybe the message answers other fields implicitly (voice users often volunteer extra detail).
-                val before = p.decisions
-                val (np, note) = absorbFreeText(p, settings, text)
-                if (np.decisions != before) FieldResult(ProjectOps.setPending(np, null), modelNote = note)
-                else FieldResult(p, directReply = Messages.clarify(field, traits))
+                val r = absorb(p, settings, text, null)
+                val changed = r.project.decisions != p0.decisions || r.project.rejected != p0.rejected || r.project.facts != p0.facts
+                if (changed) FieldResult(ProjectOps.setPending(r.project, null), modelNote = r.note, kind = r.kind)
+                else FieldResult(p, directReply = interp.reason.ifBlank { Messages.clarify(field, traits) }, kind = kind)
             }
         }
     }
 
     private suspend fun answerQuestion(p: Project, settings: AppSettings, field: Field, question: String): Pair<String, String?> {
-        val provider = readyProvider()
+        val provider = readyProvider()?.first
         val base = Messages.explain(field, Traits(p))
         if (provider != null) {
-            val ctx = "Current question: ${field.prompt}\nWhy it matters: ${field.why}\nOptions: ${field.options(Traits(p)).joinToString { it.label }}\nProject concept: ${p.value(Keys.CONCEPT) ?: "(none yet)"}"
+            val ctx = "Current question: ${field.prompt}\nWhy it matters: ${field.why}\nOptions: ${field.options(Traits(p)).joinToString { it.label }}\nProject concept: ${p.originalConcept.ifBlank { p.value(Keys.CONCEPT) ?: "(none yet)" }}"
             val r = timed { provider.complete(LlmRequest(DirectorPrompts.answerSystem(name(settings), p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER),
                 listOf(LlmMessage("user", "$ctx\n\nOwner asks: $question")), maxTokens = 220)) }
             if (r is LlmResult.Ok && r.text.isNotBlank()) return (r.text.trim() + "\n\n" + Messages.reask(field)) to provider.displayName
@@ -271,33 +325,116 @@ class Director(private val deps: DirectorDeps) {
         return base to null
     }
 
-    // ---- Free text understanding ------------------------------------------------------------------------------
+    // ---- Language understanding --------------------------------------------------------------------------------
 
-    private suspend fun readyProvider(): LlmProvider? =
-        deps.local?.takeIf { runCatching { it.isReady() }.getOrDefault(false) } ?: deps.cloud?.takeIf { runCatching { it.isReady() }.getOrDefault(false) }
+    /** The strongest ready provider for interpretation: cloud first, then the on-device model. Null means rules only. */
+    private suspend fun readyProvider(): Pair<LlmProvider, InterpreterKind>? =
+        deps.cloud?.takeIf { runCatching { it.isReady() }.getOrDefault(false) }?.let { it to InterpreterKind.CLOUD_LLM }
+            ?: deps.local?.takeIf { runCatching { it.isReady() }.getOrDefault(false) }?.let { it to InterpreterKind.LOCAL_LLM }
 
-    /** Extracts proposals from free text: deterministic first, model-assisted fill-in second. */
-    private suspend fun absorbFreeText(p0: Project, settings: AppSettings, text: String): Pair<Project, String?> {
+    /** What is currently interpreting the owner's words, for the UI banner. */
+    suspend fun interpreterKind(): InterpreterKind = readyProvider()?.second ?: InterpreterKind.RULES
+
+    /** Rules always run (they are the fallback and the cross-check); a ready model refines them. */
+    internal suspend fun interpret(p: Project, settings: AppSettings, field: Field?, text: String): Interpretation {
+        val rules = LocalInterpreter.interpret(p, field, text)
+        // Trivial replies need no model: a bare yes/no or an unambiguous option reply.
+        val trivial = rules.intent in setOf(AnswerIntent.AFFIRM, AnswerIntent.NEGATE, AnswerIntent.DELEGATE, AnswerIntent.POSTPONE) && text.length < 30 && !rules.hasCorrections
+        if (trivial) return rules
+        val (provider, kind) = readyProvider() ?: return rules
+        val llm = LlmInterpreter.interpret(provider, kind, name(settings), p, field, text) ?: return rules
+        return mergeInterpretations(rules, llm)
+    }
+
+    internal fun mergeInterpretations(rules: Interpretation, llm: Interpretation): Interpretation {
+        val useLlmAnswer = llm.intent != AnswerIntent.UNCLEAR
+        val affirmed = (rules.affirmedTags + llm.affirmedTags).distinct()
+        val rejectedTags = (rules.rejectedTags + llm.rejectedTags).distinct().filter { it !in llm.affirmedTags }
+        return (if (useLlmAnswer) llm else rules.copy(by = llm.by)).copy(
+            edits = llm.edits + rules.edits,
+            rejectedGenres = (rules.rejectedGenres + llm.rejectedGenres).distinct(),
+            rejectedTags = rejectedTags, affirmedTags = affirmed,
+            references = (rules.references + llm.references).distinctBy { it.lowercase() },
+            retract = (rules.retract + llm.retract).distinct(), facts = llm.facts, by = llm.by,
+        )
+    }
+
+    class Absorbed(val project: Project, val note: String?, val kind: InterpreterKind?)
+
+    /** Understands a free message that is not (only) the answer to the open question, and applies it with owner authority. */
+    private suspend fun absorb(p0: Project, settings: AppSettings, text: String, field: Field?, concept: Field? = null, precomputed: Interpretation? = null): Absorbed {
         val now = deps.clock()
-        var ex = DecisionExtractor.extract(text)
-        var note: String? = null
-        val provider = if (text.length >= 20) readyProvider() else null
-        if (provider != null) {
-            val r = runCatching {
-                timed { provider.complete(LlmRequest(DirectorPrompts.extractionSystem(), listOf(LlmMessage("user", text)), maxTokens = 400, temperature = 0f)) }
-            }.getOrNull()
-            if (r is LlmResult.Ok) {
-                val (raw, refs) = DirectorPrompts.parseExtraction(r.text)
-                val clean = DecisionExtractor.sanitize(raw)
-                // Deterministic results win on conflict; the model fills gaps.
-                ex = Extraction(clean + ex.values, (ex.referenceGames + refs).distinctBy { it.lowercase() })
-                note = provider.displayName
-            }
-        }
+        val interp = precomputed ?: interpret(p0, settings, null, text)
+        val applied = applyStatement(p0, text, interp, concept ?: field, now)
+        var p = researchNewReferences(applied.project, settings)
+        if (applied.announcement.isNotBlank()) p = ProjectOps.addMessage(p, Role.DIRECTOR, applied.announcement, now)
+        return Absorbed(p, interp.by.takeIf { it != InterpreterKind.RULES }?.label, interp.by)
+    }
+
+    class Applied(val project: Project, val announcement: String)
+
+    private val negationWord = Regex("(?i)(\\bnot\\b|\\bno\\b|n't\\b|\\bnever\\b|\\bwithout\\b|\\bforget\\b)")
+
+    private fun sentences(text: String): List<String> =
+        text.split(Regex("(?<=[.!?])\\s+|\\n+")).map { it.trim() }.filter { it.length >= 12 }
+
+    /**
+     * Applies one owner message to the design with the right authority: rejections first (which also drop dependent
+     * genres), then retractions of withdrawn facts, then new facts, then volunteered decisions, then dependency invalidation.
+     */
+    internal fun applyStatement(p0: Project, text: String, interp: Interpretation, field: Field?, now: Long): Applied {
         var p = p0
-        // Never overwrite the field being asked by implicit extraction of the same message when it already holds a confirmed value.
-        p = ProjectOps.applyExtraction(p, ex, now)
-        return p to note
+        val said = mutableListOf<String>()
+        val corrected = interp.hasCorrections
+
+        for (tag in interp.affirmedTags) if (tag.name in p.rejected[com.hotattic.gamedesigner.core.schema.Dependencies.TAG].orEmpty()) p = ProjectOps.restoreTag(p, tag, now)
+        for (tag in interp.rejectedTags) {
+            val (np, dropped) = ProjectOps.rejectTag(p, tag, now)
+            p = np
+            val what = tag.name.lowercase().replace('_', '-')
+            said += "Understood - this is not $what." + if (dropped.isNotEmpty()) " I dropped ${dropped.joinToString { com.hotattic.gamedesigner.core.schema.GenreKnowledge.resolve(it).label }} from the design." else ""
+        }
+        for (g in interp.rejectedGenres) if (g in p.list(Keys.GENRE) || p.rejected[Keys.GENRE].orEmpty().contains(g).not()) {
+            val had = g in p.list(Keys.GENRE)
+            p = ProjectOps.reject(p, Keys.GENRE, listOf(g), now)
+            if (had) said += "Understood - removed ${com.hotattic.gamedesigner.core.schema.GenreKnowledge.resolve(g).label}."
+        }
+        if (interp.retract.isNotEmpty()) {
+            val keys = interp.retract.map { it.lowercase() }
+            val before = p.activeFacts().size
+            p = ProjectOps.retractFacts(p, "Withdrawn by the owner: \"${text.take(80)}\"", now) { f -> f.category != "correction" && keys.any { it in f.text.lowercase() } }
+            val gone = before - p.activeFacts().size
+            if (gone > 0) said += "I withdrew $gone earlier requirement(s) that no longer apply."
+        }
+
+        // New facts: the concept's sentences, affirmative statements inside a correction, and anything volunteered.
+        val newFacts = mutableListOf<String>()
+        val category: String
+        when {
+            field?.key == Keys.CONCEPT -> { category = "concept"; newFacts += sentences(text) }
+            corrected -> {
+                category = "correction"
+                interp.rejectedTags.forEach { newFacts += "The game is NOT ${it.name.lowercase().replace('_', ' ')}; it plays in real time." }
+                newFacts += sentences(text).filter { !negationWord.containsMatchIn(it) }
+            }
+            field == null && text.length >= 25 -> { category = "owner"; newFacts += sentences(text) }
+            else -> category = "owner"
+        }
+        newFacts += interp.facts
+        p = ProjectOps.addFacts(p, newFacts, category, Provenance.OWNER_EXPLICIT, now)
+
+        // Volunteered decisions: an explicit correction is owner-authored; otherwise they are proposals awaiting confirmation.
+        for ((k, v) in interp.edits) {
+            val existing = p.decision(k)
+            if (corrected) p = ProjectOps.setDecision(p, k, v, Provenance.OWNER_EXPLICIT, now, raw = text.take(200))
+            else if (!(existing != null && existing.status == DecisionStatus.CONFIRMED && existing.value.isNotBlank()))
+                p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED)
+        }
+        if (interp.references.isNotEmpty()) p = ProjectOps.addReferences(p, interp.references, now)
+
+        val r = Reconciler.reconcile(p0, p, now)
+        said += r.notices
+        return Applied(r.project, said.joinToString("\n"))
     }
 
     private suspend fun researchNewReferences(p0: Project, settings: AppSettings): Project {
@@ -333,7 +470,15 @@ class Director(private val deps: DirectorDeps) {
                 DirectorTurn(reply(p, "There's no open feedback yet. Tell me what you noticed first."))
             else DirectorTurn(ProjectOps.addMessage(p, Role.DIRECTOR, "Generating the continuation spec and prompt.", now), DirectorAction.GenerateSpec)
         }
-        if (audit.passes) return DirectorTurn(ProjectOps.addMessage(p, Role.DIRECTOR, "Everything required is resolved and the audit passes. Generating the spec and prompt now.", now), DirectorAction.GenerateSpec)
+        if (audit.passes) {
+            val review = com.hotattic.gamedesigner.core.generate.SpecVersioning.preflight(p, now)
+            if (!review.clean) {
+                val msg = "I found contradictions I must settle before exporting:\n" + review.errors.take(5).joinToString("\n") { "- ${it.message}" } +
+                    "\n\nTell me which way each should go (your latest word wins), or say \"status\"."
+                return DirectorTurn(reply(p, msg, null))
+            }
+            return DirectorTurn(ProjectOps.addMessage(p, Role.DIRECTOR, "Everything required is resolved, the audit passes and the consistency review is clean. Generating the spec and prompt now.", now), DirectorAction.GenerateSpec)
+        }
         val msg = buildString {
             append("I can't generate a reliable spec yet - ${audit.errors.size} required item(s) still open (${c.percent}% complete):\n")
             audit.errors.take(5).forEach { append("- ${it.message}\n") }
@@ -430,6 +575,15 @@ class Director(private val deps: DirectorDeps) {
     private fun reply(p: Project, text: String, pending: String? = p.pendingFieldKey, quick: List<QuickReply> = emptyList()): Project =
         ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), pending?.takeUnless { it.startsWith("__") }, quick), pending)
 
+    /** Re-asks a field with its structured question so the card stays usable after a clarification. */
+    private fun replyField(p: Project, text: String, field: Field): Project =
+        ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), field.key, quickFor(field, Traits(p)), specFor(field, Traits(p))), field.key)
+
+    private fun specFor(field: Field, t: Traits): QuestionSpec = QuestionSpec(
+        field.key, field.kind.name, if (field.kind.isSelect) field.options(t).map { ChoiceOption(it.id, it.label, it.description) } else emptyList(),
+        canDelegate = field.suggest(t) != null, canSkip = !field.required,
+    )
+
     /** Chooses the next thing to say. Announces at most one new conflict per turn, before the next question. */
     internal fun askNext(p0: Project, settings: AppSettings): Project {
         var p = p0
@@ -512,6 +666,7 @@ class Director(private val deps: DirectorDeps) {
         Messages.preface(p, field)?.let { sb.append(it).append("\n\n") }
         sb.append(field.prompt)
         val opts = field.options(t)
+        if (field.kind == FieldKind.MULTI) sb.append("\n(Pick every one that applies, then tap Continue. Or say \"all\" / \"all except ...\".)")
         if (field.kind != FieldKind.TEXT && opts.isNotEmpty() && p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) {
             sb.append("\n")
             opts.take(8).forEachIndexed { i, o -> sb.append("\n${i + 1}. ${o.label}").append(if (o.description.isNotBlank()) " - ${o.description}" else "") }
@@ -519,6 +674,6 @@ class Director(private val deps: DirectorDeps) {
         val s = field.suggest(t)
         if (s != null && field.kind != FieldKind.TEXT) sb.append("\n\nI'd go with: ${Messages.display(p, field.key, s.value)}. ${s.rationale}")
         else if (s != null) sb.append("\n\nOr say \"choose for me\" and I'll draft it.")
-        return ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, sb.toString(), now, field.key, quickFor(field, t)), field.key)
+        return ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, sb.toString(), now, field.key, quickFor(field, t), specFor(field, t)), field.key)
     }
 }

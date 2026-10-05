@@ -13,10 +13,12 @@ class Traits(val project: Project) {
     val experience: Experience = project.prefs.experience
     val beginner: Boolean get() = experience == Experience.BEGINNER
 
-    val genres: List<Genre> = project.list(Keys.GENRE).map { GenreKnowledge.resolve(it) }
+    val rejectedTags: Set<Tag> = project.rejected[Dependencies.TAG].orEmpty().mapNotNull { n -> runCatching { Tag.valueOf(n) }.getOrNull() }.toSet()
+    val genres: List<Genre> = project.list(Keys.GENRE).filter { !project.isRejected("genre", it) }.map { GenreKnowledge.resolve(it) }.filter { g -> g.tags.none { it in rejectedTags } }
     val genresKnown: Boolean get() = genres.isNotEmpty()
-    val tags: Set<Tag> = genres.flatMap { it.tags }.toSet()
+    val tags: Set<Tag> = genres.flatMap { it.tags }.toSet() - rejectedTags
     fun has(tag: Tag) = tag in tags
+    fun perspectiveIsScroller(): Boolean = project.value(Keys.PERSPECTIVE) in setOf("vertical_scroll", "side_view")
     fun hasGenre(id: String) = genres.any { it.id == id }
 
     val dimension: String? = project.value(Keys.DIMENSION)

@@ -55,8 +55,8 @@ object GenreKnowledge {
             listOf("Seeded run generation validity test across 100 seeds; scripted fight finishes a stage without softlock."),
         ),
         Genre(
-            "platformer", "Platformer",
-            listOf("platformer", "mario", "celeste", "metroidvania", "jump", "side-scroller", "side scroller"),
+            "platformer", "Platformer / vertical scroller",
+            listOf("platformer", "platform game", "action platformer", "action/platform", "mario", "celeste", "jump", "side-scroller", "side scroller", "vertical scroller", "vertical-scrolling", "vertical scrolling", "scroller"),
             2, setOf(Tag.MOVEMENT, Tag.LEVELS, Tag.FAST_TWITCH, Tag.COMBAT),
             listOf(
                 SystemReq("movement_model", "Movement model", "Run/jump/coyote time/jump buffer constants documented and tunable."),

@@ -56,6 +56,38 @@ enum class DecisionSource {
 enum class DecisionStatus { CONFIRMED, PROPOSED, DEFERRED }
 
 /**
+ * Authority of a decision. Higher rank wins; an owner correction outranks everything. Stored additively next to the legacy
+ * [DecisionSource] so older app layers (after an OTA rollback) still read the same data.
+ */
+@Serializable
+enum class Provenance(val rank: Int) {
+    DEFAULT(1),
+    SYSTEM_INFERENCE(2),
+    OWNER_ACCEPTED_RECOMMENDATION(3),
+    OWNER_EXPLICIT(4),
+    OWNER_CORRECTION(5);
+
+    val ownerAuthored: Boolean get() = rank >= OWNER_EXPLICIT.rank
+
+    /** Nearest legacy value, written alongside [Provenance] so previous layers keep working. */
+    fun legacySource(): DecisionSource = when (this) {
+        OWNER_EXPLICIT, OWNER_CORRECTION -> DecisionSource.USER
+        OWNER_ACCEPTED_RECOMMENDATION -> DecisionSource.DIRECTOR_CHOICE
+        SYSTEM_INFERENCE -> DecisionSource.INFERRED
+        DEFAULT -> DecisionSource.DEFAULT
+    }
+
+    companion object {
+        fun fromLegacy(s: DecisionSource, overrides: String?): Provenance = when (s) {
+            DecisionSource.USER, DecisionSource.OVERRIDE -> OWNER_EXPLICIT
+            DecisionSource.DIRECTOR_CHOICE -> OWNER_ACCEPTED_RECOMMENDATION
+            DecisionSource.INFERRED -> SYSTEM_INFERENCE
+            DecisionSource.DEFAULT -> DEFAULT
+        }
+    }
+}
+
+/**
  * One resolved (or proposed) design decision. Multi-valued answers are stored joined by [LIST_SEPARATOR]
  * so the schema stays flat and forward compatible.
  */
@@ -68,7 +100,14 @@ data class Decision(
     /** If this is an informed override, what the Director had recommended. */
     val overrides: String? = null,
     val updatedAt: Long = 0L,
+    /** Absent in data written before provenance existed; [prov] derives it from [source] then. */
+    val provenance: Provenance? = null,
+    /** The owner's own words that produced this decision, kept for audit and consistency review. */
+    val rawAnswer: String = "",
 ) {
+    val prov: Provenance get() = provenance ?: Provenance.fromLegacy(source, overrides)
+    val ownerAuthored: Boolean get() = prov.ownerAuthored
+
     fun list(): List<String> = value.split(LIST_SEPARATOR).map { it.trim() }.filter { it.isNotEmpty() }
 
     companion object {
@@ -84,6 +123,20 @@ enum class Role { USER, DIRECTOR, SYSTEM }
 data class QuickReply(val label: String, val send: String)
 
 @Serializable
+data class ChoiceOption(val id: String, val label: String, val description: String = "")
+
+/** A structured question the UI renders as chips (single select) or toggles with Continue (multi select). */
+@Serializable
+data class QuestionSpec(
+    val fieldKey: String,
+    /** SINGLE, MULTI, TEXT, BOOLEAN or NUMBER */
+    val kind: String,
+    val options: List<ChoiceOption> = emptyList(),
+    val canDelegate: Boolean = false,
+    val canSkip: Boolean = false,
+)
+
+@Serializable
 data class ChatMessage(
     val id: String,
     val role: Role,
@@ -92,6 +145,7 @@ data class ChatMessage(
     /** Schema field this message is asking about, if any. */
     val fieldKey: String? = null,
     val quickReplies: List<QuickReply> = emptyList(),
+    val question: QuestionSpec? = null,
 )
 
 @Serializable
@@ -254,6 +308,21 @@ enum class AckChoice { ACCEPTED_RECOMMENDATION, OVERRIDDEN }
 data class ConflictAck(val conflictId: String, val choice: AckChoice, val at: Long)
 
 @Serializable
+enum class FactStatus { ACTIVE, RETRACTED }
+
+/** A design statement the owner made in their own words (concept sentence, correction...). Retracted, never silently deleted. */
+@Serializable
+data class DesignFact(
+    val id: String,
+    val text: String,
+    val category: String = "",
+    val provenance: Provenance = Provenance.OWNER_EXPLICIT,
+    val status: FactStatus = FactStatus.ACTIVE,
+    val at: Long = 0L,
+    val retractionNote: String = "",
+)
+
+@Serializable
 data class ProjectPrefs(
     val experience: Experience = Experience.BEGINNER,
     val claudePlan: ClaudePlan = ClaudePlan.UNSURE,
@@ -285,10 +354,20 @@ data class Project(
     val announcedConflicts: List<String> = emptyList(),
     /** Fields the owner explicitly postponed this session ("ask me later"). */
     val postponed: List<String> = emptyList(),
+    /** The owner's first freeform description, verbatim. First-class: never rewritten by the system. */
+    val originalConcept: String = "",
+    val facts: List<DesignFact> = emptyList(),
+    /**
+     * Things the owner ruled out. Key is a field key (values = option ids), "genre" ids, or "tag" (values = Tag names such as
+     * TURN_BASED). Inference may not reintroduce them; only an explicit owner statement lifts a rejection.
+     */
+    val rejected: Map<String, List<String>> = emptyMap(),
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }
     fun list(key: String): List<String> = decisions[key]?.list().orEmpty()
+    fun activeFacts(): List<DesignFact> = facts.filter { it.status == FactStatus.ACTIVE }
+    fun isRejected(key: String, id: String): Boolean = id in rejected[key].orEmpty()
 }
 
 /** App-level (not per-project) settings. Secrets are never stored here; see the Android SecretStore. */

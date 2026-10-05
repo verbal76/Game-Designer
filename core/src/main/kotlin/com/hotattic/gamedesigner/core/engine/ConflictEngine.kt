@@ -68,6 +68,18 @@ object ConflictEngine {
                     "Use something like com.hotatticgames.mygame.", listOf(Keys.PACKAGE_ID), overridable = false)
             else null
         },
+        { t ->
+            val combat = t.value(Keys.COMBAT_MODEL)
+            val turnish = combat == "turn_based" || combat == "tactical_grid"
+            val realTime = Tag.TURN_BASED in t.rejectedTags || (t.genresKnown && !t.has(Tag.TURN_BASED) && t.perspectiveIsScroller())
+            if (turnish && realTime)
+                Conflict("combat_turn_based_vs_real_time", Severity.BLOCKER, "Turn-based combat contradicts a real-time design",
+                    "The design is real-time (not turn-based), but the combat style is set to ${if (combat == "turn_based") "turn-based" else "grid tactics"}.",
+                    "Use a real-time combat style that fits the design.", listOf(Keys.COMBAT_MODEL, Keys.GENRE),
+                    listOf(Alternative("Real-time abilities on cooldowns", mapOf(Keys.COMBAT_MODEL to "ability_cooldown")), Alternative("Auto-attack", mapOf(Keys.COMBAT_MODEL to "auto_attack"))),
+                    overridable = false)
+            else null
+        },
         // --- Platform / pipeline -----------------------------------------------------------------------------
         { t ->
             if (Platforms.IOS in t.platforms && t.value(Keys.CI_BUILD) == "claude_environment")

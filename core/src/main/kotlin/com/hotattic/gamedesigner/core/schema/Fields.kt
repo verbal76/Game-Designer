@@ -72,7 +72,13 @@ object Keys {
     )
 }
 
-enum class FieldKind { TEXT, SINGLE, MULTI }
+/** Question cardinality, explicit in the schema: drives both the UI control and how answers are interpreted. */
+enum class FieldKind {
+    TEXT, SINGLE, MULTI, BOOLEAN, NUMBER;
+    /** Answers are chosen from [Field.options]. */
+    val isSelect: Boolean get() = this == SINGLE || this == MULTI
+    val isFreeform: Boolean get() = this == TEXT || this == NUMBER
+}
 
 data class Option(val id: String, val label: String, val description: String = "")
 
@@ -97,6 +103,11 @@ class Field(
     /** Returns an error message if invalid. */
     val validate: (Traits, String) -> String? = { _, _ -> null },
     val allowCustom: Boolean = false,
+    /**
+     * Keys whose change makes a NON-owner decision of this field stale (it is then cleared and re-derived/re-asked).
+     * null = the default rule (see [Dependencies]). Owner-authored decisions are never cleared automatically.
+     */
+    val derivedFrom: Set<String>? = null,
 ) {
     fun isRelevant(t: Traits): Boolean = t.mode in modes && relevant(t)
 
@@ -170,7 +181,7 @@ object Fields {
                     o("third_person", "Third person"), o("first_person", "First person"),
                     o("top_down_3d", "Top-down 3D"), o("isometric_3d", "Isometric 3D"), o("fixed_camera", "Fixed cameras / screens"))
                 else listOf(
-                    o("side_view", "Side view"), o("top_down", "Top-down"), o("isometric_2d", "Isometric"),
+                    o("side_view", "Side view"), o("vertical_scroll", "Vertical scroller", "Side-on view that scrolls up and down."), o("top_down", "Top-down"), o("isometric_2d", "Isometric"),
                     o("fixed_screen", "Single fixed screen / board"), o("ui_driven", "Menu/card driven (no world camera)"))
             },
             suggest = { t ->
@@ -272,6 +283,7 @@ object Fields {
                 o("procedural_stages", "Procedurally generated stages"),
                 o("authored_levels", "Hand-authored levels"),
                 o("hub_missions", "Hub and missions"),
+                o("vertical_shaft", "One vertical shaft / tower", "Traverse a single tall space up or down."),
                 o("open_map", "Large connected/open map"),
             ) },
             suggest = { t ->
@@ -298,14 +310,14 @@ object Fields {
             "How does combat work?",
             "Combat style decides controls, enemy AI and balance work.",
             80, relevant = { it.has(Tag.COMBAT) },
-            options = { listOf(
+            options = { t -> listOf(
                 o("auto_attack", "Auto-attack", "Weapons fire on their own; you position."),
                 o("aimed_real_time", "Aim and shoot in real time"),
                 o("melee_combos", "Melee and combos"),
                 o("ability_cooldown", "Abilities on cooldowns"),
                 o("turn_based", "Turn-based"),
                 o("tactical_grid", "Grid tactics"),
-            ) },
+            ).filter { !(it.id in setOf("turn_based", "tactical_grid") && Tag.TURN_BASED in t.rejectedTags) } },
             suggest = { t ->
                 when (primary(t).id) {
                     "survivors_like" -> Suggestion("auto_attack", "Defining feature of the genre, and ideal for touch controls.")
@@ -779,5 +791,38 @@ object TitleSuggester {
     fun packageId(t: Traits, studioNamespace: String = "com.hotatticgames"): String {
         val name = t.value(Keys.DISPLAY_NAME) ?: suggest(t)
         return "$studioNamespace.${slug(name)}"
+    }
+}
+
+
+/**
+ * Which keys make a derived (non-owner) decision stale. Roots (what the owner says about the game itself) are never derived.
+ * "tag" is a pseudo-key that changes whenever the owner rejects/restores a gameplay tag such as TURN_BASED.
+ */
+object Dependencies {
+    const val TAG = "tag"
+    val roots = setOf(Keys.CONCEPT, Keys.GENRE, Keys.DIMENSION, Keys.PLATFORMS, Keys.REFERENCES, Keys.CONTINUATION_GOAL, Keys.PRESERVE_SYSTEMS, Keys.KNOWN_ISSUES)
+    private val broad = setOf(Keys.GENRE, Keys.DIMENSION, Keys.PLATFORMS, TAG)
+    private val specific: Map<String, Set<String>> = mapOf(
+        Keys.PERSPECTIVE to setOf(Keys.DIMENSION, Keys.GENRE, TAG),
+        Keys.DISPLAY_NAME to setOf(Keys.CONCEPT),
+        Keys.PACKAGE_ID to setOf(Keys.DISPLAY_NAME),
+        Keys.REFERENCE_ASPECTS to setOf(Keys.REFERENCES),
+        Keys.CORE_FANTASY to setOf(Keys.CONCEPT),
+        Keys.TOUCH_SCHEME to setOf(Keys.INPUT_METHODS, Keys.GENRE, TAG),
+        Keys.INPUT_REMAP to setOf(Keys.INPUT_METHODS),
+        Keys.ACCESSIBILITY to setOf(Keys.INPUT_METHODS, Keys.PLATFORMS, Keys.GENRE, Keys.AUDIO, TAG),
+        Keys.MONETIZATION to setOf(Keys.STORE_PLAN),
+        Keys.PRIVACY to setOf(Keys.STORE_PLAN, Keys.MONETIZATION, Keys.NETWORK_POLICY),
+        Keys.SIGNING to setOf(Keys.STORE_PLAN),
+        Keys.ORIENTATION to setOf(Keys.GENRE, Keys.PLATFORMS, TAG),
+        Keys.MENUS_SETTINGS to emptySet(),
+        Keys.SCOPE_CHOICE to emptySet(),
+    )
+
+    fun sourcesOf(field: Field): Set<String> = when {
+        field.key in roots -> emptySet()
+        field.derivedFrom != null -> field.derivedFrom
+        else -> specific[field.key] ?: broad
     }
 }

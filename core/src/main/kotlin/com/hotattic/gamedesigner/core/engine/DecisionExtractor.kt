@@ -10,8 +10,15 @@ data class Extraction(
     /** Proposed values keyed by schema field. Multi-valued fields are already joined with [Decision.LIST_SEPARATOR]. */
     val values: Map<String, String>,
     val referenceGames: List<String>,
+    /** Genres the owner ruled out ("not a roguelike", "forget the turn-based stuff"). */
+    val negatedGenres: List<String> = emptyList(),
+    /** Gameplay tags the owner ruled out (TURN_BASED for "not turn based" or "make it real time"). */
+    val negatedTags: List<com.hotattic.gamedesigner.core.schema.Tag> = emptyList(),
+    /** Gameplay tags the owner explicitly asked for, which lifts an earlier rejection. */
+    val affirmedTags: List<com.hotattic.gamedesigner.core.schema.Tag> = emptyList(),
 ) {
-    val isEmpty get() = values.isEmpty() && referenceGames.isEmpty()
+    val isEmpty get() = values.isEmpty() && referenceGames.isEmpty() && negatedGenres.isEmpty() && negatedTags.isEmpty() && affirmedTags.isEmpty()
+    val hasNegations get() = negatedGenres.isNotEmpty() || negatedTags.isNotEmpty()
 }
 
 /**
@@ -40,12 +47,37 @@ object DecisionExtractor {
     )
 
     private val perspectiveWords = mapOf(
+        "vertical_scroll" to listOf("vertical scroller", "vertical-scrolling", "vertical scrolling", "vertical scroll", "vertical-scroller"),
         "top_down" to listOf("top-down", "top down", "overhead"),
         "side_view" to listOf("side-scroller", "side scroller", "side-scrolling", "side view"),
         "isometric_2d" to listOf("isometric"),
         "first_person" to listOf("first-person", "first person", "fps view"),
         "third_person" to listOf("third-person", "third person", "over the shoulder", "over-the-shoulder"),
     )
+
+    private val tagWords: Map<com.hotattic.gamedesigner.core.schema.Tag, List<String>> = mapOf(
+        com.hotattic.gamedesigner.core.schema.Tag.TURN_BASED to listOf("turn-based", "turn based", "turns-based", "turn by turn", "turn-by-turn"),
+    )
+
+    private val negationCue = Regex("(?:\\bnot\\b|\\bno\\b|n't\\b|\\bnever\\b|\\bwithout\\b|\\bnon[- ]|\\binstead of\\b|\\brather than\\b|\\bforget\\b|\\bdrop\\b|\\bscrap\\b|\\bremove\\b|\\bignore\\b|\\bdelete\\b|\\bnor\\b|\\bstop\\b)[\\w\\s'\\-]{0,28}$")
+
+    private fun occurrences(t: String, needle: String): List<Int> {
+        val out = mutableListOf<Int>(); var from = 0
+        while (true) {
+            val i = t.indexOf(needle, from); if (i < 0) break
+            val b = if (i == 0) ' ' else t[i - 1]; val a = if (i + needle.length >= t.length) ' ' else t[i + needle.length]
+            if (!b.isLetterOrDigit() && !a.isLetterOrDigit()) out += i
+            from = i + 1
+        }
+        return out
+    }
+
+    /** True if a negation cue appears shortly before [idx] within the same clause. */
+    private fun negatedBefore(t: String, idx: Int): Boolean {
+        val clauseStart = (t.lastIndexOfAny(charArrayOf('.', ';', '!', '?', ','), idx - 1).takeIf { it >= 0 } ?: -1) + 1
+        val before = t.substring(clauseStart, idx)
+        return negationCue.containsMatchIn(before)
+    }
 
     private val trigger = Regex("(?i)\\b(?:like|inspired by|similar to|mix(?:ed)? (?:of|with)|cross(?:ed)? with|combined with|combine|meets|mashup of|plus|crossed with)\\s+")
     private val titleSeq = Regex("\\b([A-Z][\\w'’:\\-]*(?:\\s+(?:of|the|and|in|for|to|a|&|[A-Z0-9][\\w'’:\\-]*))*)")
@@ -56,13 +88,32 @@ object DecisionExtractor {
         val t = text.lowercase()
         val out = linkedMapOf<String, String>()
 
-        val genres = GenreKnowledge.detect(text)
-        // Mechanical genre keywords such as "roguelike" are only reliable when no better match exists, but keep all hits.
-        if (genres.isNotEmpty()) out[Keys.GENRE] = Decision.joinList(genres.map { it.id }.distinct().take(3))
+        // Genre keywords, with negation understood per occurrence: "this is NOT turn based" must not select turn-based.
+        val negatedGenres = linkedSetOf<String>()
+        val affirmedGenres = linkedSetOf<String>()
+        val negatedTags = linkedSetOf<com.hotattic.gamedesigner.core.schema.Tag>()
+        val affirmedTags = linkedSetOf<com.hotattic.gamedesigner.core.schema.Tag>()
+        for (g in GenreKnowledge.all) for (k in g.keywords) for (idx in occurrences(t, k)) {
+            if (negatedBefore(t, idx)) negatedGenres += g.id else affirmedGenres += g.id
+        }
+        for ((tag, words) in tagWords) for (w in words) for (idx in occurrences(t, w)) {
+            if (negatedBefore(t, idx)) negatedTags += tag else affirmedTags += tag
+        }
+        // "real time" is the opposite of turn based, so asking for it rules turn-based out.
+        for (w in listOf("real-time", "real time", "realtime")) for (idx in occurrences(t, w)) {
+            if (!negatedBefore(t, idx)) negatedTags += com.hotattic.gamedesigner.core.schema.Tag.TURN_BASED
+        }
+        // A tag the owner rules out also rules out every genre that carries it.
+        for (tag in negatedTags) GenreKnowledge.all.filter { tag in it.tags && it.id in affirmedGenres }.forEach { negatedGenres += it.id; affirmedGenres -= it.id }
+        negatedGenres.removeAll(affirmedGenres)
+        if (affirmedGenres.isNotEmpty()) out[Keys.GENRE] = Decision.joinList(affirmedGenres.take(3))
 
+        val threeD = Regex("\\b3\\s?d\\b").find(t)
+        val threeDNegated = threeD != null && negatedBefore(t, threeD.range.first)
         when {
             Regex("\\b2\\.5\\s?d\\b").containsMatchIn(t) -> out[Keys.DIMENSION] = "2.5D"
-            Regex("\\b3\\s?d\\b").containsMatchIn(t) && !Regex("\\b2\\s?d\\b").containsMatchIn(t) -> out[Keys.DIMENSION] = "3D"
+            threeDNegated -> out[Keys.DIMENSION] = "2D"
+            threeD != null && !Regex("\\b2\\s?d\\b").containsMatchIn(t) -> out[Keys.DIMENSION] = "3D"
             Regex("\\b2\\s?d\\b").containsMatchIn(t) && !Regex("\\b3\\s?d\\b").containsMatchIn(t) -> out[Keys.DIMENSION] = "2D"
             perspectiveWords["first_person"]!!.any { it in t } || perspectiveWords["third_person"]!!.any { it in t } -> out[Keys.DIMENSION] = "3D"
         }
@@ -82,7 +133,7 @@ object DecisionExtractor {
         }
         if (Regex("\\b(touch ?screen|touch controls?)\\b").containsMatchIn(t)) out[Keys.INPUT_METHODS] = "touch"
 
-        return Extraction(out, referenceGames(text))
+        return Extraction(out, referenceGames(text), negatedGenres.toList(), negatedTags.toList(), affirmedTags.toList())
     }
 
     fun referenceGames(text: String): List<String> {
