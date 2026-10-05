@@ -34,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,8 +57,9 @@ fun BrandingScreen(vm: AppViewModel, nav: NavController, id: String) {
     val project by vm.current.collectAsState()
     LaunchedEffect(id) { if (vm.current.value?.id != id) vm.open(id) }
     val p = project?.takeIf { it.id == id }
-    var pick by remember { mutableStateOf<String?>(null) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> val s = pick; if (uri != null && s != null) vm.importBranding(s, uri); pick = null }
+    var pick by rememberSaveable { mutableStateOf<String?>(null) }
+    // The slot is saved across activity recreation (the Files picker is another activity); a lost slot is recovered by the ViewModel.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> val s = pick; pick = null; vm.onImagePicked(uri, s) }
     val slots = listOf(
         SlotInfo(BrandingSlot.ICON, "Game icon", "Your game's app icon. Square, at least 512x512 recommended."),
         SlotInfo(BrandingSlot.STUDIO_SPLASH, "Studio / developer splash", "Shown briefly at launch before the game's own title screen."),

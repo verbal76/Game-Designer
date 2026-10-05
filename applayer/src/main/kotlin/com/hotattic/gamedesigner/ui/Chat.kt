@@ -89,12 +89,13 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     var showStatus by remember { mutableStateOf(false) }
     var showPrefs by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
-    var pickSlot by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(id) { if (vm.current.value?.id != id) vm.open(id) }
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> val slot = pickSlot; if (uri != null && slot != null) vm.importBranding(slot, uri); pickSlot = null }
-    LaunchedEffect(Unit) { vm.events.collect { e -> if (e is UiEvent.PickImage) { pickSlot = e.slot; picker.launch("image/*") } } }
+    // The ViewModel remembers which slot the picker is for (it survives activity recreation while Files is open), ingests the bytes
+    // durably, and only then advances the conversation. A cancelled picker leaves the question open.
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> vm.onImagePicked(uri) }
+    LaunchedEffect(Unit) { vm.events.collect { e -> if (e is UiEvent.PickImage) picker.launch("image/*") } }
     val p = project?.takeIf { it.id == id }
     LaunchedEffect(p?.messages?.size, busy) { p?.messages?.size?.let { if (it > 0) listState.animateScrollToItem(it - 1 + if (busy != null) 1 else 0) } }
 
@@ -141,7 +142,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                 if (busy != null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
             }
             val last = msgs.lastOrNull()
-            val spec = last?.question?.takeIf { last.role == Role.DIRECTOR && busy == null && it.fieldKey == p?.pendingFieldKey && (it.kind == "SINGLE" || it.kind == "MULTI" || it.kind == "BOOLEAN") }
+            val spec = last?.question?.takeIf { last.role == Role.DIRECTOR && busy == null && it.fieldKey == p?.pendingFieldKey && (it.kind == "SINGLE" || it.kind == "MULTI" || it.kind == "BOOLEAN" || it.kind == "ASSET_UPLOAD") }
             if (spec != null && last != null) {
                 QuestionCard(spec, last.id, onSelect = { ids -> vm.submitSelection(spec.fieldKey, ids) }, onSend = { vm.send(it) })
             } else if (last != null && last.role == Role.DIRECTOR && last.quickReplies.isNotEmpty() && busy == null) {
@@ -163,11 +164,16 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     }
 
     if (showStatus && completeness != null && p != null) {
-        AlertDialog({ showStatus = false }, confirmButton = { TextButton({ showStatus = false }) { Text("Close") } }, title = { Text("${completeness.percent}% of required decisions") }, text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                completeness.categories.forEach { Text("${it.category.label}: ${it.resolved}/${it.total}") }
-                if (completeness.missingRequired.isNotEmpty()) Text("Still open: " + completeness.missingRequired.take(8).joinToString { it.title }, style = MaterialTheme.typography.bodySmall)
+        val dims = remember(p) { com.hotattic.gamedesigner.core.engine.DesignDimensions.status(p).filter { it.state != com.hotattic.gamedesigner.core.engine.DimState.NOT_APPLICABLE } }
+        AlertDialog({ showStatus = false }, confirmButton = { TextButton({ showStatus = false }) { Text("Close") } }, title = { Text("${completeness.percent}% designed") }, text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text("Completeness counts the decisions that could change your game, not the number of questions asked.", style = MaterialTheme.typography.bodySmall)
+                dims.forEach { d ->
+                    val mark = when (d.state) { com.hotattic.gamedesigner.core.engine.DimState.DECIDED -> "decided"; com.hotattic.gamedesigner.core.engine.DimState.DELEGATED -> "delegated to Bob"; com.hotattic.gamedesigner.core.engine.DimState.DISCRETION -> "Bob's call"; else -> "open" }
+                    Text("${d.dim.title}: $mark", style = MaterialTheme.typography.bodySmall, color = if (d.state == com.hotattic.gamedesigner.core.engine.DimState.UNRESOLVED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                }
                 if (completeness.proposed.isNotEmpty()) Text("Awaiting your confirmation: " + completeness.proposed.joinToString { it.title }, style = MaterialTheme.typography.bodySmall)
+                if (p.designApproval == null || !com.hotattic.gamedesigner.core.engine.ReviewGate.approved(p)) Text("Your approval of the design review is still needed before the spec is generated.", style = MaterialTheme.typography.bodySmall)
             }
         })
     }

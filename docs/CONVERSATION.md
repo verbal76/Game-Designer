@@ -28,3 +28,26 @@ Part A OWNER REQUIREMENTS (verbatim concept, facts, owner decisions with their w
 
 ## Rollback safety
 All model additions are optional with defaults; `DecisionSource` is unchanged and written alongside `Provenance`; no schema-version bump. Tested by `CompatAndProviderTest`.
+
+## v4: design intelligence (OTA-delivered)
+
+### Completeness is dimensions, not questions
+`DesignDimensions` weighs 17 build-critical dimensions (vision, feeling, loop, movement, interaction, world topology, failure, progression, session, first playable slice, visual identity, audio, controls/platform, asset policy, must-not-change, completion, distribution). A dimension is DECIDED (owner), DELEGATED (accepted recommendation / deferred), DISCRETION (Bob's routine default) or UNRESOLVED. `percent` is the weighted resolved share, capped at 99 until no blocking conflict exists and the owner approved (or delegated approval of) the design review. Different projects reach 100 with different numbers of questions.
+
+### Ask better, not more
+- `Tiers.derive`: routine engineering (saves, menus, accessibility, engine, CI, testing, package id, orientation, audio default...) is derived by `DerivedDefaults` with DEFAULT provenance and listed in CLAUDE.md Part C. "refine" can still open any of them.
+- `DesignSeeder`: what the owner already said (their facts) seeds loop, movement feel, mood, win/loss, world topology, failure model, progression, first-build scope, and what completes it - each owner sentence is filed under ONE dimension (`DimensionLexicon.primary`). Seeds are the owner's own words (OWNER_EXPLICIT) and never replace a decision.
+- "A great five minutes" is asked only when three or more core dimensions are still unspoken; the answer is extracted into structure, not just stored.
+- `MUST_NOT_CHANGE` and `FIRST_SLICE` are new questions; both have drafts for "choose for me" built only from what the owner already fixed.
+
+### Review gate
+`DesignReview.compose` renders a plain-English "here's the game I think we're making". `ReviewGate` binds approval to a fingerprint of everything the owner can see; any later change makes the approval stale. `SpecVersioning.generate` refuses to export an unapproved design. Section edits ("change the world"), natural-language corrections and "you decide" (delegated approval) are supported; a negation is never an approval.
+
+### Contradiction checks run over CLAUDE.md, MASTER_PROMPT.md and ASSETS.md
+prototype vs complete, CC0-only vs original-only, owner logo vs generated logo, continuous world vs levels, no combat vs boss fights, phone-only vs keyboard-only, no inventory vs inventory progression, truncated multi-select, answer disagreeing with the owner's words, meta-conversation recorded as a requirement.
+
+### Spec and prompt
+CLAUDE.md: A (vision, requirements, corrections, must-not-change, first build scope, completion, assets), B (accepted recommendations only), C (guidance: Bob's engineering defaults, anti-slop, game-specific verification, deliverable contract), D (unresolved/delegated). MASTER_PROMPT: mission, creative target, experience, first-build scope, loop, must-work, world, progression/failure/completion, visual quality (with what does NOT count), audio, controls, assets, invariants, autonomous workflow, core-first strategy derived per game, verify-before-finishing, deliver, unresolved. Empty sections are omitted; no invented counts.
+
+### Attachments and exactly-once turns
+`AttachmentIngest` reads the picked URI to EOF immediately (document providers return pipes with unknown length), validates PNG/JPEG/WebP by header, writes temp+fsync+atomic rename into app storage, verifies SHA-256, and only then does `Director.attachmentReceived` record the asset, satisfy the question and advance once. Failures are typed and shown; nothing is claimed before durable ingestion. `ProjectSession` is the single writer (mutations apply to the freshest state under one lock, never a stale snapshot held across IO/LLM awaits), and every owner action carries a turn id persisted in `Project.processedTurns`, so duplicated callbacks, retries and restored UI cannot re-commit a turn. Delegation phrases ("you choose") only count in short replies, never inside a long description.
