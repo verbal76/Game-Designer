@@ -274,7 +274,7 @@ class Director(private val deps: DirectorDeps) {
         val kind = interp.by
         val model = if (kind == InterpreterKind.RULES) null else kind.label
         // Corrections volunteered alongside the answer ("no, it's not turn based") apply first, so the answer is judged in their light.
-        var p = if (interp.hasCorrections || (field.key != Keys.CONCEPT && interp.edits.isNotEmpty() && interp.intent == AnswerIntent.UNCLEAR)) applyStatement(p0, text, interp, field, now).project else p0
+        var p = if (interp.hasCorrections || interp.affirmedTags.isNotEmpty() || (field.key != Keys.CONCEPT && interp.edits.isNotEmpty() && interp.intent == AnswerIntent.UNCLEAR)) applyStatement(p0, text, interp, field, now).project else p0
         return when (interp.intent) {
             AnswerIntent.SELECT, AnswerIntent.ALL, AnswerIntent.FREEFORM -> {
                 val value = when {
@@ -283,7 +283,7 @@ class Director(private val deps: DirectorDeps) {
                 }
                 val err = if (value.isBlank()) "I need an answer for that one." else field.validate(Traits(p), value)
                 if (err != null) FieldResult(p, directReply = err, kind = kind)
-                else commitValue(p, settings, field, value, text, now, interp).let { r -> if (interp.hasCorrections) r else r.copy(modelNote = r.modelNote ?: model) }
+                else commitValue(p, settings, field, value, text, now, interp).let { r -> r.copy(modelNote = r.modelNote ?: model, kind = kind) }
             }
             AnswerIntent.DELEGATE -> {
                 val d = ProjectOps.delegate(p, field.key, now)
@@ -385,7 +385,9 @@ class Director(private val deps: DirectorDeps) {
     internal fun applyStatement(p0: Project, text: String, interp: Interpretation, field: Field?, now: Long): Applied {
         var p = p0
         val said = mutableListOf<String>()
-        val corrected = interp.hasCorrections
+        val rejectedTagNames = p.rejected[com.hotattic.gamedesigner.core.schema.Dependencies.TAG].orEmpty()
+        val reversal = interp.affirmedTags.any { it.name in rejectedTagNames }
+        val corrected = interp.hasCorrections || reversal
 
         for (tag in interp.affirmedTags) if (tag.name in p.rejected[com.hotattic.gamedesigner.core.schema.Dependencies.TAG].orEmpty()) p = ProjectOps.restoreTag(p, tag, now)
         for (tag in interp.rejectedTags) {

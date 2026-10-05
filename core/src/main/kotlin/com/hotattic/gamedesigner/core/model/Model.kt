@@ -385,6 +385,9 @@ data class AppSettings(
     val localModelId: String = "",
     val localModelEnabled: Boolean = true,
     val studioName: String = "Hot Attic Games",
+    /** Additive (no new enum values, so a rollback to an older layer still reads settings): "" = legacy [cloudProvider]. */
+    val llmProviderId: String = "",
+    val llmBaseUrl: String = "",
 )
 
 @Serializable
