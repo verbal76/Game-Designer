@@ -52,7 +52,6 @@ import com.hotattic.gamedesigner.core.model.CloudProviderId
 import com.hotattic.gamedesigner.core.model.ClaudePlan
 import com.hotattic.gamedesigner.core.model.Experience
 import com.hotattic.gamedesigner.core.model.UsageStyle
-import com.hotattic.gamedesigner.shellapi.ModelState
 import com.hotattic.gamedesigner.shellapi.SecretStore
 import com.hotattic.gamedesigner.core.llm.ProviderFactory
 import com.hotattic.gamedesigner.core.llm.ProviderIds
@@ -67,8 +66,6 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
     val c = vm.container
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val modelStates by c.models.state.collectAsState()
-    val imported by c.models.imported.collectAsState()
     var name by remember(s.directorName) { mutableStateOf(s.directorName) }
     var anthropicKey by remember { mutableStateOf("") }
     var cloudModel by remember(s.cloudModel) { mutableStateOf(s.cloudModel) }
@@ -78,20 +75,13 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
     var status by remember { mutableStateOf<String?>(null) }
     var keysVersion by remember { mutableStateOf(0) }
 
-    val importModel = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) vm.viewModelScope.launch {
-            val dn = ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "imported.litertlm"
-            status = "Importing model..."
-            val saved = try { c.models.importFrom(uri, dn) } catch (e: Exception) { status = "Import failed: ${e.message}"; return@launch }
-            c.updateSettings { it.copy(localModelId = saved) }
-            status = "Imported $saved and selected it."
-        }
-    }
     val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) vm.backupAll(uri) }
     val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.restoreBackup(uri) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AboutSection(vm, shell)
+            HorizontalDivider()
             Section("Director")
             OutlinedTextField(name, { name = it.take(24) }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
             TextButton({ vm.updateSettings { it.copy(directorName = name.ifBlank { "Bob" }) } }) { Text("Save name") }
@@ -109,39 +99,14 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
             ToggleRow("GitHub integration", "Optional. Needed only to inspect existing repositories.", s.githubEnabled) { v -> vm.updateSettings { it.copy(githubEnabled = v) } }
 
             HorizontalDivider()
-            Section("On-device model")
-            val any = c.localModelAvailable()
-            Text(if (any) "A local model is installed. ${s.directorName} uses it to understand free-form descriptions and answer questions; the interview itself never depends on it." else "No local model installed. ${s.directorName} is using the built-in interview engine - fully functional, but less flexible with free-form text.", style = MaterialTheme.typography.bodySmall)
-            ToggleRow("Use local model when available", "Runs entirely on this phone.", s.localModelEnabled) { v -> vm.updateSettings { it.copy(localModelEnabled = v) } }
-            c.models.catalog.forEach { m ->
-                val st = modelStates[m.id] ?: ModelState.None
-                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("${m.name} (~${m.approxSizeMb / 1000.0} GB, ${m.license})", style = MaterialTheme.typography.titleSmall)
-                    Text(m.note + if (!m.verified) " Catalog address not yet confirmed from the build environment; if the download fails, import the file instead." else "", style = MaterialTheme.typography.bodySmall)
-                    when (st) {
-                        is ModelState.Downloading -> { LinearProgressIndicator(progress = { if (st.total > 0) st.bytes.toFloat() / st.total else 0f }, modifier = Modifier.fillMaxWidth()); Text("${st.bytes / 1_000_000} / ${st.total / 1_000_000} MB", style = MaterialTheme.typography.bodySmall) }
-                        is ModelState.Failed -> Text(st.reason, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                        else -> Unit
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        if (st == ModelState.Ready) {
-                            OutlinedButton({ vm.updateSettings { it.copy(localModelId = m.id) } }, enabled = s.localModelId != m.id) { Text(if (s.localModelId == m.id) "Selected" else "Use this") }
-                            TextButton({ c.models.delete(m.id) }) { Text("Delete") }
-                        } else if (st !is ModelState.Downloading) {
-                            Button({ vm.viewModelScope.launch { c.models.download(m) } }) { Text(if (st is ModelState.Failed) "Retry / resume" else "Download") }
-                        }
-                    }
-                }
-            }
-            imported.forEach { f ->
-                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    Text(f, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                    OutlinedButton({ vm.updateSettings { it.copy(localModelId = f) } }, enabled = s.localModelId != f) { Text(if (s.localModelId == f) "Selected" else "Use") }
-                    TextButton({ c.models.delete(f) }) { Text("Delete") }
-                }
-            }
-            OutlinedButton({ importModel.launch(arrayOf("*/*")) }) { Text("Import a .litertlm model file") }
-            OutlinedTextField(hfToken, { hfToken = it }, label = { Text("Hugging Face token (only if a model requires it)") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+            Section("Bob's AI (on this phone)")
+            val st by c.modelController.status.collectAsState()
+            val modeLine = if (st.loaded || (st.ready && s.localModelEnabled)) "LOCAL AI: ${c.modelController.activeLabel()} (${st.runtime})" else "RULES-ONLY: no on-device model is active"
+            Text(modeLine, style = MaterialTheme.typography.bodyMedium)
+            Text(if (st.ready) "${s.directorName} understands you with the on-device model; everything stays on this phone." else "Without a model ${s.directorName} uses built-in rules for free text. Everything still works through the answer buttons.", style = MaterialTheme.typography.bodySmall)
+            ToggleRow("Use the on-device model", "Runs entirely on this phone, offline.", s.localModelEnabled) { v -> vm.updateSettings { it.copy(localModelEnabled = v) } }
+            Button({ nav.navigate("models") }) { Text(if (st.ready) "Manage models" else "Set up on-device AI") }
+            OutlinedTextField(hfToken, { hfToken = it }, label = { Text("Hugging Face token (only for models that require sign-in)") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
             TextButton({ c.secrets.put(SecretStore.HF_TOKEN, hfToken.trim()); hfToken = ""; keysVersion++; status = "Token saved securely." }) { Text("Save token") }
 
             HorizontalDivider()
@@ -207,7 +172,7 @@ private fun DiagnosticsSection(shell: ShellServices) {
     var msg by remember { mutableStateOf<String?>(null) }
     Section("Diagnostics and updates")
     Text("Native app: ${d.nativeVersionName} (build ${d.nativeVersionCode}), shell API ${d.shellApiLevel}\nRuntime: ${d.runtimeFingerprint}", style = MaterialTheme.typography.bodySmall)
-    Text("Application layer: ${d.layerSource.uppercase()} v${d.layerVersion} (${d.layerLabel}); running code identity ${AppLayerEntry.LAYER_LABEL} v${AppLayerEntry.LAYER_VERSION}", style = MaterialTheme.typography.bodySmall)
+    Text("Application layer: ${com.hotattic.gamedesigner.VersionIdentity.layerName(d.nativeVersionName, d.layerVersion)} (${if (d.layerSource == "ota") "OTA #${d.layerVersion} - ${d.layerLabel}" else "built into the APK"}); running code identity ${AppLayerEntry.LAYER_LABEL} (sequence ${AppLayerEntry.LAYER_VERSION})", style = MaterialTheme.typography.bodySmall)
     Text("Update channel: ${d.channel}${if (!d.trustedKeyPresent) " (disabled: this build has no trusted update key)" else ""}", style = MaterialTheme.typography.bodySmall)
     Text("Last check: ${if (d.lastCheckAt == 0L) "never" else java.text.DateFormat.getDateTimeInstance().format(java.util.Date(d.lastCheckAt))} - ${d.lastCheckResult}", style = MaterialTheme.typography.bodySmall)
     d.pendingVersion?.let { Text("Update $it is downloaded and verified. It activates the next time the app starts (close it from recents and reopen).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }

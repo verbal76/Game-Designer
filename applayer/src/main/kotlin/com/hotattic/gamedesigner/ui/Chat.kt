@@ -130,11 +130,15 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
         Column(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
             if (completeness != null && p?.mode == ProjectMode.NEW_GAME) LinearProgressIndicator(progress = { completeness.percent / 100f }, modifier = Modifier.fillMaxWidth())
             if (interpreter == InterpreterKind.RULES && p?.mode != ProjectMode.PLAYTEST_CONTINUE) {
-                Text(
-                    "Conversational interpretation is unavailable (no AI model or provider is configured), so free-text answers are matched by simple rules. Tap the options below for exact answers, or add an AI provider in Settings.",
-                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 6.dp),
-                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer,
-                )
+                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "RULES-ONLY MODE: no on-device AI is active, so free text is matched by simple rules. Answer buttons are exact.",
+                        Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    )
+                    TextButton({ nav.navigate("models") }) { Text("Set up AI") }
+                }
+            } else if (interpreter == InterpreterKind.LOCAL_LLM) {
+                Text("LOCAL AI: Bob is using the on-device model", Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
             val msgs = p?.messages.orEmpty()
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -15,6 +15,7 @@ import com.hotattic.gamedesigner.core.model.CloudProviderId
 import com.hotattic.gamedesigner.core.net.JavaHttpTransport
 import com.hotattic.gamedesigner.core.persist.FileProjectStore
 import com.hotattic.gamedesigner.core.research.WebResearch
+import com.hotattic.gamedesigner.shellapi.LlmFailure
 import com.hotattic.gamedesigner.shellapi.LocalLlm
 import com.hotattic.gamedesigner.shellapi.SecretStore
 import com.hotattic.gamedesigner.shellapi.ShellServices
@@ -23,16 +24,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 const val DEFAULT_CLOUD_MODEL = "claude-sonnet-5-5"
 
 /** Adapts the shell's stable [LocalLlm] to the core [LlmProvider] interface (which may change over the air). */
-class ShellLlmAdapter(private val shell: LocalLlm) : LlmProvider {
+class ShellLlmAdapter(private val llm: LocalLlm) : LlmProvider {
     override val id = "litert-lm"
     override val displayName = "On-device model"
     override val tier = LlmTier.LOCAL_SMALL
     override val isLocal = true
-    override suspend fun isReady() = shell.isReady()
+    override suspend fun isReady() = llm.isReady()
     override suspend fun complete(request: LlmRequest): LlmResult {
         val user = request.messages.lastOrNull { it.role == "user" }?.content ?: return LlmResult.Failure("Empty request")
-        val r = shell.complete(request.system, user, request.maxTokens)
-        return r.text?.let { LlmResult.Ok(it) } ?: LlmResult.Failure(r.error ?: "Local model returned nothing")
+        val r = llm.complete(request.system, user, request.maxTokens)
+        return r.text?.let { LlmResult.Ok(it) }
+            ?: LlmResult.Failure(r.error ?: "Local model returned nothing", retryable = r.failure == LlmFailure.TIMEOUT || r.failure == LlmFailure.BUSY)
     }
 }
 
@@ -41,6 +43,7 @@ class AppContainer(val shell: ShellServices) {
     val store = FileProjectStore(shell.application.filesDir)
     val secrets get() = shell.secrets
     val models get() = shell.models
+    private val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
     val http = JavaHttpTransport()
     val settings = MutableStateFlow(store.loadSettings())
 
@@ -56,13 +59,16 @@ class AppContainer(val shell: ShellServices) {
 
     fun github() = GitHubClient(http) { secrets.get(SecretStore.GITHUB_TOKEN) }
 
+    /** Acquire / verify / install / load for on-device models (catalog, device fit, resumable download, SHA-256). */
+    val modelController: com.hotattic.gamedesigner.models.ModelController by lazy { com.hotattic.gamedesigner.models.ModelController(shell, settings, { f -> updateSettings(f) }, scope) }
+
     fun updateSettings(f: (AppSettings) -> AppSettings) {
         val next = f(settings.value)
         settings.value = next
         store.saveSettings(next)
     }
 
-    fun localModelAvailable() = models.anyPath() != null
+    fun localModelAvailable() = modelController.localReady()
     fun cloudConfigured(): Boolean {
         val d = ProviderFactory.descriptor(providerId()) ?: return false
         if (!secrets.has(d.secretName)) return false

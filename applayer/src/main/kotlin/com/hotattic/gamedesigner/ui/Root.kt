@@ -97,6 +97,7 @@ fun AppNav(vm: AppViewModel, shell: ShellServices) {
                 composable("branding/{id}") { BrandingScreen(vm, nav, it.arguments?.getString("id").orEmpty()) }
                 composable("settings") { SettingsScreen(vm, nav, shell) }
                 composable("repos") { ReposScreen(vm, nav) }
+                composable("models") { ModelsScreen(vm, nav) }
             }
         }
     }

@@ -37,5 +37,6 @@ class AppLayerEntry : AppLayer {
     companion object {
         const val LAYER_VERSION = BuildConfig.LAYER_VERSION
         const val LAYER_LABEL = BuildConfig.LAYER_LABEL
+        const val SOURCE_SHA = BuildConfig.SOURCE_SHA
     }
 }

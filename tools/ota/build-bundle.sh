@@ -7,7 +7,7 @@ VER="$1"; LABEL="$2"; CHANNEL="$3"; OUT="$4"; KEY="$5"; SHA="${6:-$(git rev-pars
 FP="$(tools/ota/fingerprint.sh)"
 API="$(sed -n 's/^shellApi = "\(.*\)"/\1/p' gradle/libs.versions.toml | head -1)"
 MINSHELL="${OTA_MIN_SHELL:-1}"
-./gradlew -q :otabundle:assembleDebug -PlayerVersion="$VER" -PlayerLabel="$LABEL"
+./gradlew -q :otabundle:assembleDebug -PlayerVersion="$VER" -PlayerLabel="$LABEL" -PsourceSha="$SHA"
 APK=otabundle/build/outputs/apk/debug/otabundle-debug.apk
 test -f "$APK"
 W="$(mktemp -d)"
