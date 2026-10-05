@@ -19,7 +19,7 @@ object DesignSeeder {
     private val textSeeds = listOf(
         Keys.CORE_LOOP to DimId.LOOP, Keys.MOVEMENT_CAMERA to DimId.MOVEMENT, Keys.PLAYER_FEELING to DimId.FEELING, Keys.WIN_LOSS to DimId.COMPLETION,
     )
-    private val selectSeeds = listOf(Keys.WORLD_STRUCTURE, Keys.DIFFICULTY_FAILURE)
+    private val selectSeeds = listOf(Keys.WORLD_STRUCTURE, Keys.DIFFICULTY_FAILURE, Keys.PROGRESSION)
 
     /** Returns the project with seeds applied and the keys that were seeded. */
     fun seed(p0: Project, now: Long): Pair<Project, List<String>> {
@@ -35,7 +35,8 @@ object DesignSeeder {
             val chosen = if (dim == DimId.FEELING) sents.filter { Regex("(?i)\\b(feel|feeling|mood|atmosphere)\\b|tense|cozy|wonder|dread|eerie|calm|frantic|claustrophobic|oppressive").containsMatchIn(it) } else strong
             if (chosen.isEmpty()) continue
             if (dim == DimId.LOOP && chosen.size < 2 && !Regex("(?i)\\b(core|gameplay|main) loop\\b").containsMatchIn(chosen.first())) continue
-            if (dim == DimId.MOVEMENT && chosen.size < 1) continue
+            // Movement verbs alone (a character "climbing") are not a statement about how movement should FEEL.
+            if (dim == DimId.MOVEMENT && chosen.size < 2 && chosen.none { Regex("(?i)\\b(snappy|floaty|heavy|precise|fast|slow|momentum|smooth|tight|weighty|responsive|sluggish|fluid|deliberate|controls?)\\b").containsMatchIn(it) }) continue
             p = ProjectOps.setDecision(p, key, chosen.take(3).joinToString(" "), Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description", raw = "")
             seeded += key
         }
@@ -47,6 +48,14 @@ object DesignSeeder {
             if (p.isRejected(key, id)) continue
             p = ProjectOps.setDecision(p, key, id, Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
             seeded += key
+        }
+        // The owner's own first-build scope, and what finishes it, when they already said so.
+        val sliceFact = p.activeFacts().map { it.text }.firstOrNull { it.length >= 25 && Regex("(?i)\\b(prototype|first (build|version|playable)|vertical slice|slice|demo)\\b").containsMatchIn(it) }
+        if (sliceFact != null && p.decision(Keys.FIRST_SLICE) == null && Fields.get(Keys.FIRST_SLICE)?.isRelevant(Traits(p)) == true) {
+            p = ProjectOps.setDecision(p, Keys.FIRST_SLICE, sliceFact, Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description"); seeded += Keys.FIRST_SLICE
+            if (p.decision(Keys.DONE) == null && Regex("(?i)\\b(until|at the end|final boss|end boss|complete when|finish|ending|playable)\\b").containsMatchIn(sliceFact) && Fields.get(Keys.DONE)?.isRelevant(Traits(p)) == true) {
+                p = ProjectOps.setDecision(p, Keys.DONE, sliceFact, Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description"); seeded += Keys.DONE
+            }
         }
         return p to seeded
     }

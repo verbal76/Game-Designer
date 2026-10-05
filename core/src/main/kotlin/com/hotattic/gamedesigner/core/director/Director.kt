@@ -270,7 +270,7 @@ class Director(private val deps: DirectorDeps) {
                     if (action != null) {
                         // Upload requested: keep the question open until the file arrives or the owner changes their mind.
                         val ask = "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it."
-                        return DirectorTurn(replyField(p, ask, field), action, note, kind)
+                        return DirectorTurn(uploadPrompt(p, ask, field), action, note, kind)
                     }
                 }
             }
@@ -308,7 +308,7 @@ class Director(private val deps: DirectorDeps) {
         val value = Decision.joinList(if (field.kind == FieldKind.SINGLE) valid.take(1) else valid)
         val res = commitValue(p, settings, field, value, labels.joinToString(", "), now)
         if (res.directReply != null) return DirectorTurn(replyField(res.project, res.directReply, field), res.action, res.modelNote)
-        if (res.action != null) return DirectorTurn(replyField(res.project, "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it.", field), res.action, res.modelNote)
+        if (res.action != null) return DirectorTurn(uploadPrompt(res.project, "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it.", field), res.action, res.modelNote)
         return DirectorTurn(askNext(res.project, settings), res.action, res.modelNote)
     }
 
@@ -429,7 +429,7 @@ class Director(private val deps: DirectorDeps) {
                 else if (d == null) FieldResult(p, directReply = "I can't pick that one for you - it's your idea. ${field.prompt}", kind = kind)
                 else {
                     val np = d.first
-                    FieldResult(ProjectOps.setPending(ProjectOps.addMessage(reconciled(p, np, now), Role.DIRECTOR, "Going with my recommendation: ${Messages.display(np, field.key, d.second.value)}. ${d.second.rationale}", now, field.key), null), kind = kind)
+                    FieldResult(ProjectOps.setPending(ProjectOps.addMessage(reconciled(p, np, now), Role.DIRECTOR, "Going with my recommendation: ${Messages.display(np, field.key, d.second.value).trimEnd('.', ' ')}. ${d.second.rationale}", now, field.key), null), kind = kind)
                 }
             }
             AnswerIntent.POSTPONE -> FieldResult(ProjectOps.postpone(ProjectOps.addMessage(p, Role.DIRECTOR, "No problem, we'll come back to that.", now), field.key, now), kind = kind)
@@ -622,7 +622,7 @@ class Director(private val deps: DirectorDeps) {
         if (audit.passes) {
             val review = com.hotattic.gamedesigner.core.generate.SpecVersioning.preflight(p, now)
             if (!review.clean) {
-                val msg = "I found contradictions I must settle before exporting:\n" + review.errors.take(5).joinToString("\n") { "- ${it.message}" } +
+                val msg = "I found contradictions I must settle before exporting:\n" + review.errors.take(5).joinToString("\n") { "- ${it.message}" + if (it.line.isNotBlank()) " (\"${it.line.take(120)}\")" else "" } +
                     "\n\nTell me which way each should go (your latest word wins), or say \"status\"."
                 return DirectorTurn(reply(p, msg, null))
             }
@@ -731,6 +731,10 @@ class Director(private val deps: DirectorDeps) {
     /** Re-asks a field with its structured question so the card stays usable after a clarification. */
     private fun replyField(p: Project, text: String, field: Field): Project =
         ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), field.key, quickFor(field, Traits(p)), specFor(field, Traits(p))), field.key)
+
+    /** The upload prompt carries no new question card: the card that was just answered stays answered, so a second tap cannot re-open the picker. */
+    private fun uploadPrompt(p: Project, text: String, field: Field): Project =
+        ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), field.key, listOf(QuickReply("Choose the image", "upload my own"), QuickReply("Create one for me", "create an original one for me"))), field.key)
 
     private fun specFor(field: Field, t: Traits): QuestionSpec = QuestionSpec(
         field.key, if (field.key in Keys.brandingKeyForSlot.values) "ASSET_UPLOAD" else field.kind.name, if (field.kind.isSelect) field.options(t).map { ChoiceOption(it.id, it.label, it.description) } else emptyList(),

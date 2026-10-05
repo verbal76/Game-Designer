@@ -45,12 +45,13 @@ object OptionResolver {
                 if (ids.isNotEmpty() || base.isNotEmpty()) return Resolution(Mode.SELECT, ids, true)
             }
         }
-        if (allCue.containsMatchIn(t) && !delegateCue.containsMatchIn(t)) {
+        if (allCue.containsMatchIn(t) && !(delegateCue.containsMatchIn(t) && t.split(' ').size <= 8)) {
             // "all" only means everything when the rest of the sentence selects nothing narrower ("all of those", "all of them").
             val narrower = select(options, t.replace(allCue, " "), multi = true).first
             return if (narrower.isEmpty() || !multi) Resolution(Mode.ALL, allIds, true) else Resolution(Mode.SELECT, narrower, true)
         }
-        if (delegateCue.containsMatchIn(t)) return Resolution(Mode.DELEGATE, emptyList(), true)
+        // Delegation is a short request ("you choose"), never a phrase buried in a long description ("You choose which side to play.").
+        if (delegateCue.containsMatchIn(t) && t.split(' ').size <= 8) return Resolution(Mode.DELEGATE, emptyList(), true)
         val (ids, confident) = select(options, t, multi)
         if (ids.isNotEmpty()) return Resolution(Mode.SELECT, ids, confident)
         if (noneCue.containsMatchIn(t)) return Resolution(Mode.NONE, emptyList(), true)

@@ -97,7 +97,7 @@ object Tiers {
     val derive = setOf(
         Keys.PERSPECTIVE, Keys.REFERENCE_ASPECTS, Keys.SESSION_STRUCTURE, Keys.SAVE_SYSTEM, Keys.TUTORIAL, Keys.INPUT_METHODS, Keys.TOUCH_SCHEME,
         Keys.INPUT_REMAP, Keys.VFX, Keys.AUDIO, Keys.HUD_UI, Keys.MENUS_SETTINGS, Keys.ACCESSIBILITY, Keys.PERFORMANCE, Keys.ENGINE,
-        Keys.NETWORK_POLICY, Keys.CI_BUILD, Keys.TESTING, Keys.SCOPE_CHOICE, Keys.PACKAGE_ID, Keys.VERSION_STRATEGY, Keys.STORE_PLAN,
+        Keys.CORE_FANTASY, Keys.NETWORK_POLICY, Keys.CI_BUILD, Keys.TESTING, Keys.SCOPE_CHOICE, Keys.PACKAGE_ID, Keys.VERSION_STRATEGY, Keys.STORE_PLAN,
         Keys.MONETIZATION, Keys.PRIVACY, Keys.SIGNING, Keys.ENEMIES_BOSSES,
     )
     val forceAsk = setOf(Keys.PLAYER_FEELING, Keys.FIRST_SLICE, Keys.MUST_NOT_CHANGE)
@@ -354,10 +354,12 @@ object Fields {
                 o("aimed_real_time", "Aim and shoot in real time"),
                 o("melee_combos", "Melee and combos"),
                 o("ability_cooldown", "Abilities on cooldowns"),
+                o("per_character", "Different for each character or side", "Each playable character or mode fights in its own way."),
                 o("turn_based", "Turn-based"),
                 o("tactical_grid", "Grid tactics"),
-            ).filter { !(it.id in setOf("turn_based", "tactical_grid") && Tag.TURN_BASED in t.rejectedTags) } },
+            ).filter { !(it.id in setOf("turn_based", "tactical_grid") && Tag.TURN_BASED in t.rejectedTags) && !(it.id == "per_character" && !t.twoSides) } },
             suggest = { t ->
+                if (t.twoSides) return@Field Suggestion("per_character", "You described two different characters or sides; each should fight in its own way.")
                 when (primary(t).id) {
                     "survivors_like" -> Suggestion("auto_attack", "Defining feature of the genre, and ideal for touch controls.")
                     "card_deckbuilder", "turn_based_strategy" -> Suggestion(if (primary(t).id == "card_deckbuilder") "turn_based" else "tactical_grid", "Matches the genre.")
@@ -395,10 +397,12 @@ object Fields {
                 o("both", "Both in-run upgrades and permanent unlocks"),
                 o("xp_levels", "XP and levels"),
                 o("tech_tree", "Tech / research tree"),
-                o("content_unlocks", "Unlock new levels/content"),
+                o("content_unlocks", "Unlock new areas and content"),
+                o("abilities_gear", "New abilities and equipment", "Power comes from what you can do and carry, not from separate levels."),
             ) },
             suggest = { t ->
-                when (primary(t).id) {
+                if (t.continuousWorld) Suggestion("abilities_gear", "A continuous world is best paced by new abilities and equipment rather than level unlocks.")
+                else when (primary(t).id) {
                     "survivors_like", "action_roguelite", "card_deckbuilder" -> Suggestion("both", "Run-based games feel best with build-crafting in a run plus permanent growth.")
                     "factory_automation", "city_builder", "strategy_rts" -> Suggestion("tech_tree", "Unlocks gate complexity.")
                     "rpg", "metroidvania" -> Suggestion("xp_levels", "Classic fit.")
@@ -436,6 +440,7 @@ object Fields {
             "Every complete game needs a clear end state, even if it's a score.",
             100, relevant = { it.genresKnown && it.value(Keys.SESSION_STRUCTURE) != "endless" },
             suggest = { t ->
+                if (t.continuousWorld && t.twoSides) return@Field Suggestion("Win by completing your side's traversal of the world to its far end; failure respawns at the last checkpoint.", "Fits a continuous world played from either end.")
                 when (primary(t).id) {
                     "survivors_like" -> Suggestion("Win by surviving until the run timer ends or defeating the final boss; lose when health reaches zero. Results screen banks meta currency.", "Genre standard.")
                     "action_roguelite" -> Suggestion("Win by defeating the final boss; lose when health reaches zero (run ends, rewards banked).", "Genre standard.")
@@ -459,6 +464,7 @@ object Fields {
                 when (primary(t).id) {
                     "survivors_like", "action_roguelite", "card_deckbuilder" -> Suggestion("permadeath_meta", "Genre expectation; rewards soften the sting.")
                     "puzzle", "sim_management", "city_builder", "narrative_adventure" -> Suggestion("no_fail", "Relaxed play fits the genre.")
+                    "platformer", "metroidvania", "shooter", "fighting" -> Suggestion("checkpoint_retry", "Action games feel best with checkpoints and a quick retry.")
                     else -> Suggestion("adjustable", "Lets different players enjoy the game, and doubles as an accessibility feature.")
                 }
             }),

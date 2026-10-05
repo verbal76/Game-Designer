@@ -108,12 +108,14 @@ object ClaudeMdGenerator {
             if (derivedInvariants != null && derivedInvariants != invariants) { p("Implied by the owner's own decisions:"); bullets(MetaConversation.designSentences(derivedInvariants, 3)) }
         }
 
+        fun ownerV(k: String) = project.decision(k)?.takeIf { ownerDecision(k, it) }?.value
         h2("A5. First playable build scope")
-        p(v(Keys.FIRST_SLICE) ?: "Not separately defined; build the smallest polished slice that fully demonstrates the concept.")
-        p(if (prototype) "Objective: a FULLY FUNCTIONAL PROTOTYPE (the owner's own word) - real gameplay, representative presentation, a beginning-to-end slice, actual controls and core loop, representative content; not full commercial content volume." else "Objective: a complete, genuinely playable first version.")
+        p(ownerV(Keys.FIRST_SLICE) ?: "The owner did not define the slice themselves; follow the recommended slice in Part B and the objective below.")
+        p(if (prototype) "Objective: a FULLY FUNCTIONAL PROTOTYPE (the owner's own word) - real gameplay, representative presentation, a beginning-to-end slice, actual controls and core loop, representative content; not full commercial content volume." else "Objective: a complete, genuinely playable first version (the default; the owner did not ask for a prototype).")
 
         h2("A6. Completion criteria")
-        bullets(listOfNotNull(v(Keys.WIN_LOSS)?.let { "Win and loss: $it" }, v(Keys.DONE)?.let { "The first build is done when: $it" }))
+        val completion = listOfNotNull(ownerV(Keys.WIN_LOSS)?.let { "Win and loss: $it" }, ownerV(Keys.DONE)?.let { "The first build is done when: $it" })
+        if (completion.isEmpty()) p("The owner delegated the completion criteria; see Part B.") else bullets(completion)
 
         h2("A7. Asset policy and owner-supplied assets")
         v(Keys.ASSET_POLICY)?.let { pol -> p("Asset policy: **${label(Keys.ASSET_POLICY, pol)}**" + (project.decision(Keys.ASSET_POLICY)?.let { if (it.ownerAuthored) " (chosen by the owner)" else "" } ?: "") + ".") }
@@ -438,9 +440,10 @@ object ClaudeMdGenerator {
         sb.append("# PART D - UNRESOLVED AND DELEGATED DECISIONS\n\n")
         val unresolved = Fields.all.filter { f -> f.isRelevant(t) && f.required && f.key != Keys.CONCEPT && project.decision(f.key)?.let { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() } != true }
             .map { f -> if (project.decision(f.key)?.status == DecisionStatus.PROPOSED) "${f.title}: inferred but not confirmed by the owner (${label(f.key, project.value(f.key))}); treat as a recommendation and make the least surprising reversible choice." else "${f.title}: not yet decided (${f.prompt})" }
-        val deferred = project.decisions.filter { it.value.status == DecisionStatus.DEFERRED }.keys.map { "${Fields.get(it)?.title ?: it}: deliberately deferred by the owner; do not build it." }
-        val delegated = project.decisions.filter { (_, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION }.keys.map { "${Fields.get(it)?.title ?: it}: delegated to Bob's recommendation (listed in Part B)." }
-        if (unresolved.isEmpty() && deferred.isEmpty() && delegated.isEmpty()) p("None. Every build-critical decision is resolved by the owner or left to implementation discretion above.") else bullets(unresolved + deferred + delegated)
+        val deferred = project.decisions.filter { it.value.status == DecisionStatus.DEFERRED && it.key != Keys.FIVE_MINUTES && Fields.get(it.key)?.required == true }.keys.map { "${Fields.get(it)?.title ?: it}: deliberately deferred by the owner; do not build it." }
+        val delegated = project.decisions.filter { (_, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION }.keys.map { Fields.get(it)?.title ?: it }
+        if (unresolved.isEmpty() && deferred.isEmpty()) p("None unresolved. Every build-critical decision is resolved by the owner, delegated, or left to implementation discretion above.") else bullets(unresolved + deferred)
+        if (delegated.isNotEmpty()) p("Delegated to Bob's recommendation (recorded in Part B): ${delegated.joinToString(", ")}.")
         project.designApproval?.let { p("The owner's plain-English design review was ${if (it.by == "delegated") "delegated (approved on the owner's behalf)" else "approved"}.") }
 
         // 18. Human-only

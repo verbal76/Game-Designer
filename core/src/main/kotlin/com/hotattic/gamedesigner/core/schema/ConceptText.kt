@@ -9,8 +9,10 @@ object ConceptText {
         text.trim().split(Regex("(?<=[.!?])\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
 
     /** Drops sentences that are only about where it will be played. Never returns empty for non-empty input. */
+    private val titleOnly = Regex("(?i)^(?:i\\s+want\\s+to\\s+make|i(?:'d| would)\\s+like\\s+to\\s+make|let'?s\\s+make|i(?:'m| am)\\s+making)?\\s*(?:a|an|the)?\\s*(?:new\\s+)?game\\s+(?:called|named|titled)\\s+[\\w'’:\\- ]{1,40}[.!]?$")
+
     fun withoutPlatformSentences(text: String): String {
-        val keep = sentences(text).filter { !platformWord.containsMatchIn(it) }
+        val keep = sentences(text).filter { !platformWord.containsMatchIn(it) && !titleOnly.matches(it.trim()) }
         return (if (keep.isEmpty()) sentences(text).take(1) else keep).joinToString(" ").trim()
     }
 
@@ -27,6 +29,8 @@ object ConceptText {
         var core = (if (after != null && after.trim().length >= 12) after else cleaned).trim()
         core = core.replace(leadIn, "").trim()
         if (core.isEmpty()) core = cleaned
+        // Concise: the first two sentences carry the fantasy; the rest stays in the owner's verbatim concept.
+        if (core.length > 280) core = sentences(core).take(2).joinToString(" ").take(320).trim()
         core = secondPerson(core)
         core = core.replaceFirstChar { it.uppercase() }
         return if (core.endsWith(".") || core.endsWith("!") || core.endsWith("?")) core else "$core."
@@ -36,6 +40,9 @@ object ConceptText {
     fun theme(concept: String, maxLen: Int = 110): String {
         val f = fantasy(concept).trimEnd('.', '!', '?')
         if (f.length <= maxLen) return f
+        // Prefer ending on a sentence boundary so the phrase never stops mid-thought.
+        val firstSentence = f.split(Regex("(?<=[.!?])\\s+")).first().trimEnd('.', '!', '?')
+        if (firstSentence.length in 12..maxLen) return firstSentence
         val cut = f.substring(0, maxLen).substringBeforeLast(' ')
         return cut.ifEmpty { f.substring(0, maxLen) }
     }

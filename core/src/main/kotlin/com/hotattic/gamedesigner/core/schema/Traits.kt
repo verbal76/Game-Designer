@@ -29,6 +29,10 @@ class Traits(val project: Project) {
             return w == "vertical_shaft" || (w == null && project.value(Keys.PERSPECTIVE) == "vertical_scroll")
         }
 
+    /** The owner described two distinct playable characters, sides or modes. */
+    val twoSides: Boolean
+        get() = (listOf(project.originalConcept) + project.activeFacts().map { it.text }).any { Regex("(?i)\\b(either character|two characters|both characters|two (modes|sides|playable)|which side|choose (which|a) (side|character)|two different characters)\\b").containsMatchIn(it) }
+
     /** Genre checklist adapted to the owner's actual structure: no level sets or level select in a continuous world. */
     fun systems(): List<Pair<Genre, SystemReq>> = genres.flatMap { g ->
         val list = if (continuousWorld && g.id == "platformer") g.systems.filter { it.id !in setOf("level_set", "level_select_progress") } + listOf(

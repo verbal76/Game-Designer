@@ -82,6 +82,7 @@ object DecisionExtractor {
     private val trigger = Regex("(?i)\\b(?:like|inspired by|similar to|mix(?:ed)? (?:of|with)|cross(?:ed)? with|combined with|combine|meets|mashup of|plus|crossed with)\\s+")
     private val titleSeq = Regex("\\b([A-Z][\\w'’:\\-]*(?:\\s+(?:of|the|and|in|for|to|a|&|[A-Z0-9][\\w'’:\\-]*))*)")
     private val notGames = setOf("I", "I'm", "Im", "Android", "iPhone", "Windows", "Linux", "Steam", "Kevin", "Bob", "Claude", "Google", "Play", "Apple", "Mac", "Unity", "Unreal", "Godot", "GitHub", "The", "A", "An", "My", "And", "But", "Or", "So", "It", "This", "That", "We", "You", "They", "Yes", "No", "Hi", "Hello", "Okay", "OK", "Well")
+    private val nonTitleOpeners = setOf("it's", "its", "i'm", "i've", "i'd", "i'll", "you", "you're", "you'll", "you've", "there", "there's", "this", "that", "that's", "we", "we're", "they", "he", "she", "what", "when", "where", "how", "if", "as", "in", "on", "for", "my", "our", "your", "the", "a", "an", "one", "each", "every", "both", "either", "some", "all", "but", "and", "or", "so", "then", "also", "with", "without", "after", "before")
     private val knownSingleWord = GenreKnowledge.all.flatMap { it.keywords }.filter { !it.contains(' ') && it.first().isLetter() }.toSet()
 
     fun extract(text: String): Extraction {
@@ -153,6 +154,9 @@ object DecisionExtractor {
             if (s.isEmpty()) return
             val first = s.split(' ').first()
             if (first in notGames && s.split(' ').size == 1) return
+            // Sentence openers and tech tags are not titles: "It's a 2D", "You can", "3D".
+            if (first.lowercase().replace("’", "'") in nonTitleOpeners) return
+            if (Regex("(?i)^(\\d\\.?\\d?d|android|ios|pc|2d|3d)$").matches(s.split(' ').last()) && s.split(' ').size <= 3) return
             val words = s.split(' ')
             val multi = words.count { it.firstOrNull()?.let { c -> c.isUpperCase() || c.isDigit() } == true } >= 2
             val single = words.size == 1 && (afterTrigger || s.lowercase() in knownSingleWord)

@@ -140,7 +140,7 @@ object ConsistencyReview {
         // 9. Prototype stays a prototype.
         if (ProjectObjective.of(p) == BuildObjective.PROTOTYPE) for (l in lines) {
             val low = l.lowercase()
-            if (listOf("complete game", "not a prototype", "genuinely playable, complete", "full commercial", "complete, genuinely playable").any { it in low } && !low.contains("full commercial game")) out += ReviewFinding(ReviewLevel.ERROR, "prototype_scope_escalation", "The owner asked for a fully functional prototype but the spec implies a complete game.", l.trim().take(160))
+            if (listOf("complete game", "not a prototype", "genuinely playable, complete", "complete, genuinely playable").any { it in low } && !Regex("\\b(not|never|isn't) (a |an |the )?(full |complete )?(commercial |production )?(complete )?game\\b").containsMatchIn(low)) out += ReviewFinding(ReviewLevel.ERROR, "prototype_scope_escalation", "The owner asked for a fully functional prototype but the spec implies a complete game.", l.trim().take(160))
         }
         // 10. Owner-supplied branding wins over generated/default branding.
         for ((slot, key) in Keys.brandingKeyForSlot) {

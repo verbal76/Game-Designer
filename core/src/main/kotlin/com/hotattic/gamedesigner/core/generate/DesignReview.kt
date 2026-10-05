@@ -46,10 +46,11 @@ object DesignReview {
         val title = p.value(Keys.DISPLAY_NAME) ?: p.name.ifBlank { "Your game" }
         val out = mutableListOf<String>()
         out += "**Here's the game I think we're making: $title.**"
-        val fantasy = p.value(Keys.CORE_FANTASY) ?: p.originalConcept.lines().firstOrNull().orEmpty()
+        val fantasy = p.value(Keys.CORE_FANTASY) ?: com.hotattic.gamedesigner.core.schema.ConceptText.fantasy(p.originalConcept)
         if (fantasy.isNotBlank()) out += "**The idea.** ${clean(fantasy)}."
-        val role = p.activeFacts().map { it.text }.firstOrNull { Regex("(?i)\\b(you play|you are|you control|two characters|character|player)\\b").containsMatchIn(it) }
-        if (role != null && role !in fantasy) out += "**Who you play.** ${clean(role)}."
+        val roleFacts = p.activeFacts().map { it.text }.filter { Regex("(?i)\\b(you (play|are|control|choose|can (play|descend|ascend))|as an? |as the )").containsMatchIn(it) && !Regex("(?i)\\b(called|named|titled)\\b").containsMatchIn(it) }
+        val roleText = roleFacts.take(2).joinToString(" ")
+        if (roleText.isNotBlank() && roleText.take(60) !in fantasy) out += "**Who you play.** ${clean(roleText)}."
         label(p, Keys.PLAYER_FEELING)?.let { out += "**How it should feel.** ${clean(it)}." }
         label(p, Keys.CORE_LOOP)?.let { out += "**What you do, moment to moment.** ${clean(it)}." }
         val moves = listOfNotNull(label(p, Keys.MOVEMENT_CAMERA)?.let { "Movement and camera: ${clean(it)}" }, label(p, Keys.COMBAT_MODEL)?.let { "Combat: ${clean(it).lowercase()}" })
@@ -72,8 +73,8 @@ object DesignReview {
         val look = listOfNotNull(label(p, Keys.ART_DIRECTION)?.let { "Art: ${clean(it)}" }, label(p, Keys.AUDIO)?.let { "Audio: ${clean(it).lowercase()}" },
             label(p, Keys.ASSET_POLICY)?.let { "Assets: ${clean(it)}" }, ups.takeIf { it.isNotEmpty() }?.let { "Supplied by you: ${it.joinToString { b -> b.slot.replace('_', ' ') }}" })
         if (look.isNotEmpty()) out += "**Look, sound and assets.** ${look.joinToString(". ")}."
-        val done = label(p, Keys.WIN_LOSS) ?: label(p, Keys.DONE)
-        if (done != null) out += "**It's complete when.** ${clean(done)}."
+        val done = listOfNotNull(label(p, Keys.DONE)?.let { clean(it) }, label(p, Keys.WIN_LOSS)?.let { clean(it) }).joinToString(". ")
+        if (done.isNotBlank()) out += "**It's complete when.** $done."
         p.value(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }?.let { out += "**Claude must not change.** ${clean(it)}." }
         out += "**Platform.** ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not set yet" }}."
         out += "Is that the game you have in your head? Say \"looks right\", tell me what to change in your own words, or name a part to edit (world, loop, failure, first build, look...)."

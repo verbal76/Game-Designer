@@ -42,7 +42,7 @@ object DimensionLexicon {
         DimId.WORLD to listOf(Regex("(?i)\\b(shaft|tower|pit|world|map|levels?|stages?|rooms?|hub|open.?world|biome|zone|zones|arena|track|dungeon|procedural|procedurally|continuous|enormous|giant|huge|vertical|underground|surface|caverns?|chasm)\\b")),
         DimId.FAILURE to listOf(Regex("(?i)\\b(die|dies|dying|death|respawn|checkpoint|retry|restart|game over|lose|loses|lives|permadeath|fail|fails|defeat|defeated|health reaches)\\b")),
         DimId.PROGRESSION to listOf(Regex("(?i)\\b(upgrade|upgrades|unlock|unlocks|level up|stronger|abilities|ability|equipment|gear|skill tree|experience|xp|power up|power-up|earn|grow|evolve)\\b")),
-        DimId.COMPLETION to listOf(Regex("(?i)\\b(win|wins|goal|reach the|escape|finish|victory|ending|objective|beat the game|complete the)\\b")),
+        DimId.COMPLETION to listOf(Regex("(?i)\\b(win|wins|goal|reach the|escape|finish|victory|ending|objective|beat the game|complete the|at the end|final boss|end boss)\\b")),
         DimId.VISUAL to listOf(Regex("(?i)\\b(art style|pixel|palette|color|colour|lighting|looks like|visual|graphics|aesthetic|silhouette|hand.?drawn|low.?poly|voxel|cartoon|realistic|stylized|stylised)\\b")),
         DimId.AUDIO to listOf(Regex("(?i)\\b(music|soundtrack|sound|audio|ambient|ambience|sfx|score)\\b")),
     )
@@ -79,7 +79,7 @@ object DimensionCoverage {
 object SelectLexicon {
     private val world = linkedMapOf(
         "vertical_shaft" to Regex("(?i)\\b(shaft|tower|pit|chasm|vertical (world|map)|one (enormous|giant|huge|continuous|massive) (vertical )?(world|shaft|tower|pit)|single (continuous|vertical) (world|shaft|tower))\\b"),
-        "open_map" to Regex("(?i)\\b(open.?world|large (connected )?map|sprawling|interconnected)\\b"),
+        "open_map" to Regex("(?i)\\b(open.?world|open map|(large |big )?connected (open )?map|sprawling|interconnected)\\b"),
         "procedural_stages" to Regex("(?i)\\b(procedural(ly)?|randomly generated|random(ised|ized)? levels|different every (run|time))\\b"),
         "hub_missions" to Regex("(?i)\\b(hub and (missions|spokes?)|hub world|missions from a hub)\\b"),
         "single_arena" to Regex("(?i)\\b(single arena|one arena|arena survival|survive waves in an arena)\\b"),
@@ -92,11 +92,22 @@ object SelectLexicon {
         "adjustable" to Regex("(?i)\\b(difficulty (levels|settings|options)|adjustable difficulty)\\b"),
     )
 
-    private fun unique(map: Map<String, Regex>, text: String): String? = map.filter { it.value.containsMatchIn(text) }.keys.singleOrNull()
+    private val progression = linkedMapOf(
+        "abilities_gear" to Regex("(?i)\\b(new abilities|unlock(ing)? (new )?abilities|abilities (like|such as)|new (gear|equipment)|abilities and (gear|equipment))\\b"),
+        "tech_tree" to Regex("(?i)\\b(skill tree|tech tree|research tree)\\b"),
+        "xp_levels" to Regex("(?i)\\b(level up|experience points|xp)\\b"),
+        "meta_unlocks" to Regex("(?i)\\b(permanent (unlocks|upgrades)|between runs)\\b"),
+    )
+    private val negCue = Regex("(?i)(rather than|instead of|\\bnot\\b|\\bno\\b|n't|without|never)[\\w\\s,'-]{0,25}$")
+
+    /** A match only counts when the owner is not ruling it out ("a connected map rather than separate levels"). */
+    private fun unique(map: Map<String, Regex>, text: String): String? =
+        map.filter { (_, re) -> re.findAll(text).any { m -> !negCue.containsMatchIn(text.substring(0, m.range.first).takeLast(40)) } }.keys.singleOrNull()
     fun worldStructure(text: String): String? = unique(world, text)
     fun failureModel(text: String): String? = unique(failure, text)
 
-    fun forField(key: String, text: String): String? = when (key) { Keys.WORLD_STRUCTURE -> worldStructure(text); Keys.DIFFICULTY_FAILURE -> failureModel(text); else -> null }
+    fun forField(key: String, text: String): String? = when (key) {
+        Keys.WORLD_STRUCTURE -> worldStructure(text); Keys.DIFFICULTY_FAILURE -> failureModel(text); Keys.PROGRESSION -> unique(progression, text); else -> null }
 }
 
 /** Drafts for "choose for me" on the first-playable-slice and must-not-change questions, built only from what is known. */
@@ -134,9 +145,10 @@ object SliceSuggester {
         if (p.decision(Keys.DONE)?.ownerAuthored == true && com.hotattic.gamedesigner.core.engine.ProjectObjective.of(p) == com.hotattic.gamedesigner.core.engine.BuildObjective.PROTOTYPE)
             items += "The first build is a fully functional prototype, not a full commercial game."
         if (p.rejected[Dependencies.TAG].orEmpty().contains("TURN_BASED")) items += "The game is real-time and is not turn-based."
-        p.value(Keys.ASSET_POLICY)?.takeIf { p.decision(Keys.ASSET_POLICY)?.ownerAuthored == true }?.let { items += "Asset policy: $it (as chosen by the owner)." }
-        p.branding.values.filter { it.mode == com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED }.forEach { items += "Use the owner-supplied ${it.slot.replace('_', ' ')} exactly as provided." }
+        p.value(Keys.ASSET_POLICY)?.takeIf { p.decision(Keys.ASSET_POLICY)?.ownerAuthored == true }?.let { items += "Asset policy: ${com.hotattic.gamedesigner.core.generate.PlainLabels.of(p, Keys.ASSET_POLICY)} (chosen by the owner)." }
+        p.branding.values.filter { it.mode == com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED }.forEach { items += "Use the owner-supplied ${it.slot.replace('_', ' ')} exactly as provided" }
+        val joined = items.joinToString(". ") { it.trimEnd('.', ' ') } + "."
         return if (items.isEmpty()) Suggestion("none", "Nothing has been fixed yet that a builder could plausibly reinterpret.")
-        else Suggestion(items.joinToString(" "), "These are the things you already fixed that a builder might otherwise 'improve'.")
+        else Suggestion(joined, "These are the things you already fixed that a builder might otherwise 'improve'.")
     }
 }

@@ -36,7 +36,8 @@ object MasterPromptGenerator {
         val repo = project.repo?.let { "${it.owner}/${it.repo}" }
         val openFeedback = project.feedback.count { it.status == FeedbackStatus.OPEN }
         fun v(k: String) = project.decision(k)?.takeIf { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() && (Fields.get(k)?.isRelevant(t) != false) }?.value
-        fun lab(k: String) = v(k)?.let { PlainLabels.of(project, k) }
+        fun rec(k: String) = if (project.decision(k)?.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION) " (accepted recommendation)" else ""
+        fun lab(k: String) = v(k)?.let { PlainLabels.of(project, k) + rec(k) }
         val usage = when (project.prefs.usageStyle) {
             UsageStyle.CONSERVATIVE -> "The owner shares one usage allowance across many projects: work economically and stop cleanly at a checkpoint rather than burning the whole window."
             UsageStyle.BALANCED -> "Work at a steady, economical pace; checkpoint often so a context reset costs nothing."
@@ -70,15 +71,15 @@ object MasterPromptGenerator {
                 DimensionLexicon.sentencesFor(project, DimId.FEELING).firstOrNull()?.takeIf { it != v(Keys.PLAYER_FEELING) }?.let { "In the owner's words: \"$it\"" }))
 
             section("PLAYABLE FIRST-BUILD SCOPE", listOfNotNull(
-                v(Keys.FIRST_SLICE) ?: "Build the smallest polished slice that fully demonstrates the concept.",
+                (v(Keys.FIRST_SLICE)?.let { it + rec(Keys.FIRST_SLICE) } ?: "Build the smallest polished slice that fully demonstrates the concept."),
                 if (prototype) "This is a PROTOTYPE by the owner's own definition: real gameplay, representative presentation, a beginning-to-end slice, real controls and core loop. It is not required to contain full production content (every eventual level, enemy, boss or final art)."
                 else "Content volume: see CLAUDE.md section 5 (sizing is a recommendation, not a requirement, unless the owner stated numbers).",
                 "Smaller and polished beats larger and unfinished. Do not invent content counts the owner did not set."))
 
-            section("CORE LOOP", listOfNotNull(v(Keys.CORE_LOOP)))
+            section("CORE LOOP", listOfNotNull(v(Keys.CORE_LOOP)?.let { it + rec(Keys.CORE_LOOP) }))
 
             val must = listOfNotNull(
-                v(Keys.MOVEMENT_CAMERA)?.let { "Movement and camera: $it" },
+                v(Keys.MOVEMENT_CAMERA)?.let { "Movement and camera: $it${rec(Keys.MOVEMENT_CAMERA)}" },
                 lab(Keys.COMBAT_MODEL)?.let { "Combat: $it" },
                 v(Keys.CHARACTERS)?.let { "Characters: ${lab(Keys.CHARACTERS)}" },
                 v(Keys.ECONOMY)?.let { "Economy: $it" }, v(Keys.SURVIVAL_CRAFTING)?.let { "Survival and crafting: $it" }, v(Keys.AUTOMATION_SIM)?.let { "Simulation: $it" },
@@ -98,7 +99,7 @@ object MasterPromptGenerator {
 
             section("PROGRESSION / FAILURE / COMPLETION", listOfNotNull(
                 lab(Keys.PROGRESSION)?.let { "Progression: $it" }, lab(Keys.DIFFICULTY_FAILURE)?.let { "Failure and recovery: $it" },
-                v(Keys.WIN_LOSS)?.let { "Win and loss: $it" }, v(Keys.DONE)?.let { "The first build is complete when: $it" }))
+                v(Keys.WIN_LOSS)?.let { "Win and loss: $it${rec(Keys.WIN_LOSS)}" }, v(Keys.DONE)?.let { "The first build is complete when: $it${rec(Keys.DONE)}" }))
 
             section("VISUAL QUALITY IS PART OF COMPLETION", listOfNotNull(
                 lab(Keys.ART_DIRECTION)?.let { "Art direction: $it" }, v(Keys.COLOR_MOOD)?.let { "Colour and mood: $it" },
@@ -142,9 +143,9 @@ object MasterPromptGenerator {
     }
 
     private fun unresolved(p: Project, t: Traits): List<String> {
-        val deferred = p.decisions.filter { it.value.status == DecisionStatus.DEFERRED }.keys.map { "- ${Fields.get(it)?.title ?: it}: deliberately deferred by the owner; do not build it." }
-        val delegated = p.decisions.filter { (_, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION }.keys.map { "- ${Fields.get(it)?.title ?: it}: the owner delegated this to the recommendation recorded in `CLAUDE.md` Part B." }
-        return deferred + delegated
+        val deferred = p.decisions.filter { it.value.status == DecisionStatus.DEFERRED && it.key != Keys.FIVE_MINUTES && Fields.get(it.key)?.required == true }.keys.map { "- ${Fields.get(it)?.title ?: it}: deliberately deferred by the owner; do not build it." }
+        val delegated = p.decisions.any { (_, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION }
+        return deferred + listOfNotNull(if (delegated) "- Where the owner delegated a decision to Bob's recommendation, it is recorded in `CLAUDE.md` Part B; follow it unless Part A says otherwise." else null)
     }
 
     /** First prove the riskiest mechanic, then a complete loop, then content, then presentation, then validation - ordered for THIS game. */
