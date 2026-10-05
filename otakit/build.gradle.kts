@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.serialization)
+    application
 }
 
 java {
@@ -15,13 +16,12 @@ kotlin {
 }
 
 dependencies {
-    // Provided at runtime by the app shell (compileOnly) so the OTA bundle contains only our own classes.
-    compileOnly(libs.kotlinx.coroutines.core)
-    compileOnly(libs.kotlinx.serialization.json)
-    testImplementation(libs.kotlinx.coroutines.core)
-    testImplementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.serialization.json)
     testImplementation(kotlin("test"))
-    testImplementation(libs.kotlinx.coroutines.test)
+}
+
+application {
+    mainClass.set("com.hotattic.gamedesigner.otakit.OtaCliKt")
 }
 
 tasks.test {

@@ -42,7 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewModelScope
 import androidx.navigation.NavController
 import com.hotattic.gamedesigner.AppViewModel
-import com.hotattic.gamedesigner.BuildConfig
+import com.hotattic.gamedesigner.shellapi.ShellServices
+import com.hotattic.gamedesigner.applayer.AppLayerEntry
 import com.hotattic.gamedesigner.DEFAULT_CLOUD_MODEL
 import com.hotattic.gamedesigner.core.llm.LlmMessage
 import com.hotattic.gamedesigner.core.llm.LlmRequest
@@ -51,15 +52,15 @@ import com.hotattic.gamedesigner.core.model.CloudProviderId
 import com.hotattic.gamedesigner.core.model.ClaudePlan
 import com.hotattic.gamedesigner.core.model.Experience
 import com.hotattic.gamedesigner.core.model.UsageStyle
-import com.hotattic.gamedesigner.data.ModelState
-import com.hotattic.gamedesigner.data.SecretStore
+import com.hotattic.gamedesigner.shellapi.ModelState
+import com.hotattic.gamedesigner.shellapi.SecretStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(vm: AppViewModel, nav: NavController) {
+fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
     val s by vm.settings.collectAsState()
     val c = vm.container
     val ctx = LocalContext.current
@@ -183,10 +184,34 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController) {
             }
             status?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
             HorizontalDivider()
-            Text("Game Designer ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE}) - a Hot Attic Games app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            DiagnosticsSection(shell)
+            Text("Game Designer ${shell.nativeVersionName} (build ${shell.nativeVersionCode}) - a Hot Attic Games app.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 private fun Section(t: String) = Text(t, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+
+@Composable
+private fun DiagnosticsSection(shell: ShellServices) {
+    var d by remember { mutableStateOf(shell.ota.diagnostics()) }
+    var msg by remember { mutableStateOf<String?>(null) }
+    Section("Diagnostics and updates")
+    Text("Native app: ${d.nativeVersionName} (build ${d.nativeVersionCode}), shell API ${d.shellApiLevel}\nRuntime: ${d.runtimeFingerprint}", style = MaterialTheme.typography.bodySmall)
+    Text("Application layer: ${d.layerSource.uppercase()} v${d.layerVersion} (${d.layerLabel}); running code identity ${AppLayerEntry.LAYER_LABEL} v${AppLayerEntry.LAYER_VERSION}", style = MaterialTheme.typography.bodySmall)
+    Text("Update channel: ${d.channel}${if (!d.trustedKeyPresent) " (disabled: this build has no trusted update key)" else ""}", style = MaterialTheme.typography.bodySmall)
+    Text("Last check: ${if (d.lastCheckAt == 0L) "never" else java.text.DateFormat.getDateTimeInstance().format(java.util.Date(d.lastCheckAt))} - ${d.lastCheckResult}", style = MaterialTheme.typography.bodySmall)
+    d.pendingVersion?.let { Text("Update $it is downloaded and verified. It activates the next time the app starts (close it from recents and reopen).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
+    if (d.startupNote.isNotBlank()) Text("Startup: ${d.startupNote}", style = MaterialTheme.typography.bodySmall)
+    if (d.lastEvent.isNotBlank()) Text("Last event: ${d.lastEvent}", style = MaterialTheme.typography.bodySmall)
+    if (d.badVersions.isNotEmpty()) Text("Rejected/rolled back: ${d.badVersions.joinToString()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("off", "dev", "stable").forEach { ch -> androidx.compose.material3.FilterChip(d.channel == ch, { shell.ota.setChannel(ch); d = shell.ota.diagnostics() }, { Text(ch) }) }
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton({ msg = "Checking..."; shell.ota.checkNow { msg = it; d = shell.ota.diagnostics() } }, enabled = d.channel != "off") { Text("Check for update") }
+        TextButton({ shell.ota.resetToBundled(); d = shell.ota.diagnostics(); msg = "Reset. The bundled layer runs from the next start." }) { Text("Use bundled layer") }
+    }
+    msg?.let { Text(it, color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodySmall) }
+}

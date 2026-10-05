@@ -1,4 +1,4 @@
-package com.hotattic.gamedesigner.data
+package com.hotattic.gamedesigner.shellapi
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec

@@ -1,8 +1,7 @@
-package com.hotattic.gamedesigner.data
+package com.hotattic.gamedesigner.shellapi
 
 import android.content.Context
 import android.net.Uri
-import com.hotattic.gamedesigner.core.net.NetworkUnavailableException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

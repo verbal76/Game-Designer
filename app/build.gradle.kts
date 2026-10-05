@@ -1,8 +1,10 @@
 plugins {
     id("com.android.application")
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.kotlin.serialization)
 }
+
+// Runtime generation identity. OTA bundles must be built with exactly this fingerprint to be accepted.
+val runtimeFingerprint = "k${libs.versions.kotlin.get()}-c${libs.versions.composeBom.get()}-a${libs.versions.agp.get()}-s${libs.versions.shellApi.get()}"
 
 android {
     namespace = "com.hotattic.gamedesigner"
@@ -14,12 +16,29 @@ android {
         targetSdk = 36
         // CI run number gives a monotonically increasing build code; local builds use 1.
         versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
-        versionName = "0.1.0"
+        versionName = "2.0.0"
+        buildConfigField("String", "RUNTIME_FINGERPRINT", "\"$runtimeFingerprint\"")
+        buildConfigField("int", "SHELL_API_LEVEL", libs.versions.shellApi.get())
+        buildConfigField("String", "OTA_REPO", "\"verbal76/Game-Designer\"")
+    }
+
+    // Release signing comes from the environment (CI), never from source. Without it, a local release build is debug-signed.
+    val ksPath = System.getenv("GD_KEYSTORE")
+    signingConfigs {
+        if (ksPath != null) {
+            create("release") {
+                storeFile = file(ksPath)
+                storePassword = System.getenv("GD_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GD_KEY_ALIAS")
+                keyPassword = System.getenv("GD_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = if (ksPath != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
     }
 
@@ -33,13 +52,17 @@ android {
         buildConfig = true
     }
 
+    lint { checkReleaseBuilds = false }
+
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
 }
 
 dependencies {
-    implementation(project(":core"))
+    implementation(project(":shellapi"))
+    implementation(project(":applayer"))
+    implementation(project(":otakit"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
@@ -52,6 +75,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.litertlm.android)
 
     testImplementation(libs.junit)

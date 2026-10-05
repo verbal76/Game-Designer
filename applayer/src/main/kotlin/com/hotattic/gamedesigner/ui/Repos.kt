@@ -27,7 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.hotattic.gamedesigner.AppViewModel
-import com.hotattic.gamedesigner.data.SecretStore
+import com.hotattic.gamedesigner.shellapi.SecretStore
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

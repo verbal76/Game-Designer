@@ -34,24 +34,24 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.hotattic.gamedesigner.AppViewModel
-import com.hotattic.gamedesigner.R
+import com.hotattic.gamedesigner.shellapi.ShellServices
 import com.hotattic.gamedesigner.UiEvent
 import kotlinx.coroutines.delay
 
 @Composable
-fun AppRoot(vm: AppViewModel) {
+fun AppRoot(vm: AppViewModel, shell: ShellServices) {
     var splashDone by rememberSaveable { mutableStateOf(false) }
     val settings by vm.settings.collectAsState()
     when {
-        !splashDone -> HotAtticSplash { splashDone = true }
+        !splashDone -> HotAtticSplash(shell.splashLogoRes) { splashDone = true }
         !settings.onboardingComplete -> OnboardingScreen(vm)
-        else -> AppNav(vm)
+        else -> AppNav(vm, shell)
     }
 }
 
 /** Full-screen Hot Attic Games studio splash. Uses the authoritative logo asset (derived, never redrawn). */
 @Composable
-fun HotAtticSplash(onFinished: () -> Unit) {
+fun HotAtticSplash(logoRes: Int, onFinished: () -> Unit) {
     val alpha = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
         alpha.animateTo(1f, androidx.compose.animation.core.tween(700))
@@ -62,7 +62,7 @@ fun HotAtticSplash(onFinished: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color(0xFF130F0C)).clickable { onFinished() }, contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.systemBarsPadding().padding(24.dp)) {
             Image(
-                painter = painterResource(R.drawable.hot_attic_logo),
+                painter = painterResource(logoRes),
                 contentDescription = "Hot Attic Games",
                 contentScale = ContentScale.Fit,
                 modifier = Modifier.fillMaxWidth().graphicsAlpha(alpha.value),
@@ -75,7 +75,7 @@ fun HotAtticSplash(onFinished: () -> Unit) {
 private fun Modifier.graphicsAlpha(a: Float) = this.alpha(a)
 
 @Composable
-fun AppNav(vm: AppViewModel) {
+fun AppNav(vm: AppViewModel, shell: ShellServices) {
     val nav = rememberNavController()
     val snackbar = remember { SnackbarHostState() }
     LaunchedEffect(Unit) {
@@ -95,7 +95,7 @@ fun AppNav(vm: AppViewModel) {
                 composable("chat/{id}") { ChatScreen(vm, nav, it.arguments?.getString("id").orEmpty()) }
                 composable("spec/{id}") { SpecScreen(vm, nav, it.arguments?.getString("id").orEmpty()) }
                 composable("branding/{id}") { BrandingScreen(vm, nav, it.arguments?.getString("id").orEmpty()) }
-                composable("settings") { SettingsScreen(vm, nav) }
+                composable("settings") { SettingsScreen(vm, nav, shell) }
                 composable("repos") { ReposScreen(vm, nav) }
             }
         }

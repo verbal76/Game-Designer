@@ -1,34 +1,48 @@
 package com.hotattic.gamedesigner
 
-import android.app.Application
 import com.hotattic.gamedesigner.core.director.Director
 import com.hotattic.gamedesigner.core.director.DirectorDeps
 import com.hotattic.gamedesigner.core.github.GitHubClient
 import com.hotattic.gamedesigner.core.llm.AnthropicProvider
+import com.hotattic.gamedesigner.core.llm.LlmProvider
+import com.hotattic.gamedesigner.core.llm.LlmRequest
+import com.hotattic.gamedesigner.core.llm.LlmResult
+import com.hotattic.gamedesigner.core.llm.LlmTier
 import com.hotattic.gamedesigner.core.model.AppSettings
 import com.hotattic.gamedesigner.core.model.CloudProviderId
 import com.hotattic.gamedesigner.core.net.JavaHttpTransport
 import com.hotattic.gamedesigner.core.persist.FileProjectStore
 import com.hotattic.gamedesigner.core.research.WebResearch
-import com.hotattic.gamedesigner.data.LiteRtLlmProvider
-import com.hotattic.gamedesigner.data.ModelManager
-import com.hotattic.gamedesigner.data.SecretStore
+import com.hotattic.gamedesigner.shellapi.LocalLlm
+import com.hotattic.gamedesigner.shellapi.SecretStore
+import com.hotattic.gamedesigner.shellapi.ShellServices
 import kotlinx.coroutines.flow.MutableStateFlow
 
 const val DEFAULT_CLOUD_MODEL = "claude-sonnet-5-5"
 
-/** Manual dependency container: one place that wires core abstractions to Android implementations. */
-class AppContainer(app: Application) {
-    val store = FileProjectStore(app.filesDir)
-    val secrets = SecretStore(app)
+/** Adapts the shell's stable [LocalLlm] to the core [LlmProvider] interface (which may change over the air). */
+class ShellLlmAdapter(private val shell: LocalLlm) : LlmProvider {
+    override val id = "litert-lm"
+    override val displayName = "On-device model"
+    override val tier = LlmTier.LOCAL_SMALL
+    override val isLocal = true
+    override suspend fun isReady() = shell.isReady()
+    override suspend fun complete(request: LlmRequest): LlmResult {
+        val user = request.messages.lastOrNull { it.role == "user" }?.content ?: return LlmResult.Failure("Empty request")
+        val r = shell.complete(request.system, user, request.maxTokens)
+        return r.text?.let { LlmResult.Ok(it) } ?: LlmResult.Failure(r.error ?: "Local model returned nothing")
+    }
+}
+
+/** Application-layer dependency container. Everything native comes from [ShellServices]. */
+class AppContainer(val shell: ShellServices) {
+    val store = FileProjectStore(shell.application.filesDir)
+    val secrets get() = shell.secrets
+    val models get() = shell.models
     val http = JavaHttpTransport()
     val settings = MutableStateFlow(store.loadSettings())
-    val models = ModelManager(app) { secrets.get(SecretStore.HF_TOKEN) }
 
-    val local = LiteRtLlmProvider(app) {
-        val id = settings.value.localModelId
-        (if (id.isNotBlank()) models.activePath(id) else null) ?: models.anyPath()
-    }
+    val local: LlmProvider = ShellLlmAdapter(shell.localLlm)
     val cloud = AnthropicProvider(http, { secrets.get(SecretStore.ANTHROPIC_KEY) }, { settings.value.cloudModel.ifBlank { DEFAULT_CLOUD_MODEL } })
     val research = WebResearch(http)
 
@@ -48,14 +62,4 @@ class AppContainer(app: Application) {
         cloud = if (cloudConfigured()) cloud else null,
         research = research,
     ))
-}
-
-class GameDesignerApp : Application() {
-    lateinit var container: AppContainer
-        private set
-
-    override fun onCreate() {
-        super.onCreate()
-        container = AppContainer(this)
-    }
 }

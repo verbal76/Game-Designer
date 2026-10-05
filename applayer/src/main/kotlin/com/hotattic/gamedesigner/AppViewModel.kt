@@ -53,8 +53,7 @@ sealed class UiEvent {
 }
 
 /** Single ViewModel for the whole app: owns settings, the project list, the open project and long-running work. */
-class AppViewModel(app: Application) : AndroidViewModel(app) {
-    private val c = (app as GameDesignerApp).container
+class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewModel(app) {
     private val lock = Mutex()
 
     val settings: StateFlow<AppSettings> = c.settings

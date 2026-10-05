@@ -8,3 +8,5 @@ captures/
 *.jks
 *.keystore
 .env
+
+app/src/main/assets/ota/trusted_keys.txt
