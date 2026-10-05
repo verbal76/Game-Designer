@@ -97,7 +97,7 @@ object Tiers {
     val derive = setOf(
         Keys.PERSPECTIVE, Keys.REFERENCE_ASPECTS, Keys.SESSION_STRUCTURE, Keys.SAVE_SYSTEM, Keys.TUTORIAL, Keys.INPUT_METHODS, Keys.TOUCH_SCHEME,
         Keys.INPUT_REMAP, Keys.VFX, Keys.AUDIO, Keys.HUD_UI, Keys.MENUS_SETTINGS, Keys.ACCESSIBILITY, Keys.PERFORMANCE, Keys.ENGINE,
-        Keys.CORE_FANTASY, Keys.NETWORK_POLICY, Keys.CI_BUILD, Keys.TESTING, Keys.SCOPE_CHOICE, Keys.PACKAGE_ID, Keys.VERSION_STRATEGY, Keys.STORE_PLAN,
+        Keys.CORE_FANTASY, Keys.ORIENTATION, Keys.NETWORK_POLICY, Keys.CI_BUILD, Keys.TESTING, Keys.SCOPE_CHOICE, Keys.PACKAGE_ID, Keys.VERSION_STRATEGY, Keys.STORE_PLAN,
         Keys.MONETIZATION, Keys.PRIVACY, Keys.SIGNING, Keys.ENEMIES_BOSSES,
     )
     val forceAsk = setOf(Keys.PLAYER_FEELING, Keys.FIRST_SLICE, Keys.MUST_NOT_CHANGE)
@@ -373,7 +373,7 @@ object Fields {
             "What do enemies and bosses look like and how do they behave?",
             "A distinct, readable roster is a big part of the content volume.",
             82, relevant = { it.has(Tag.COMBAT) },
-            suggest = { t -> Suggestion("A roster of distinct enemy archetypes (chaser, ranged, swarm, tank, elite) with telegraphed attacks, plus bosses with phase-based patterns. Theme: ${t.value(Keys.CONCEPT)?.let { c -> ConceptText.theme(c) } ?: "the concept"}. Names and designs are original and fit that theme.", "Archetype-based roster scales cleanly with scope.") }),
+            suggest = { t -> Suggestion("A roster of distinct enemy archetypes (chaser, ranged, swarm, tank, elite) with telegraphed attacks, plus bosses with phase-based patterns. Names and designs are original and fit the world and tone described in Part A.", "Archetype-based roster scales cleanly with scope.") }),
 
         Field(Keys.CHARACTERS, Category.GAMEPLAY, FieldKind.SINGLE, "Characters / classes",
             "One hero, several heroes, or classes with loadouts?",
@@ -478,12 +478,12 @@ object Fields {
                 o("run_meta_save", "Save meta progress and current run state"),
                 o("manual_slots", "Manual save slots"),
                 o("checkpoint_only", "Checkpoints only"),
-                o("progress_only", "Only progress/stats (levels are short)"),
+                o("progress_only", "Only progress and stats"),
             ) },
             suggest = { t ->
                 when (primary(t).id) {
                     "survivors_like", "action_roguelite", "card_deckbuilder" -> Suggestion("run_meta_save", "Meta progress must persist; resuming an interrupted run is expected on phones.")
-                    "puzzle", "platformer" -> Suggestion("progress_only", "Short levels need only progress and best scores.")
+                    "puzzle", "platformer" -> Suggestion("progress_only", "Short sessions need only progress and best scores.")
                     "city_builder", "factory_automation", "survival_crafting", "sim_management", "rpg", "metroidvania" -> Suggestion("autosave_continue", "Long-lived worlds need robust autosave and versioned saves.")
                     else -> Suggestion("autosave_continue", "Safest default.")
                 }
@@ -778,7 +778,7 @@ object Fields {
         Field(Keys.FIVE_MINUTES, Category.GAMEPLAY, FieldKind.TEXT, "A great five minutes",
             "Describe one great five minutes of playing this game. What are you doing, seeing and feeling?",
             "One vivid stretch of play tells me the loop, pace, feel and look at once, so I can skip a pile of smaller questions.",
-            58, required = false, relevant = { it.genresKnown && DimensionCoverage.uncoveredCore(it.project) >= 3 }),
+            48, required = false, relevant = { it.genresKnown && DimensionCoverage.uncoveredCore(it.project) >= 3 }),
 
         Field(Keys.FIRST_SLICE, Category.CONTENT, FieldKind.TEXT, "First playable build",
             "Let's define the first playable build. What should it contain so you can judge whether the game is fun? (A smaller, polished slice usually beats a bigger unfinished one.)",

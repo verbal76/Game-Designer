@@ -32,11 +32,10 @@ object DesignSeeder {
             val sents = DimensionLexicon.sentencesFor(p, dim)
             // One passing mention is not an answer; require real content: a dedicated sentence or at least two.
             val strong = sents.filter { it.length >= 25 }
-            val chosen = if (dim == DimId.FEELING) sents.filter { Regex("(?i)\\b(feel|feeling|mood|atmosphere)\\b|tense|cozy|wonder|dread|eerie|calm|frantic|claustrophobic|oppressive").containsMatchIn(it) } else strong
+            // A feeling needs an explicit mood/feel statement; an adjective inside the pitch ("a relaxing puzzle game") is not one.
+            val chosen = if (dim == DimId.FEELING) strong.filter { Regex("(?i)\\b(mood|atmosphere|feel|feeling|tone)\\b").containsMatchIn(it) } else strong
             if (chosen.isEmpty()) continue
-            if (dim == DimId.LOOP && chosen.size < 2 && !Regex("(?i)\\b(core|gameplay|main) loop\\b").containsMatchIn(chosen.first())) continue
-            // Movement verbs alone (a character "climbing") are not a statement about how movement should FEEL.
-            if (dim == DimId.MOVEMENT && chosen.size < 2 && chosen.none { Regex("(?i)\\b(snappy|floaty|heavy|precise|fast|slow|momentum|smooth|tight|weighty|responsive|sluggish|fluid|deliberate|controls?)\\b").containsMatchIn(it) }) continue
+            if (dim == DimId.LOOP && chosen.size < 2 && !chosen.any { DimensionLexicon.isLoopStatement(it) }) continue
             p = ProjectOps.setDecision(p, key, chosen.take(3).joinToString(" "), Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description", raw = "")
             seeded += key
         }

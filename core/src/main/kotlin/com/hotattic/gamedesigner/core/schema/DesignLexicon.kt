@@ -33,7 +33,7 @@ object DimensionLexicon {
     private val rules: Map<DimId, List<Regex>> = mapOf(
         DimId.LOOP to listOf(
             Regex("(?i)\\b(core|gameplay|main) loop\\b"),
-            Regex("(?i)\\b(explore|fight|collect|upgrade|build|craft|dodge|shoot|climb|descend|ascend|dig|survive|defend|race|solve|scavenge|hunt|gather|trade|attack|sneak|swing|jump|run)\\b.{0,60}\\b(then|and then|and|,|to)\\b.{0,40}\\b(explore|fight|collect|upgrade|build|craft|dodge|shoot|climb|descend|ascend|dig|survive|defend|race|solve|scavenge|hunt|gather|trade|attack|sneak|reach|unlock|find|avoid|discover)\\b"),
+            Regex("(?i)\\b(explore|fight|collect|upgrade|build|craft|dodge|shoot|climb|descend|ascend|dig|survive|defend|race|solve|scavenge|hunt|gather|trade|attack|sneak|swing|jump|run)\\b.{0,90}\\b(then|and then|and|,|to)\\b.{0,50}\\b(explore|fight|collect|upgrade|build|craft|dodge|shoot|climb|descend|ascend|dig|survive|defend|race|solve|scavenge|hunt|gather|trade|attack|sneak|reach|unlock|find|avoid|discover)\\b"),
             Regex("(?i)\\b(most of the time|moment to moment|minute to minute|each run|every run|you spend)\\b"),
         ),
         DimId.MOVEMENT to listOf(Regex("(?i)\\b(run|running|jump|jumping|double.?jump|climb|climbing|swim|swimming|fly|flying|glide|gliding|dash|dodge|grapple|sprint|momentum|gravity|traverse|traversal|movement|snappy|floaty|heavy|precise|wall.?(run|jump)|slide|crawl|descend|ascend|fall(ing)?)\\b")),
@@ -47,11 +47,37 @@ object DimensionLexicon {
         DimId.AUDIO to listOf(Regex("(?i)\\b(music|soundtrack|sound|audio|ambient|ambience|sfx|score)\\b")),
     )
 
+    /** A sentence that describes a repeated chain of actions (or names the core loop outright). */
+    fun isLoopStatement(sentence: String): Boolean = rules.getValue(DimId.LOOP).take(2).any { it.containsMatchIn(sentence) }
+
     fun classify(sentence: String): Set<DimId> =
         if (MetaConversation.isMeta(sentence)) emptySet() else rules.filter { (_, rs) -> rs.any { it.containsMatchIn(sentence) } }.keys
 
+    private val sliceCue = Regex("(?i)\\b(prototype|first (build|version|playable)|vertical slice|demo)\\b")
+    private val failureCue = Regex("(?i)\\b(respawn|checkpoint|game over|if (you|i) (die|fall)|when (you|i) (die|fall)|permadeath)\\b")
+    private val progressCue = Regex("(?i)\\b(progression|unlock|unlocking|unlocks|upgrade|upgrades|skill tree)\\b")
+    private val feelWord = Regex("(?i)\\b(mood|atmosphere|atmospheric|tone|dread|feeling|claustrophobic|serene|tense|eerie|lonely|calm)\\b")
+    private val moveWord = Regex("(?i)\\b(movement|controls?|camera|jump|glide|dash|sprint|climb(ing)?|momentum|floaty|snappy|heavy)\\b")
+    private val moveFeelWord = Regex("(?i)\\b(movement|controls?|camera|feel|floaty|snappy|heavy|momentum)\\b")
+    private val order = listOf(DimId.COMPLETION, DimId.WORLD, DimId.INTERACTION, DimId.VISUAL, DimId.AUDIO, DimId.FEELING, DimId.MOVEMENT, DimId.PROGRESSION, DimId.FAILURE)
+
+    /** The one dimension a sentence is mainly about, so one owner sentence is never filed under several decisions. */
+    fun primary(sentence: String): DimId? {
+        val c = classify(sentence)
+        if (c.isEmpty()) return null
+        return when {
+            isLoopStatement(sentence) -> DimId.LOOP
+            sliceCue.containsMatchIn(sentence) -> DimId.SLICE
+            failureCue.containsMatchIn(sentence) -> DimId.FAILURE
+            progressCue.containsMatchIn(sentence) && DimId.PROGRESSION in c -> DimId.PROGRESSION
+            feelWord.containsMatchIn(sentence) && !moveWord.containsMatchIn(sentence) -> DimId.FEELING
+            moveWord.containsMatchIn(sentence) && moveFeelWord.containsMatchIn(sentence) -> DimId.MOVEMENT
+            else -> order.firstOrNull { it in c }
+        }
+    }
+
     fun sentencesFor(project: Project, dim: DimId): List<String> =
-        project.activeFacts().map { it.text }.filter { dim in classify(it) }
+        project.activeFacts().map { it.text }.filter { primary(it) == dim }
 }
 
 /** Which of the dimensions that most shape the game has the owner already spoken to? */
@@ -123,7 +149,7 @@ object SliceSuggester {
             "hub_missions" -> "the hub plus one mission"
             else -> "one representative area"
         }
-        parts += "every playable character or mode the owner described, each genuinely playable"
+        if (t.has(Tag.CHARACTERS) || t.twoSides || t.project.value(Keys.CHARACTERS) != null) parts += "every playable character or mode the owner described, each genuinely playable"
         parts += "the complete core loop"
         if (t.has(Tag.COMBAT)) parts += "representative combat against a few distinct enemy types"
         if (t.value(Keys.PROGRESSION) != null) parts += "at least one real progression step"

@@ -1,6 +1,7 @@
 package com.hotattic.gamedesigner.core.engine
 
 import com.hotattic.gamedesigner.core.model.Decision
+import com.hotattic.gamedesigner.core.model.DecisionStatus
 import com.hotattic.gamedesigner.core.model.Project
 import com.hotattic.gamedesigner.core.schema.Fields
 import com.hotattic.gamedesigner.core.schema.FieldKind
@@ -153,6 +154,18 @@ object ConsistencyReview {
         }
         // 11. Meta-conversation must not be a requirement.
         for (f in p.activeFacts()) if (MetaConversation.isMeta(f.text)) out += ReviewFinding(ReviewLevel.ERROR, "meta_conversation", "A remark about using the app is recorded as a requirement.", f.text.take(120))
+        // 12. Semantic contradictions between things the owner said or accepted.
+        val ownerTexts = (p.activeFacts().map { it.text } + p.decisions.filter { (_, d) -> d.ownerAuthored && d.status == DecisionStatus.CONFIRMED }.values.map { it.value }).filter { !MetaConversation.isMeta(it) }
+        fun says(re: Regex) = ownerTexts.any { re.containsMatchIn(it) && !Regex("(?i)(\\bnot\\b|\\bnever\\b|\\bwithout\\b|\\bno\\b|rather than|instead of|n't)[^.]{0,20}(?:${re.pattern.removePrefix("(?i)")})").containsMatchIn(it) }
+        val noCombat = Regex("(?i)\\b(no combat|no fighting|non-violent|nonviolent|pacifist|without combat|no violence)\\b")
+        if (says(noCombat) && (says(Regex("(?i)\\bboss(es)? (fight|battle)s?\\b|\\bfight (a |the )?boss")) || p.decision(Keys.COMBAT_MODEL)?.ownerAuthored == true))
+            out += ReviewFinding(ReviewLevel.ERROR, "no_combat_vs_combat", "The owner said there is no combat, but combat or boss fights are required elsewhere.")
+        if (t.mobileOnly && (p.decision(Keys.INPUT_METHODS)?.takeIf { it.ownerAuthored }?.list() == listOf("keyboard_mouse") || says(Regex("(?i)\\bkeyboard[- ]only\\b"))))
+            out += ReviewFinding(ReviewLevel.ERROR, "mobile_vs_keyboard", "The game targets phones only but its controls are keyboard-only.")
+        if (says(Regex("(?i)\\bno inventory\\b")) && (says(Regex("(?i)\\binventory[- ]based\\b|\\binventory progression\\b|\\bbackpack (upgrades?|slots?)\\b")) || p.value(Keys.PROGRESSION) == "inventory"))
+            out += ReviewFinding(ReviewLevel.ERROR, "no_inventory_vs_inventory", "The owner said there is no inventory, but progression depends on one.")
+        if (p.value(Keys.WORLD_STRUCTURE) in setOf("vertical_shaft", "open_map", "single_arena") && says(Regex("(?i)\\b(level[- ]select|separate levels|stage select|unlock(s|ing)? the next level)\\b")))
+            out += ReviewFinding(ReviewLevel.ERROR, "continuous_vs_levels", "The world is one continuous space, but the owner's own text also calls for separate levels.")
         return ReviewReport(out.distinctBy { it.code + it.message + it.line })
     }
 

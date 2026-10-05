@@ -13,7 +13,8 @@ object VerificationPlan {
 
     fun steps(p: Project): List<String> {
         val t = Traits(p)
-        val corpus = (listOf(p.originalConcept) + p.activeFacts().map { it.text } + listOfNotNull(p.value(Keys.MOVEMENT_CAMERA), p.value(Keys.CORE_LOOP), p.value(Keys.FIRST_SLICE))).joinToString(" ").lowercase()
+        fun ownerValue(k: String) = p.decision(k)?.takeIf { it.ownerAuthored && it.value.isNotBlank() }?.value
+        val corpus = (listOf(p.originalConcept) + p.activeFacts().map { it.text } + listOfNotNull(ownerValue(Keys.MOVEMENT_CAMERA), ownerValue(Keys.CORE_LOOP), ownerValue(Keys.FIRST_SLICE))).joinToString(" ").lowercase()
         val out = mutableListOf<String>()
         val platform = t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "the target platform" }
         out += "Launch the real build on $platform from a cold start and reach live gameplay with no errors."
@@ -33,7 +34,7 @@ object VerificationPlan {
         if (modes || p.value(Keys.CHARACTERS) != null) out += "Play every playable character or mode from its start through its own completion path; confirm they genuinely differ as designed."
         if (t.has(Tag.COMBAT) || p.value(Keys.COMBAT_MODEL) != null) out += "Fight every enemy type in the first build: deal damage, take damage, defeat them, and confirm feedback (hit reaction, sound, effects). Fight any boss or set-piece encounter the design includes."
         if (t.has(Tag.CRAFTING) || t.has(Tag.ECONOMY) || t.has(Tag.BUILDING)) out += "Exercise every resource, crafting, build or trade interaction in the first build end to end."
-        out += "Fail on purpose: confirm the failure-and-recovery behaviour (${com.hotattic.gamedesigner.core.generate.PlainLabels.of(p, Keys.DIFFICULTY_FAILURE) ?: "defined recovery"}) works, restores a correct state and cannot soft-lock."
+        if (p.value(Keys.DIFFICULTY_FAILURE) != "no_fail") out += "Fail on purpose: confirm the failure-and-recovery behaviour (${com.hotattic.gamedesigner.core.generate.PlainLabels.of(p, Keys.DIFFICULTY_FAILURE) ?: "defined recovery"}) works, restores a correct state and cannot soft-lock."
         if (p.value(Keys.PROGRESSION) != null) out += "Earn at least one progression step and confirm its effect is felt in play."
         if (p.value(Keys.SAVE_SYSTEM).let { it != null && it != "none" } || t.isMobile) out += "Pause and resume (and on a phone, background and return); if saving exists, save, kill the app, relaunch and load."
         out += "Reach the completion state defined for the first build, then restart cleanly."

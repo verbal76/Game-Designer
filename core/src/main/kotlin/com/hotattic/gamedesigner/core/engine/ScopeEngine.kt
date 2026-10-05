@@ -100,7 +100,7 @@ object ScopeEngine {
 
         val genres = t.genres.ifEmpty { listOf(com.hotattic.gamedesigner.core.schema.GenreKnowledge.other) }
         val primary = genres.first()
-        val relabel = if (t.continuousWorld) mapOf("Levels" to "Depth zones along the continuous world", "Worlds / themes" to "Visual themes") else emptyMap()
+        val relabel = if (t.continuousWorld) mapOf("Levels" to (if (t.verticalWorld) "Depth zones along the continuous world" else "Regions of the connected world"), "Worlds / themes" to "Visual themes") else emptyMap()
         val targets = (genreTargets[primary.id] ?: genreTargets.getValue("other")).map { (label, arr) -> ContentTarget(relabel[label] ?: label, arr[eff]) }.toMutableList()
         // Hybrid designs add a smaller contribution from the secondary genre so both halves of the hybrid are really present.
         val have = targets.map { it.label }.toSet()

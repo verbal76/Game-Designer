@@ -26,6 +26,13 @@ class Traits(val project: Project) {
     val continuousWorld: Boolean
         get() {
             val w = project.value(Keys.WORLD_STRUCTURE)
+            return w == "vertical_shaft" || w == "open_map" || (w == null && project.value(Keys.PERSPECTIVE) == "vertical_scroll")
+        }
+
+    /** The continuous world is a single tall shaft/tower rather than a wide connected map. */
+    val verticalWorld: Boolean
+        get() {
+            val w = project.value(Keys.WORLD_STRUCTURE)
             return w == "vertical_shaft" || (w == null && project.value(Keys.PERSPECTIVE) == "vertical_scroll")
         }
 
@@ -36,14 +43,15 @@ class Traits(val project: Project) {
     /** Genre checklist adapted to the owner's actual structure: no level sets or level select in a continuous world. */
     fun systems(): List<Pair<Genre, SystemReq>> = genres.flatMap { g ->
         val list = if (continuousWorld && g.id == "platformer") g.systems.filter { it.id !in setOf("level_set", "level_select_progress") } + listOf(
-            SystemReq("continuous_world", "Continuous vertical world", "One continuous traversable world in contiguous depth zones with checkpoints by depth; no level boundaries or level-select."),
-            SystemReq("depth_progress_save", "Depth and progress save", "Persist depth reached, checkpoints and unlocks."),
+            if (verticalWorld) SystemReq("continuous_world", "Continuous vertical world", "One continuous traversable world in contiguous depth zones with checkpoints by depth; no level boundaries or level-select.")
+            else SystemReq("continuous_world", "Connected world", "One connected traversable world in contiguous regions with checkpoints; no level boundaries or level-select."),
+            SystemReq("depth_progress_save", "World progress save", "Persist position, checkpoints, unlocks and abilities."),
         ) else g.systems
         list.map { g to it }
     }.distinctBy { it.second.id }
 
     fun loopText(g: Genre): String =
-        if (continuousWorld && g.id == "platformer") "Move through the continuous vertical world using tight movement, avoid hazards and enemies, and progress toward the far end of the world."
+        if (continuousWorld && g.id == "platformer") "Move through the continuous world using tight movement, avoid hazards and enemies, and progress through it toward its far end."
         else g.loopTemplate
 
     fun smokeChecks(): List<String> = genres.flatMap { g ->

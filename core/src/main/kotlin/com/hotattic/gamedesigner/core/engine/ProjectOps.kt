@@ -27,6 +27,8 @@ import com.hotattic.gamedesigner.core.schema.Traits
 
 /** Pure, immutable state transitions for a [Project]. The UI and Director both go through these. */
 object ProjectOps {
+    /** Marks a proposal read out of the owner's own words; confirming it records the owner's statement, not an accepted recommendation. */
+    const val FROM_OWNER_WORDS = "From your description"
 
     fun newProject(id: String, name: String, mode: ProjectMode, prefs: ProjectPrefs, now: Long) =
         Project(id = id, name = name, mode = mode, createdAt = now, updatedAt = now, prefs = prefs)
@@ -144,7 +146,7 @@ object ProjectOps {
         for ((k, v) in ex.values) {
             val existing = next.decision(k)
             if (existing != null && existing.status == DecisionStatus.CONFIRMED && existing.value.isNotBlank()) continue
-            next = setDecision(next, k, v, prov, now, DecisionStatus.PROPOSED)
+            next = setDecision(next, k, v, prov, now, DecisionStatus.PROPOSED, FROM_OWNER_WORDS)
         }
         if (ex.referenceGames.isNotEmpty()) next = addReferences(next, ex.referenceGames, now)
         return next
@@ -176,7 +178,7 @@ object ProjectOps {
     fun confirm(p: Project, key: String, now: Long): Project {
         val d = p.decision(key) ?: return p
         // Confirming an inference keeps it a system inference that the owner accepted.
-        val prov = if (d.prov == Provenance.SYSTEM_INFERENCE) Provenance.OWNER_ACCEPTED_RECOMMENDATION else d.prov
+        val prov = if (d.prov == Provenance.SYSTEM_INFERENCE) (if (d.note == FROM_OWNER_WORDS) Provenance.OWNER_EXPLICIT else Provenance.OWNER_ACCEPTED_RECOMMENDATION) else d.prov
         return p.copy(decisions = p.decisions + (key to d.copy(status = DecisionStatus.CONFIRMED, provenance = prov, source = prov.legacySource(), updatedAt = now)), updatedAt = now, postponed = p.postponed - key)
     }
 

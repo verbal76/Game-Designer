@@ -576,7 +576,7 @@ class Director(private val deps: DirectorDeps) {
             val existing = p.decision(k)
             if (corrected) p = ProjectOps.setDecision(p, k, v, Provenance.OWNER_EXPLICIT, now)
             else if (!(existing != null && existing.status == DecisionStatus.CONFIRMED && existing.value.isNotBlank()))
-                p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED)
+                p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, ProjectOps.FROM_OWNER_WORDS)
         }
         if (interp.references.isNotEmpty()) p = ProjectOps.addReferences(p, interp.references, now)
 

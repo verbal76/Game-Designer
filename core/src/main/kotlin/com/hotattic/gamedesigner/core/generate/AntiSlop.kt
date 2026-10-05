@@ -18,8 +18,10 @@ object AntiSlop {
 
     fun derive(p: Project): List<String> {
         val t = Traits(p)
+        // Only what the owner themselves said: Bob's own drafted text must not trigger rules about things the owner never mentioned.
+        fun ownerValue(k: String) = p.decision(k)?.takeIf { it.ownerAuthored && it.value.isNotBlank() }?.value
         val corpus = (listOf(p.originalConcept) + p.activeFacts().map { it.text } +
-            listOf(Keys.CORE_LOOP, Keys.MOVEMENT_CAMERA, Keys.COLOR_MOOD, Keys.FIRST_SLICE, Keys.PLAYER_FEELING, Keys.WIN_LOSS, Keys.CORE_FANTASY).mapNotNull { p.value(it) }).joinToString(" ").lowercase()
+            listOf(Keys.CORE_LOOP, Keys.MOVEMENT_CAMERA, Keys.COLOR_MOOD, Keys.FIRST_SLICE, Keys.PLAYER_FEELING, Keys.WIN_LOSS, Keys.CORE_FANTASY).mapNotNull { ownerValue(it) }).joinToString(" ").lowercase()
         fun has(vararg w: String) = w.any { Regex("\\b${Regex.escape(it)}s?\\b").containsMatchIn(corpus) }
         val out = mutableListOf<String>()
 
@@ -32,7 +34,7 @@ object AntiSlop {
         environments.firstOrNull { has(it) }?.let { env ->
             out += "A flat or empty $env with a few randomly placed stock props does not satisfy the visual target. The $env must read as a specific place: layered foreground and background, distinct landmarks, consistent lighting and scale, and detail across the whole traversable space."
         }
-        if (has("character", "hero", "explorer", "soldier", "creature", "humanoid", "protagonist", "wizard", "knight") || p.value(Keys.CHARACTERS) != null)
+        if (has("character", "hero", "explorer", "soldier", "creature", "humanoid", "protagonist", "wizard", "knight") || ownerValue(Keys.CHARACTERS) != null)
             out += "A default capsule, an unchanged engine mannequin or a coloured rectangle does not satisfy character presentation. Each playable character needs a distinct silhouette, readable animation states (idle, move, act, hurt, defeated as relevant) and a recognisable identity."
         if (has("two characters", "both characters", "either character", "two modes", "two sides", "two playable") || Regex("\\beither\\b.{0,40}\\bor\\b").containsMatchIn(corpus))
             out += "Implementing only one of the described characters or modes, or making the other a reskin with identical behaviour, does not satisfy the design; each must play differently in the ways the owner described."
@@ -41,7 +43,7 @@ object AntiSlop {
         }
         if (t.has(Tag.COMBAT) || p.value(Keys.COMBAT_MODEL) != null)
             out += "Enemies that stand still or cannot hurt the player, or attacks with no feedback (hit flash, sound, knockback or equivalent), do not satisfy combat."
-        if (p.value(Keys.DIFFICULTY_FAILURE) != null || has("die", "death", "respawn", "checkpoint"))
+        if ((p.value(Keys.DIFFICULTY_FAILURE) != null && p.value(Keys.DIFFICULTY_FAILURE) != "no_fail") || has("die", "death", "respawn", "checkpoint"))
             out += "A death with no consequence, a recovery that can soft-lock, or a restart that leaves stale state does not satisfy the failure-and-recovery design."
         if (p.value(Keys.PROGRESSION) != null)
             out += "Progression that changes only a hidden number the player cannot feel does not satisfy progression; each step must visibly change what the player can do or how they play."

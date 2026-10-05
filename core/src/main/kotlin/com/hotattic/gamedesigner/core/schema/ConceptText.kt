@@ -11,8 +11,17 @@ object ConceptText {
     /** Drops sentences that are only about where it will be played. Never returns empty for non-empty input. */
     private val titleOnly = Regex("(?i)^(?:i\\s+want\\s+to\\s+make|i(?:'d| would)\\s+like\\s+to\\s+make|let'?s\\s+make|i(?:'m| am)\\s+making)?\\s*(?:a|an|the)?\\s*(?:new\\s+)?game\\s+(?:called|named|titled)\\s+[\\w'’:\\- ]{1,40}[.!]?$")
 
+    private val platformPhrase = Regex("(?i)[, ]*\\b(?:for|on|to run on|to play on|running on)\\s+(?:my\\s+|an?\\s+|the\\s+)?(?:android|iphone|ios|ipad|pc|windows|macos|mac|linux|browser|steam|tablet|phone|mobile)(?:\\s+(?:phone|device|tablet))?\\b")
+
+    /** Drops where-it-will-be-played wording; a sentence that is ONLY about the platform disappears, others keep their content. */
+    private fun stripPlatform(sentence: String): String? {
+        if (!platformWord.containsMatchIn(sentence)) return sentence
+        val cleaned = sentence.replace(platformPhrase, "").replace(Regex("\\s{2,}"), " ").replace(Regex("\\s+([.,!?])"), "$1").trim()
+        return cleaned.takeIf { it.length >= 20 && !platformWord.containsMatchIn(it) }
+    }
+
     fun withoutPlatformSentences(text: String): String {
-        val keep = sentences(text).filter { !platformWord.containsMatchIn(it) && !titleOnly.matches(it.trim()) }
+        val keep = sentences(text).filter { !titleOnly.matches(it.trim()) }.mapNotNull { stripPlatform(it) }
         return (if (keep.isEmpty()) sentences(text).take(1) else keep).joinToString(" ").trim()
     }
 
