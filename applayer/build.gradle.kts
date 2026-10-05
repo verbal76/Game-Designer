@@ -49,5 +49,4 @@ dependencies {
     testImplementation(libs.androidx.compose.ui)
     testImplementation(libs.androidx.compose.material3)
     testImplementation(libs.junit)
-    testImplementation(kotlin("test"))
 }

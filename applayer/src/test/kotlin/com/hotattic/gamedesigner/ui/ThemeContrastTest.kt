@@ -2,8 +2,8 @@ package com.hotattic.gamedesigner.ui
 
 import androidx.compose.ui.graphics.Color
 import kotlin.math.pow
-import kotlin.test.Test
-import kotlin.test.assertTrue
+import org.junit.Assert.assertTrue
+import org.junit.Test
 
 /**
  * Regression test for the Pixel onboarding defect (dark text on a dark window). Every foreground/background pair the UI
@@ -18,7 +18,7 @@ class ThemeContrastTest {
 
     private fun assertRatio(name: String, fg: Color, bg: Color, min: Double) {
         val r = ratio(fg, bg)
-        assertTrue(r >= min, "$name contrast ${"%.2f".format(r)} is below $min")
+        assertTrue("$name contrast ${"%.2f".format(r)} is below $min", r >= min)
     }
 
     @Test fun bodyTextOnWindowBackgroundIsHighContrast() {
@@ -45,7 +45,7 @@ class ThemeContrastTest {
     }
 
     @Test fun theSchemeIsDarkSoItMatchesTheDarkWindowAndSplash() {
-        assertTrue(lum(s.background) < 0.05, "background must stay dark to match the window and splash")
-        assertTrue(lum(s.onBackground) > 0.5, "foreground must be light on the dark background")
+        assertTrue("background must stay dark to match the window and splash", lum(s.background) < 0.05)
+        assertTrue("foreground must be light on the dark background", lum(s.onBackground) > 0.5)
     }
 }

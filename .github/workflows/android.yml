@@ -26,7 +26,13 @@ jobs:
       - name: JVM unit tests (core, OTA kit)
         run: ./gradlew :core:test :otakit:test --stacktrace
       - name: Android lint, debug APK, layer unit tests (incl. theme contrast)
-        run: ./gradlew :app:lintDebug :app:assembleDebug :applayer:testDebugUnitTest :app:testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          ./gradlew :app:lintDebug :app:assembleDebug :applayer:testDebugUnitTest :app:testDebugUnitTest --console=plain 2>&1 | tee build.log
+      - name: Show compiler/lint errors (only on failure)
+        if: failure()
+        run: |
+          grep -E '^e: |error:|Error:|What went wrong|^> |FAILED|Lint found' build.log | cut -c1-300 | head -60 || true
       - name: Validate that an OTA bundle can be built, signed and verified (throwaway key, not published)
         run: |
           set -euo pipefail
