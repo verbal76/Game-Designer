@@ -143,6 +143,17 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
             val msgs = p?.messages.orEmpty()
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(msgs, key = { it.id }) { m -> Bubble(m, settings.directorName) }
+                p?.pendingTurn?.let { pt -> item(key = "pending-${pt.id}") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Column(Modifier.widthIn(max = 520.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(16.dp)).padding(12.dp)) {
+                            SelectionContainer { Text(pt.text, style = MaterialTheme.typography.bodyMedium) }
+                            if (busy == null) {
+                                Text("Saved, not answered yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                TextButton({ vm.retryPending() }) { Text("Retry") }
+                            }
+                        }
+                    }
+                } }
                 if (busy != null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
             }
             val last = msgs.lastOrNull()

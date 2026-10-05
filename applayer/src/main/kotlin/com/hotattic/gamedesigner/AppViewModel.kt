@@ -116,6 +116,7 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         val p = try { withContext(Dispatchers.IO) { c.store.load(id) } } catch (e: UnsupportedSchemaException) { toast(e.message ?: "Newer project format"); null } catch (e: Exception) { toast("Could not open this project: ${e.message}"); null }
         session.open(p)
         refreshInterpreter()
+        p?.pendingTurn?.let { runTurn(it.text, it.id) }
     }
 
     fun deleteProject(id: String) = viewModelScope.launch {
@@ -142,17 +143,32 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
-            _busy.value = "${c.settings.value.directorName} is thinking..."
-            try {
-                val action = session.mutate { p ->
-                    val turn = c.director().handleUserMessage(p, c.settings.value, trimmed, turnId)
-                    turn.project to turn.action
-                }
-                dispatch(action)
-            } catch (t: Throwable) {
-                toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
-            } finally { _busy.value = null }
+            val queued = session.mutate { p -> val q = c.director().queueTurn(p, trimmed, turnId); (q ?: p) to (q != null) }
+            if (queued == false) { toast("I'm still working on your last message."); return@launch }
+            runTurn(trimmed, turnId)
         }
+    }
+
+    /** Runs a queued owner message under the session lock. Safe to call again: the turn id makes a second run a no-op. */
+    private suspend fun runTurn(text: String, turnId: String) {
+        _busy.value = "${c.settings.value.directorName} is thinking..."
+        try {
+            val action = session.mutate { p ->
+                val turn = c.director().handleUserMessage(p, c.settings.value, text, turnId)
+                turn.project to turn.action
+            }
+            dispatch(action)
+        } catch (t: kotlinx.coroutines.CancellationException) {
+            throw t   // the message stays queued on disk; it is resumed on the next open or Retry
+        } catch (t: Throwable) {
+            toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}. Your message is saved - tap Retry.")
+        } finally { _busy.value = null }
+    }
+
+    /** Resumes an owner message that was saved but never answered (crash, backgrounding, timeout). */
+    fun retryPending() {
+        val pt = current.value?.pendingTurn ?: return
+        viewModelScope.launch { runTurn(pt.text, pt.id) }
     }
 
     /** Structured answer from the question card (single tap or multi-select Continue). */

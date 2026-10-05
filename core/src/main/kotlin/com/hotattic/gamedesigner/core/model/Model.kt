@@ -330,6 +330,9 @@ data class ProjectPrefs(
 )
 
 @Serializable
+data class PendingTurn(val id: String, val text: String, val at: Long)
+
+@Serializable
 data class DesignApproval(val fingerprint: String, val at: Long, /** "owner" or "delegated" */ val by: String)
 
 @Serializable
@@ -369,6 +372,10 @@ data class Project(
     val processedTurns: List<String> = emptyList(),
     /** The owner's approval of the plain-English design review, bound to a fingerprint of the reviewed state. Additive. */
     val designApproval: DesignApproval? = null,
+    /** An owner message queued durably before (possibly slow) local inference runs; resumed after a crash or restart. Additive. */
+    val pendingTurn: PendingTurn? = null,
+    /** The field the owner most recently answered, so "that's not what I meant" can undo exactly that. Additive. */
+    val lastAnsweredKey: String? = null,
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }

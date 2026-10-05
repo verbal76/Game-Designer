@@ -149,9 +149,24 @@ class Director(private val deps: DirectorDeps) {
      * [turnId] (a duplicated callback, a retry, a replay after restoration) returns the project untouched.
      */
     suspend fun handleUserMessage(project: Project, settings: AppSettings, text: String, turnId: String? = null): DirectorTurn {
-        if (turnId != null && turnId in project.processedTurns) return DirectorTurn(project, duplicate = true)
+        if (turnId != null && turnId in project.processedTurns) {
+            return DirectorTurn(if (project.pendingTurn?.id == turnId) project.copy(pendingTurn = null) else project, duplicate = true)
+        }
         val t = handleUserMessageOnce(project, settings, text)
-        return if (turnId == null) t else t.copy(project = t.project.withTurn(turnId))
+        val done = if (turnId == null) t.project else t.project.withTurn(turnId)
+        return t.copy(project = if (done.pendingTurn?.id == turnId) done.copy(pendingTurn = null) else done)
+    }
+
+    /**
+     * Durably records an owner message BEFORE slow (local-model) inference runs. If inference is cancelled, times out, or the
+     * process dies, the message is still on disk and [pendingTurnOf] lets the app resume it exactly once (the turn id guards
+     * against a second application). Returns null when another message is already waiting.
+     */
+    fun queueTurn(project: Project, text: String, turnId: String): Project? {
+        if (turnId in project.processedTurns) return project
+        val waiting = project.pendingTurn
+        if (waiting != null && waiting.id != turnId) return null
+        return project.copy(pendingTurn = com.hotattic.gamedesigner.core.model.PendingTurn(turnId, text.trim(), deps.clock()))
     }
 
     private suspend fun handleUserMessageOnce(project: Project, settings: AppSettings, text: String): DirectorTurn {
@@ -179,7 +194,7 @@ class Director(private val deps: DirectorDeps) {
         var kind: InterpreterKind? = null
 
         // Conversation repair: talk about the app ("I already uploaded it", "I already answered that") never becomes a requirement.
-        if (pending != null && !pending.startsWith("__") && MetaConversation.isMeta(text.trim())) {
+        if (pending != null && !pending.startsWith("__") && MetaConversation.isMeta(text.trim()) && !LocalInterpreter.interpret(p, null, text).misunderstood) {
             val field = Fields.get(pending)
             if (field != null) {
                 val slot = Keys.brandingKeyForSlot.entries.firstOrNull { it.value == pending }?.key
@@ -385,7 +400,9 @@ class Director(private val deps: DirectorDeps) {
     /** Records the answer for [field] as an owner decision (with their words kept as raw), then handles field-specific effects. */
     private suspend fun commitValue(p0: Project, settings: AppSettings, field: Field, value: String, raw: String, now: Long, interp: Interpretation? = null): FieldResult {
         var p = p0
-        p = ProjectOps.setDecision(p, field.key, value, Provenance.OWNER_EXPLICIT, now, raw = raw)
+        val recommended = p.decision(field.key)
+        val acceptedRec = interp?.acceptsRecommendation == true && recommended != null && recommended.status == DecisionStatus.PROPOSED && recommended.value == value
+        p = ProjectOps.setDecision(p, field.key, value, if (acceptedRec) Provenance.OWNER_ACCEPTED_RECOMMENDATION else Provenance.OWNER_EXPLICIT, now, raw = raw).copy(lastAnsweredKey = field.key)
         var note: String? = null
         var kind: InterpreterKind? = null
         if (field.key == Keys.CONCEPT) p = ProjectOps.setOriginalConcept(p, raw)
@@ -411,6 +428,21 @@ class Director(private val deps: DirectorDeps) {
         val interp = interpret(p0, settings, field, text)
         val kind = interp.by
         val model = if (kind == InterpreterKind.RULES) null else kind.label
+        // "That's not what I meant": undo what Bob last recorded from the owner's answer and ask again, rather than building on a misreading.
+        if (interp.misunderstood) {
+            val last = p0.lastAnsweredKey?.takeIf { it != field.key }?.let { Fields.get(it) }
+            if (last != null && p0.decision(last.key) != null) {
+                val cleared = ProjectOps.clearDecision(p0, last.key, now).copy(lastAnsweredKey = null)
+                return FieldResult(ProjectOps.setPending(ProjectOps.addMessage(cleared, Role.DIRECTOR, "Sorry, I misread that. I've taken back what I recorded for ${last.title.lowercase()}. ${last.prompt}", now, last.key), last.key), kind = kind)
+            }
+            return FieldResult(p0, directReply = "Sorry, I misread that. Tell me again in your own words. ${field.prompt}", kind = kind)
+        }
+        // Statements that could describe two different games: ask, don't guess. Everything else in the message still lands.
+        if (interp.ambiguities.isNotEmpty() && interp.intent != AnswerIntent.QUESTION) {
+            val applied = applyStatement(p0, text, interp.copy(ambiguities = emptyList(), edits = emptyMap()), field, now)
+            val q = interp.ambiguities.first().trim().trimEnd('.', '?')
+            return FieldResult(applied.project, directReply = (applied.announcement.takeIf { it.isNotBlank() }?.plus("\n\n") ?: "") + "Before I record that, one thing could go two ways: $q? Tell me which you mean.", kind = kind)
+        }
         // Corrections volunteered alongside the answer ("no, it's not turn based") apply first, so the answer is judged in their light.
         var p = if (interp.hasCorrections || interp.affirmedTags.isNotEmpty() || (field.key != Keys.CONCEPT && interp.edits.isNotEmpty() && interp.intent == AnswerIntent.UNCLEAR)) applyStatement(p0, text, interp, field, now).project else p0
         return when (interp.intent) {
@@ -465,10 +497,10 @@ class Director(private val deps: DirectorDeps) {
 
     // ---- Language understanding --------------------------------------------------------------------------------
 
-    /** The strongest ready provider for interpretation: cloud first, then the on-device model. Null means rules only. */
+    /** The provider that interprets the owner's words: the on-device model first (private, offline), cloud only as a fallback. Null means rules only. */
     private suspend fun readyProvider(): Pair<LlmProvider, InterpreterKind>? =
-        deps.cloud?.takeIf { runCatching { it.isReady() }.getOrDefault(false) }?.let { it to InterpreterKind.CLOUD_LLM }
-            ?: deps.local?.takeIf { runCatching { it.isReady() }.getOrDefault(false) }?.let { it to InterpreterKind.LOCAL_LLM }
+        deps.local?.takeIf { runCatching { it.isReady() }.getOrDefault(false) }?.let { it to InterpreterKind.LOCAL_LLM }
+            ?: deps.cloud?.takeIf { runCatching { it.isReady() }.getOrDefault(false) }?.let { it to InterpreterKind.CLOUD_LLM }
 
     /** What is currently interpreting the owner's words, for the UI banner. */
     suspend fun interpreterKind(): InterpreterKind = readyProvider()?.second ?: InterpreterKind.RULES
@@ -494,6 +526,9 @@ class Director(private val deps: DirectorDeps) {
             rejectedTags = rejectedTags, affirmedTags = affirmed,
             references = (rules.references + llm.references).distinctBy { it.lowercase() },
             retract = (rules.retract + llm.retract).distinct(), facts = llm.facts, by = llm.by,
+            preferences = llm.preferences, constraints = llm.constraints, ambiguities = llm.ambiguities,
+            delegated = llm.delegated, scope = llm.scope, stale = llm.stale,
+            acceptsRecommendation = llm.acceptsRecommendation, misunderstood = rules.misunderstood || llm.misunderstood,
         )
     }
 
@@ -502,10 +537,14 @@ class Director(private val deps: DirectorDeps) {
     /** Understands a free message that is not (only) the answer to the open question, and applies it with owner authority. */
     private suspend fun absorb(p0: Project, settings: AppSettings, text: String, field: Field?, concept: Field? = null, precomputed: Interpretation? = null): Absorbed {
         val now = deps.clock()
-        val interp = precomputed ?: interpret(p0, settings, null, text)
+        val interp0 = precomputed ?: interpret(p0, settings, null, text)
+        // Something that could mean two different games is asked about, not guessed: its volunteered decisions are held back.
+        val ask = interp0.ambiguities.firstOrNull()?.trim()?.trimEnd('.', '?')
+        val interp = if (ask != null) interp0.copy(ambiguities = emptyList(), edits = emptyMap()) else interp0
         val applied = applyStatement(p0, text, interp, concept ?: field, now)
         var p = researchNewReferences(applied.project, settings)
         if (applied.announcement.isNotBlank()) p = ProjectOps.addMessage(p, Role.DIRECTOR, applied.announcement, now)
+        if (ask != null) p = ProjectOps.addMessage(p, Role.DIRECTOR, "Before I record that, one thing could go two ways: $ask? Tell me which you mean.", now)
         return Absorbed(p, interp.by.takeIf { it != InterpreterKind.RULES }?.label, interp.by)
     }
 
@@ -579,10 +618,42 @@ class Director(private val deps: DirectorDeps) {
                 p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, ProjectOps.FROM_OWNER_WORDS)
         }
         if (interp.references.isNotEmpty()) p = ProjectOps.addReferences(p, interp.references, now)
+        p = applyTypedProposals(p, text, interp, now)
 
         val r = Reconciler.reconcile(p0, p, now)
         said += r.notices
         return Applied(r.project, said.joinToString("\n"))
+    }
+
+    /**
+     * The deterministic half of LLM interpretation. Every proposal is grounded in the owner's own words and committed
+     * with the right provenance; nothing here can overwrite an owner decision with a model guess.
+     */
+    private fun applyTypedProposals(p0: Project, text: String, interp: Interpretation, now: Long): Project {
+        var p = p0
+        val constraints = interp.constraints.filter { grounded(it, text) }
+        if (constraints.isNotEmpty()) {
+            val have = p.decision(Keys.MUST_NOT_CHANGE)?.value?.takeIf { it.isNotBlank() && it.trim().lowercase() != "none" }
+            val merged = (have?.split(" | ").orEmpty() + constraints.map { it.trim().trimEnd('.') }).distinctBy { it.lowercase() }.joinToString(" | ")
+            p = ProjectOps.setDecision(p, Keys.MUST_NOT_CHANGE, merged, Provenance.OWNER_EXPLICIT, now, raw = text.take(200))
+        }
+        interp.preferences.filter { grounded(it, text) }.let { p = ProjectOps.addFacts(p, it.map { s -> "Preference (not a hard requirement): $s" }, "preference", Provenance.OWNER_EXPLICIT, now) }
+        interp.scope?.takeIf { it.isNotBlank() && grounded(it, text) }?.let { s ->
+            if (Fields.get(Keys.FIRST_SLICE) != null) p = ProjectOps.setDecision(p, Keys.FIRST_SLICE, s.trim().trimEnd('.'), Provenance.OWNER_EXPLICIT, now, raw = text.take(200))
+        }
+        for (k in interp.delegated.distinct()) {
+            val f = Fields.get(k) ?: continue
+            val existing = p.decision(k)
+            if (existing != null && existing.ownerAuthored && existing.status == DecisionStatus.CONFIRMED) continue
+            ProjectOps.delegate(p, k, now)?.let { p = it.first }
+            if (f.key == k) p = p.copy(postponed = p.postponed - k)
+        }
+        // A stale hint never deletes an owner decision; it only releases things Bob derived himself so they are re-derived.
+        for (k in interp.stale.distinct()) {
+            val d = p.decision(k) ?: continue
+            if (!d.ownerAuthored && d.value.isNotBlank()) p = ProjectOps.clearDecision(p, k, now)
+        }
+        return p
     }
 
     private suspend fun researchNewReferences(p0: Project, settings: AppSettings): Project {
