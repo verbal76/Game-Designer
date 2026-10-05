@@ -12,7 +12,7 @@ import dalvik.system.DexClassLoader
  */
 class ChildFirstDexClassLoader(dexPath: String, parent: ClassLoader) : DexClassLoader(dexPath, null, null, parent) {
     override fun loadClass(name: String, resolve: Boolean): Class<*> {
-        synchronized(getClassLoadingLock(name)) {
+        synchronized(this) {
             findLoadedClass(name)?.let { return it }
             if (name.startsWith(OWN_PREFIX) && SHELL_PREFIXES.none { name.startsWith(it) }) {
                 try {

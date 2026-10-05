@@ -14,9 +14,9 @@ import com.hotattic.gamedesigner.shellapi.ShellServices
 
 /** The native shell: the stable part of the app that is only ever replaced by installing a new APK. */
 class GameDesignerApp : Application(), ShellServices {
-    override lateinit var secrets: SecretStore private set
-    override lateinit var models: ModelManager private set
-    override lateinit var localLlm: LocalLlm private set
+    override lateinit var secrets: SecretStore
+    override lateinit var models: ModelManager
+    override lateinit var localLlm: LocalLlm
     lateinit var otaManager: OtaManager private set
     private var layer: AppLayer? = null
 
