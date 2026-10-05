@@ -32,7 +32,7 @@ jobs:
       - name: Show compiler/lint errors (only on failure)
         if: failure()
         run: |
-          grep -E '^e: |error:|Error:|What went wrong|^> |FAILED|Lint found' build.log | cut -c1-300 | head -60 || true
+          { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
       - name: Validate that an OTA bundle can be built, signed and verified (throwaway key, not published)
         run: |
           set -euo pipefail
