@@ -8,6 +8,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hotattic.gamedesigner.core.director.DirectorAction
 import com.hotattic.gamedesigner.core.engine.AuditEngine
+import com.hotattic.gamedesigner.core.engine.InterpreterKind
 import com.hotattic.gamedesigner.core.engine.ProjectOps
 import com.hotattic.gamedesigner.core.generate.ExportPackage
 import com.hotattic.gamedesigner.core.generate.SpecVersioning
@@ -67,15 +68,21 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
     private val _events = MutableSharedFlow<UiEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<UiEvent> = _events.asSharedFlow()
 
+    private val _interpreter = MutableStateFlow(InterpreterKind.RULES)
+    /** What currently interprets the owner's words; RULES means no AI model is configured. */
+    val interpreter = _interpreter.asStateFlow()
+
     val container get() = c
 
-    init { refresh() }
+    init { refresh(); refreshInterpreter() }
+
+    fun refreshInterpreter() = viewModelScope.launch { _interpreter.value = try { c.director().interpreterKind() } catch (e: Exception) { InterpreterKind.RULES } }
 
     private fun toast(t: String) { _events.tryEmit(UiEvent.Message(t)) }
 
     fun refresh() = viewModelScope.launch(Dispatchers.IO) { _projects.value = c.store.list() }
 
-    fun updateSettings(f: (AppSettings) -> AppSettings) = c.updateSettings(f)
+    fun updateSettings(f: (AppSettings) -> AppSettings) { c.updateSettings(f); refreshInterpreter() }
 
     // ---- Projects ----
 
@@ -99,6 +106,7 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
     fun open(id: String) = viewModelScope.launch {
         val p = try { withContext(Dispatchers.IO) { c.store.load(id) } } catch (e: UnsupportedSchemaException) { toast(e.message ?: "Newer project format"); null } catch (e: Exception) { toast("Could not open this project: ${e.message}"); null }
         _current.value = p
+        refreshInterpreter()
     }
 
     fun deleteProject(id: String) = viewModelScope.launch {
@@ -140,6 +148,27 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         }
     }
 
+    /** Structured answer from the question card (single tap or multi-select Continue). */
+    fun submitSelection(fieldKey: String, ids: List<String>) {
+        viewModelScope.launch {
+            lock.withLock {
+                val p = _current.value ?: return@withLock
+                _busy.value = "${c.settings.value.directorName} is thinking..."
+                try {
+                    val turn = c.director().submitSelection(p, c.settings.value, fieldKey, ids)
+                    commit(turn.project)
+                    when (val a = turn.action) {
+                        DirectorAction.GenerateSpec -> generateLocked()
+                        is DirectorAction.RequestUpload -> _events.tryEmit(UiEvent.PickImage(a.slot))
+                        null -> Unit
+                    }
+                } catch (t: Throwable) {
+                    toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
+                } finally { _busy.value = null }
+            }
+        }
+    }
+
     // ---- Spec generation ----
 
     fun generate() = viewModelScope.launch { lock.withLock { _busy.value = "Generating spec..."; try { generateLocked() } finally { _busy.value = null } } }
@@ -158,7 +187,13 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
             _busy.value = "Generating spec..."
         }
         val now = System.currentTimeMillis()
-        val next = SpecVersioning.createVersion(p, SpecVersioning.suggestedKind(p), now, LocalDate.now().toString())
+        val gen = SpecVersioning.generate(p, SpecVersioning.suggestedKind(p), now, LocalDate.now().toString())
+        if (gen.blocked) {
+            val msg = "I can't export yet - the consistency review found contradictions:\n" + gen.review.errors.take(6).joinToString("\n") { "- ${it.message}" } + "\n\nTell me which way each should go; your latest word wins."
+            commit(ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now), null))
+            return
+        }
+        val next = gen.project
         val v = next.versions.last()
         val done = ProjectOps.addMessage(next, Role.DIRECTOR, "Generated spec v${v.number} (${v.kind.label}). ${v.auditSummary} Open the Spec screen to copy, share or export it.", now)
         commit(done)

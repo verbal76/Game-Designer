@@ -153,7 +153,7 @@ object ClaudeMdGenerator {
 
         // 4. Systems
         h2("4. Gameplay and system requirements")
-        p("Every system below is required in the first build and must be reachable and exercised during normal play.")
+        p("Every system the owner specified or accepted below is required in the first build and must be reachable and exercised during normal play. Genre checklist items apply wherever they fit this game's actual design; if one does not fit, adapt or omit it and note why in `docs/DECISIONS.md` (Part A always wins).")
         val specifics = listOfNotNull(
             v(Keys.COMBAT_MODEL)?.let { "**Combat:** ${label(Keys.COMBAT_MODEL, it)}" },
             v(Keys.ENEMIES_BOSSES)?.let { "**Enemies and bosses:** $it" },
@@ -166,7 +166,7 @@ object ClaudeMdGenerator {
         if (specifics.isNotEmpty()) { h3("Specified design (who decided each item is in Parts A and B)"); bullets(specifics) }
         val systems = t.genres.flatMap { g -> g.systems.map { g to it } }.distinctBy { it.second.id }
         if (systems.isNotEmpty()) {
-            h3("Required systems (genre completeness checklist)")
+            h3("Required systems (genre completeness checklist - adapt each item to this game's real design)")
             bullets(systems.map { (g, s) -> "**${s.name}** (${g.label.substringBefore(" (").substringBefore(" /")}): ${s.detail}" })
         }
         h3("Cross-cutting systems that must exist")
@@ -182,7 +182,7 @@ object ClaudeMdGenerator {
         // 5. Scope
         h2("5. Content scope (recommended sizing)")
         p("Scope tier: **${scope.effectiveTier.label}** (recommended: ${scope.recommendedTier.label}). ${scope.rationale.joinToString(" ")}")
-        p("These counts are Game Designer's SIZING RECOMMENDATIONS, not owner requirements, unless the owner stated numbers in Part A. Map each unit onto this game's real structure (for example depth zones instead of levels in a descent game) and size content so the intended loop is complete and replayable. Author content as data (tables/resources), validated by automated checks; no content slot may be an empty stub.")
+        p("These counts are Game Designer's UPPER-BOUND EFFORT HEURISTICS, not owner requirements, unless the owner stated numbers in Part A. Do not pad content to reach them. Map each unit onto this game's real structure (for example depth zones instead of levels in a descent game) and size content so the intended loop is complete and replayable. Author content as data (tables/resources), validated by automated checks; no content slot may be an empty stub.")
         bullets(scope.targets.map { "${it.label}: **${it.count}**" })
 
         // 6. Controls

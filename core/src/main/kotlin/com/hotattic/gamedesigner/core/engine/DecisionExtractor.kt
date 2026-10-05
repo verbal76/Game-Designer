@@ -133,8 +133,17 @@ object DecisionExtractor {
         }
         if (Regex("\\b(touch ?screen|touch controls?)\\b").containsMatchIn(t)) out[Keys.INPUT_METHODS] = "touch"
 
-        return Extraction(out, referenceGames(text), negatedGenres.toList(), negatedTags.toList(), affirmedTags.toList())
+        // "a game called Surface Think": the owner's own title is a name decision, never a reference game.
+        val title = titleName(text)
+        if (title != null) out[Keys.DISPLAY_NAME] = title
+        val refs = referenceGames(text).filter { r -> title == null || !r.equals(title, true) && !title.contains(r, true) }
+        return Extraction(out, refs, negatedGenres.toList(), negatedTags.toList(), affirmedTags.toList())
     }
+
+    private val titlePattern = Regex("\\b(?:[Cc]alled|[Nn]amed|[Tt]itled)\\s+[\"“']?([A-Z0-9][\\w'’:\\-]*(?:\\s+[A-Z0-9][\\w'’:\\-]*){0,4})")
+
+    /** The game's own working title when the owner states one (\"called X\"), at most 30 characters. */
+    fun titleName(text: String): String? = titlePattern.find(text)?.groupValues?.get(1)?.trim()?.takeIf { it.length in 2..30 }
 
     fun referenceGames(text: String): List<String> {
         val found = linkedSetOf<String>()

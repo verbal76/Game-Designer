@@ -54,6 +54,8 @@ import com.hotattic.gamedesigner.core.model.Experience
 import com.hotattic.gamedesigner.core.model.UsageStyle
 import com.hotattic.gamedesigner.shellapi.ModelState
 import com.hotattic.gamedesigner.shellapi.SecretStore
+import com.hotattic.gamedesigner.core.llm.ProviderFactory
+import com.hotattic.gamedesigner.core.llm.ProviderIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -70,6 +72,7 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
     var name by remember(s.directorName) { mutableStateOf(s.directorName) }
     var anthropicKey by remember { mutableStateOf("") }
     var cloudModel by remember(s.cloudModel) { mutableStateOf(s.cloudModel) }
+    var baseUrl by remember(s.llmBaseUrl) { mutableStateOf(s.llmBaseUrl) }
     var ghToken by remember { mutableStateOf("") }
     var hfToken by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<String?>(null) }
@@ -143,15 +146,20 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
 
             HorizontalDivider()
             Section("Cloud AI (optional)")
-            val cloudSet = keysVersion >= 0 && c.secrets.has(SecretStore.ANTHROPIC_KEY)
-            Text(if (cloudSet && s.cloudProvider == CloudProviderId.ANTHROPIC) "Claude is configured for deeper reviews." else "Not configured. The app works fully without it.", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(anthropicKey, { anthropicKey = it }, label = { Text(if (cloudSet) "API key saved - enter a new one to replace" else "Anthropic API key") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(cloudModel, { cloudModel = it }, label = { Text("Model (default $DEFAULT_CLOUD_MODEL)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            val providerId = c.providerId()
+            val desc = ProviderFactory.descriptor(providerId.ifBlank { ProviderIds.ANTHROPIC })!!
+            val cloudSet = keysVersion >= 0 && c.secrets.has(desc.secretName)
+            Text(if (c.cloudConfigured()) "${desc.label} is configured and will interpret your messages and review specs." else "Not configured. The app works fully without it, using built-in rules for free text.", style = MaterialTheme.typography.bodySmall)
+            ProviderFactory.available.forEach { d -> Choice(d.id == desc.id, d.label) { vm.updateSettings { it.copy(llmProviderId = d.id, cloudProvider = if (d.id == ProviderIds.ANTHROPIC) CloudProviderId.ANTHROPIC else it.cloudProvider) } } }
+            if (desc.needsBaseUrl) OutlinedTextField(baseUrl, { baseUrl = it }, label = { Text("Base URL (https://...)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(anthropicKey, { anthropicKey = it }, label = { Text(if (cloudSet) "API key saved - enter a new one to replace" else "${desc.label} API key") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(cloudModel, { cloudModel = it }, label = { Text(if (desc.defaultModel.isNotBlank()) "Model (default ${desc.defaultModel})" else "Model name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Text("What is sent to this service: " + ProviderFactory.PRIVACY_SENT.joinToString(" ") + " What is never sent: " + ProviderFactory.PRIVACY_NOT_SENT.joinToString(" "), style = MaterialTheme.typography.bodySmall)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button({
-                    if (anthropicKey.isNotBlank()) c.secrets.put(SecretStore.ANTHROPIC_KEY, anthropicKey.trim())
+                    if (anthropicKey.isNotBlank()) c.secrets.put(desc.secretName, anthropicKey.trim())
                     anthropicKey = ""; keysVersion++
-                    vm.updateSettings { it.copy(cloudProvider = CloudProviderId.ANTHROPIC, cloudModel = cloudModel.trim()) }
+                    vm.updateSettings { it.copy(llmProviderId = desc.id, llmBaseUrl = baseUrl.trim(), cloudProvider = if (desc.id == ProviderIds.ANTHROPIC) CloudProviderId.ANTHROPIC else it.cloudProvider, cloudModel = cloudModel.trim()) }
                     status = "Saved securely on this device."
                 }) { Text("Save") }
                 OutlinedButton({
@@ -160,8 +168,8 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
                         val r = c.cloud.complete(LlmRequest("Reply with the single word OK.", listOf(LlmMessage("user", "ping")), maxTokens = 10))
                         status = when (r) { is LlmResult.Ok -> "Cloud AI works."; is LlmResult.Failure -> "Test failed: ${r.reason}" }
                     }
-                }, enabled = cloudSet) { Text("Test") }
-                TextButton({ c.secrets.put(SecretStore.ANTHROPIC_KEY, null); vm.updateSettings { it.copy(cloudProvider = CloudProviderId.NONE) }; keysVersion++ }, enabled = cloudSet) { Text("Remove key") }
+                }, enabled = c.cloudConfigured()) { Text("Test") }
+                TextButton({ c.secrets.put(desc.secretName, null); vm.updateSettings { it.copy(llmProviderId = "", cloudProvider = CloudProviderId.NONE) }; keysVersion++ }, enabled = cloudSet) { Text("Remove key") }
             }
 
             HorizontalDivider()

@@ -38,3 +38,10 @@ Optional layer. Auth via user-supplied fine-grained personal access token stored
 
 ## D9. Build verification reality
 No Android SDK in the authoring sandbox -> `:app` is compiled and the APK is built by **GitHub Actions** (`.github/workflows/android.yml`), which also runs `:core` tests and uploads the debug APK as a workflow artifact. Never claim a device/emulator test that was not run.
+
+## v3: conversation overhaul
+- The LLM proposes, the schema disposes: every interpreted id/field is validated; rules are always the fallback and cross-check. Rules-only mode is announced, never disguised as AI.
+- Owner authority is explicit (`Provenance`), not implied by recency of write. Reversals are allowed; the latest owner word wins.
+- Dependent system decisions are invalidated (`Reconciler`), owner decisions are never silently deleted.
+- Scope counts demoted from requirements to labelled heuristics: the schema cannot know a game's real structure.
+- Provider choice stored as additive strings, secrets per provider in the existing store; shellapi untouched so the OTA runtime fingerprint is unchanged.

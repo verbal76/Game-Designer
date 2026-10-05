@@ -8,6 +8,8 @@ import com.hotattic.gamedesigner.core.llm.LlmProvider
 import com.hotattic.gamedesigner.core.llm.LlmRequest
 import com.hotattic.gamedesigner.core.llm.LlmResult
 import com.hotattic.gamedesigner.core.llm.LlmTier
+import com.hotattic.gamedesigner.core.llm.ProviderFactory
+import com.hotattic.gamedesigner.core.llm.ProviderIds
 import com.hotattic.gamedesigner.core.model.AppSettings
 import com.hotattic.gamedesigner.core.model.CloudProviderId
 import com.hotattic.gamedesigner.core.net.JavaHttpTransport
@@ -43,7 +45,13 @@ class AppContainer(val shell: ShellServices) {
     val settings = MutableStateFlow(store.loadSettings())
 
     val local: LlmProvider = ShellLlmAdapter(shell.localLlm)
-    val cloud = AnthropicProvider(http, { secrets.get(SecretStore.ANTHROPIC_KEY) }, { settings.value.cloudModel.ifBlank { DEFAULT_CLOUD_MODEL } })
+    /** Effective cloud backend id: the new additive setting, else the legacy Anthropic switch. */
+    fun providerId(): String = settings.value.llmProviderId.ifBlank { if (settings.value.cloudProvider == CloudProviderId.ANTHROPIC) ProviderIds.ANTHROPIC else ProviderIds.NONE }
+
+    /** The currently selected cloud provider (Anthropic when none is selected, so callers always have an object). */
+    val cloud: LlmProvider
+        get() = ProviderFactory.create(providerId().ifBlank { ProviderIds.ANTHROPIC }, http, { secrets.get(it) }, { settings.value.llmBaseUrl }, { settings.value.cloudModel })
+            ?: AnthropicProvider(http, { secrets.get(SecretStore.ANTHROPIC_KEY) }, { settings.value.cloudModel.ifBlank { DEFAULT_CLOUD_MODEL } })
     val research = WebResearch(http)
 
     fun github() = GitHubClient(http) { secrets.get(SecretStore.GITHUB_TOKEN) }
@@ -55,7 +63,11 @@ class AppContainer(val shell: ShellServices) {
     }
 
     fun localModelAvailable() = models.anyPath() != null
-    fun cloudConfigured() = settings.value.cloudProvider == CloudProviderId.ANTHROPIC && secrets.has(SecretStore.ANTHROPIC_KEY)
+    fun cloudConfigured(): Boolean {
+        val d = ProviderFactory.descriptor(providerId()) ?: return false
+        if (!secrets.has(d.secretName)) return false
+        return !d.needsBaseUrl || settings.value.llmBaseUrl.trim().startsWith("https://")
+    }
 
     fun director(): Director = Director(DirectorDeps(
         local = if (settings.value.localModelEnabled && localModelAvailable()) local else null,

@@ -78,6 +78,8 @@ class SurfaceThinkRegressionTest {
         val gen = SpecVersioning.generate(p, VersionKind.INITIAL, 1_700_000_900_000L, "2026-10-05")
         assertFalse(gen.blocked, gen.review.findings.joinToString("\n") { it.message + " :: " + it.line })
         val md = gen.project.versions.single().claudeMd
+        java.io.File("build/sample").also { it.mkdirs() }.resolve("surface-think-CLAUDE.md").writeText(md)
+        java.io.File("build/sample").resolve("surface-think-MASTER_PROMPT.md").writeText(gen.project.versions.single().masterPrompt)
         val lower = md.lowercase()
         for (bad in listOf("squad units", "plan each turn", "grid-based tactical", "tactical grid", "grid tactics", "turn order")) assertFalse(bad in lower, "stale text '$bad' leaked into the spec")
         for (section in listOf("PART A - OWNER REQUIREMENTS", "PART B - ACCEPTED RECOMMENDATIONS", "PART C - IMPLEMENTATION GUIDANCE", "PART D - UNRESOLVED QUESTIONS", "Surface Think")) assertTrue(section in md, "missing $section")

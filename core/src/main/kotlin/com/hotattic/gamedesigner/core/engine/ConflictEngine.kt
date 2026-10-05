@@ -141,7 +141,7 @@ object ConflictEngine {
         },
         { t ->
             val o = t.value(Keys.ORIENTATION)
-            if (o == "portrait" && t.isMobile && t.genres.any { it.id in setOf("platformer", "metroidvania", "shooter", "racing", "fighting") })
+            if (o == "portrait" && t.isMobile && t.value(Keys.PERSPECTIVE) != "vertical_scroll" && t.genres.any { it.id in setOf("platformer", "metroidvania", "shooter", "racing", "fighting") })
                 Conflict("portrait_vs_action", Severity.WARNING, "Portrait cramps this kind of game", "Platformers, shooters, racers and fighters need horizontal space for visibility and controls.",
                     "Use landscape.", listOf(Keys.ORIENTATION), listOf(Alternative("Landscape", mapOf(Keys.ORIENTATION to "landscape"))))
             else null

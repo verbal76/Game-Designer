@@ -191,6 +191,10 @@ object ProjectOps {
     /** "Choose for me": record the schema suggestion as an accepted recommendation (never as an owner requirement). */
     fun delegate(p: Project, key: String, now: Long): Pair<Project, Suggestion>? {
         val f = Fields.get(key) ?: return null
+        // If something was already understood from the owner's words, "choose for me" accepts that rather than replacing it.
+        val pending = p.decision(key)
+        if (pending != null && pending.status == DecisionStatus.PROPOSED && pending.value.isNotBlank() && pending.prov == Provenance.SYSTEM_INFERENCE)
+            return confirm(p, key, now) to Suggestion(pending.value, "Using what I understood from your description.")
         val s = f.suggest(Traits(p)) ?: return null
         val status = if (f.kind == FieldKind.TEXT && key in setOf(Keys.CORE_FANTASY)) DecisionStatus.PROPOSED else DecisionStatus.CONFIRMED
         return setDecision(p, key, s.value, Provenance.OWNER_ACCEPTED_RECOMMENDATION, now, status, note = s.rationale) to s

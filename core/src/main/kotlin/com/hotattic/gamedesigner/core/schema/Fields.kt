@@ -211,7 +211,8 @@ object Fields {
             options = { listOf(o("landscape", "Landscape"), o("portrait", "Portrait"), o("both", "Both (rotate)")) },
             suggest = { t ->
                 val g = primary(t).id
-                if (g in setOf("puzzle", "card_deckbuilder", "sim_management", "narrative_adventure")) Suggestion("portrait", "One-handed portrait play fits ${primary(t).label.lowercase()} games.")
+                if (t.value(Keys.PERSPECTIVE) == "vertical_scroll") Suggestion("portrait", "A vertical scroller reads best in portrait, with the long axis along the scroll direction.")
+                else if (g in setOf("puzzle", "card_deckbuilder", "sim_management", "narrative_adventure")) Suggestion("portrait", "One-handed portrait play fits ${primary(t).label.lowercase()} games.")
                 else Suggestion("landscape", "Action, platforming and builders need width for controls and visibility.")
             }),
 

@@ -37,10 +37,11 @@ object Reconciler {
     }
 
     /** Full revalidation: treats every root as changed, dropping any non-owner decision that no longer fits. */
-    fun revalidate(p: Project, now: Long): Reconciliation = reconcile(p.copy(decisions = emptyMap(), references = emptyList(), rejected = emptyMap()), p, now)
+    fun revalidate(p: Project, now: Long): Reconciliation = reconcile(p.copy(decisions = emptyMap(), references = emptyList(), rejected = emptyMap()), p, now, strict = false)
 
     /** Compares the project before and after an edit and clears whatever the edit made stale. */
-    fun reconcile(before: Project, after: Project, now: Long): Reconciliation {
+    /** [strict] true: a real edit happened, so decisions derived from changed roots are dropped for re-derivation. false: only decisions that are no longer valid are dropped. */
+    fun reconcile(before: Project, after: Project, now: Long, strict: Boolean = true): Reconciliation {
         val notices = mutableListOf<String>()
         var p = after
         val old = rootSnapshot(before)
@@ -54,9 +55,12 @@ object Reconciler {
             val stale = p.decisions.filter { (key, d) ->
                 if (d.ownerAuthored) return@filter false
                 if (d.value.isBlank()) return@filter false
+                // Decisions written in this very step were derived from the new roots, so they are not stale.
+                if (strict && before.decision(key)?.value != d.value) return@filter false
                 val f = Fields.get(key) ?: return@filter false
                 if (Dependencies.sourcesOf(f).none { it in changed }) return@filter false
                 // Only drop it if it no longer fits: an option that is still valid under the new roots is kept.
+                if (!strict && !f.kind.isSelect) return@filter !f.isRelevant(t) || f.validate(t, d.value) != null
                 if (f.kind.isSelect) {
                     val valid = f.options(t).map { it.id }.toSet()
                     val ids = d.list()

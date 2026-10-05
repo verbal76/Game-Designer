@@ -8,6 +8,9 @@ Branch `ccr-6330e20f-dm7zhm` (PR #1, draft). Spec: `CLAUDE.md`. Decisions: `docs
 - `ota-dev` prerelease: the dev OTA channel (`manifest.json`, `manifest.sig`, `bundle.zip`), currently bundle v2 `ota-proof-2`.
 - `gd-signing-keys` is a PRIVATE DRAFT release holding the OTA signing key + APK keystore. Never publish or delete it (deleting = new signing identity: reinstall + new APK for OTA trust).
 
+## v3 (conversation overhaul, OTA-delivered)
+See `docs/CONVERSATION.md`. Interpreter + provenance + reconciler + consistency review + A/B/C/D spec + question cards + provider registry. Regression: `SurfaceThinkRegressionTest`, `OptionResolverTest`, `CompatAndProviderTest`. Delivered as OTA bundle v3 on the dev channel (no new APK needed: shellapi/runtime fingerprint unchanged).
+
 ## Structure
 `:core` (logic, OTA-able) / `:applayer` (UI+ViewModel, OTA-able) / `:shellapi` (stable contract) / `:otakit` (update engine, JVM) / `:app` (native shell: LiteRT-LM, secrets, loader, OTA manager) / `:otabundle` (packaging only). Fallback layer is compiled into the APK.
 

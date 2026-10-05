@@ -6,6 +6,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,7 +37,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -61,7 +70,9 @@ import com.hotattic.gamedesigner.UiEvent
 import com.hotattic.gamedesigner.core.engine.CompletenessEngine
 import com.hotattic.gamedesigner.core.model.ChatMessage
 import com.hotattic.gamedesigner.core.model.ClaudePlan
+import com.hotattic.gamedesigner.core.engine.InterpreterKind
 import com.hotattic.gamedesigner.core.model.ProjectMode
+import com.hotattic.gamedesigner.core.model.QuestionSpec
 import com.hotattic.gamedesigner.core.model.ProjectPrefs
 import com.hotattic.gamedesigner.core.model.Role
 import com.hotattic.gamedesigner.core.model.UsageStyle
@@ -72,6 +83,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     val project by vm.current.collectAsState()
     val busy by vm.busy.collectAsState()
     val settings by vm.settings.collectAsState()
+    val interpreter by vm.interpreter.collectAsState()
     var input by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }
     var showStatus by remember { mutableStateOf(false) }
@@ -116,13 +128,23 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
             if (completeness != null && p?.mode == ProjectMode.NEW_GAME) LinearProgressIndicator(progress = { completeness.percent / 100f }, modifier = Modifier.fillMaxWidth())
+            if (interpreter == InterpreterKind.RULES && p?.mode != ProjectMode.PLAYTEST_CONTINUE) {
+                Text(
+                    "Conversational interpretation is unavailable (no AI model or provider is configured), so free-text answers are matched by simple rules. Tap the options below for exact answers, or add an AI provider in Settings.",
+                    Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
             val msgs = p?.messages.orEmpty()
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(msgs, key = { it.id }) { m -> Bubble(m, settings.directorName) }
                 if (busy != null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
             }
             val last = msgs.lastOrNull()
-            if (last != null && last.role == Role.DIRECTOR && last.quickReplies.isNotEmpty() && busy == null) {
+            val spec = last?.question?.takeIf { last.role == Role.DIRECTOR && busy == null && it.fieldKey == p?.pendingFieldKey && (it.kind == "SINGLE" || it.kind == "MULTI" || it.kind == "BOOLEAN") }
+            if (spec != null && last != null) {
+                QuestionCard(spec, last.id, onSelect = { ids -> vm.submitSelection(spec.fieldKey, ids) }, onSend = { vm.send(it) })
+            } else if (last != null && last.role == Role.DIRECTOR && last.quickReplies.isNotEmpty() && busy == null) {
                 LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(last.quickReplies) { q -> SuggestionChip({ vm.send(q.send) }, { Text(q.label) }) }
                 }
@@ -175,6 +197,43 @@ private fun Bubble(m: ChatMessage, directorName: String) {
         ) {
             if (!mine) Text(if (system) "Research / notes" else directorName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             SelectionContainer { Text(m.text, style = if (system) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium) }
+        }
+    }
+}
+
+/**
+ * Structured answer card. Single-select submits on tap; multi-select toggles, offers Select all / Clear, and only
+ * submits when the owner taps Continue, so a first tap never ends the question.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun QuestionCard(q: QuestionSpec, messageId: String, onSelect: (List<String>) -> Unit, onSend: (String) -> Unit) {
+    val multi = q.kind == "MULTI"
+    var selected by remember(messageId) { mutableStateOf(emptySet<String>()) }
+    Surface(Modifier.fillMaxWidth().padding(horizontal = 8.dp), tonalElevation = 2.dp, shape = RoundedCornerShape(16.dp)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (multi) Text("Pick every one that applies", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
+            Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    when (q.kind) {
+                        "BOOLEAN" -> {
+                            SuggestionChip({ onSend("yes") }, { Text("Yes") })
+                            SuggestionChip({ onSend("no") }, { Text("No") })
+                        }
+                        "MULTI" -> q.options.forEach { o -> FilterChip(o.id in selected, { selected = if (o.id in selected) selected - o.id else selected + o.id }, { Text(o.label) }) }
+                        else -> q.options.forEach { o -> SuggestionChip({ onSelect(listOf(o.id)) }, { Text(o.label) }) }
+                    }
+                }
+            }
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (multi) {
+                    TextButton({ selected = q.options.map { it.id }.toSet() }) { Text("Select all") }
+                    TextButton({ selected = emptySet() }, enabled = selected.isNotEmpty()) { Text("Clear") }
+                    Button({ onSelect(q.options.map { it.id }.filter { it in selected }) }, enabled = selected.isNotEmpty()) { Text("Continue (${selected.size})") }
+                }
+                if (q.canDelegate) OutlinedButton({ onSend("choose for me") }) { Text("Choose for me") }
+                if (q.canSkip) TextButton({ onSend("skip") }) { Text("Skip") } else TextButton({ onSend("ask me later") }) { Text("Ask me later") }
+            }
         }
     }
 }
