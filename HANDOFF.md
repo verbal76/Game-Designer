@@ -1,24 +1,27 @@
 # HANDOFF (read this first in a new context)
 
-Branch: `ccr-6330e20f-dm7zhm` (PR #1, draft). Authoritative spec: `CLAUDE.md`. Decisions: `docs/DECISIONS.md`. Architecture: `docs/ARCHITECTURE.md`.
+Branch `ccr-6330e20f-dm7zhm` (PR #1, draft). Spec: `CLAUDE.md`. Decisions: `docs/DECISIONS.md`. Architecture: `docs/ARCHITECTURE.md`. **OTA: `docs/OTA.md`.**
 
-## Implemented and verified
-- `:core` (pure Kotlin): model, schema (~56 fields), engines, Director, generators, persistence+migrations, web research, Anthropic provider, GitHub client/inspector. **63 JVM tests pass** (`./gradlew -PcoreOnly :core:test`).
-- `:app` (Android): Compose UI (HotAttic splash, onboarding, home, chat, spec, branding, settings, repos), Keystore secrets, LiteRT-LM provider, model manager (download/import), backup/restore. **Compiled, linted and packaged by GitHub Actions CI** (`.github/workflows/android.yml`): at commit `d12cc89` both CI jobs were green (core tests, `lintDebug`, `assembleDebug`, app unit tests) and a ~40 MB debug APK artifact `game-designer-debug-apk` was uploaded. Authoring sandbox has no Android SDK, so always check the latest CI run for newer commits.
+## Releases
+- `v1` Physical Test Baseline 1 (commit 2b53d80, debug-signed with a throwaway CI key). Untouched.
+- `v2` **OTA-capable native baseline** (latest): `Game-Designer-v2.apk`, signed with the persistent Game Designer release key, versionName 2.0.0.
+- `ota-dev` prerelease: the dev OTA channel (`manifest.json`, `manifest.sig`, `bundle.zip`), currently bundle v2 `ota-proof-2`.
+- `gd-signing-keys` is a PRIVATE DRAFT release holding the OTA signing key + APK keystore. Never publish or delete it (deleting = new signing identity: reinstall + new APK for OTA trust).
 
-## NOT verified / known limits
-- The CI-built APK has NOT been installed or run on any device or emulator by me. Runtime behavior (splash, UI layout, Keystore, LiteRT-LM engine loading, file pickers) is unverified.
-- LiteRT-LM API usage (`Engine`, `EngineConfig`, `ConversationConfig`, `sendMessage(...).toString()`) follows the official Kotlin docs but is unverified against the artifact; model catalog URLs (Hugging Face) are unverified (`verified=false`).
-- Sandbox cannot reach dl.google.com / Hugging Face: library versions were verified from release notes/search only.
-- Image-generation of "original" branding assets is recorded as a decision and instruction for Claude Code; the app does not itself render generated art yet.
+## Structure
+`:core` (logic, OTA-able) / `:applayer` (UI+ViewModel, OTA-able) / `:shellapi` (stable contract) / `:otakit` (update engine, JVM) / `:app` (native shell: LiteRT-LM, secrets, loader, OTA manager) / `:otabundle` (packaging only). Fallback layer is compiled into the APK.
 
-## Next dependency-ordered work
-1. Owner: download the `game-designer-debug-apk` artifact from the latest Actions run and install it; report what breaks. Next: add an instrumented/emulator smoke test job to CI.
-2. Verify/adjust LiteRT-LM usage and model URLs on a real device with network.
-3. Reference traits from research should feed back into questions (e.g. dimension fork between a 3D and a 2D reference).
-4. Asset search assistance (itch.io/OpenGameArt listings with license check) behind `ResearchProvider`.
-5. Compose UI tests / screenshot checks; tablet layout pass.
-6. Release signing config via CI secrets when a store release is wanted.
+## Verified
+CI green: core + otakit JVM tests, lint, theme-contrast test, bundle build/sign/verify. v2 workflow verified the real APK (apksigner, aapt2 badging, bundled layer + OTA runtime present) and ran a live OTA lifecycle against the published channel (discover, verify, stage, trial, commit, restart persistence, no loop, corruption rollback).
 
-## Owner decisions genuinely needed
-None blocking. Network policy note: allow `dl.google.com` and `huggingface.co` in the cloud environment if Claude should build/test the Android app locally (see docs/DECISIONS.md D9).
+## NOT verified
+Nothing has run on a device or emulator. Unverified on hardware: dex loading of the OTA bundle, first-frame health commit, the contrast fix visually, splash, Keystore, LiteRT-LM, pickers. The privacy of the draft key release rests on GitHub's documented behavior (confirm by viewing the Releases page logged out: `gd-signing-keys` must not appear).
+
+## Publishing OTA / APK
+OTA: edit `ota/publish-request.json` (channel, version > current, label; stable needs `confirm: PUBLISH-STABLE`) and push; ordinary pushes never publish. New APK (native/permission/dependency/resource/runtime change): add a new release workflow like `release-v2.yml`. Changing `shellApi`/Kotlin/Compose/AGP versions changes the runtime fingerprint and needs a new APK.
+
+## Install note
+v1 -> v2 cannot update in place (different signing key): export backup in Settings, uninstall v1, install v2, restore. Later APKs signed with the persistent key update over v2.
+
+## Next (after owner's physical findings)
+Reference-game fork gap; asset search; emulator smoke test in CI; consider moving signing material to repository secrets.
