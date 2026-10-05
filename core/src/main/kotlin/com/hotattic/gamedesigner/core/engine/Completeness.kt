@@ -26,9 +26,12 @@ data class Completeness(
     val pendingUploads: List<Field>,
     val unresolvedAssets: List<AssetNeed>,
     val optionalOpen: List<Field>,
+    /** Design completeness: weighted build-critical dimensions resolved (see [DesignDimensions]); not a share of a question list. */
+    val designPercent: Int = 0,
+    /** Derived fields still at Bob's default; "refine" can offer them. */
+    val refinable: List<Field> = emptyList(),
 ) {
-    /** Real percentage of concrete required items resolved - not a cosmetic number. */
-    val percent: Int get() = if (totalRequired == 0) 0 else (resolvedRequired * 100 / totalRequired)
+    val percent: Int get() = designPercent
     val readyForGeneration: Boolean get() = missingRequired.isEmpty() && pendingUploads.isEmpty() && proposed.none { it.required }
 }
 
@@ -52,7 +55,8 @@ object CompletenessEngine {
         return Fields.all.filter { it.isRelevant(t) }.filter { !(it.expertOnly && t.beginner) }.sortedBy { it.priority }
     }
 
-    fun compute(project: Project): Completeness {
+    fun compute(project0: Project): Completeness {
+        val project = DerivedDefaults.apply(project0)
         val fields = relevantFields(project)
         val required = fields.filter { it.required }
         val states = required.associateWith { stateOf(project, it) }
@@ -73,6 +77,6 @@ object CompletenessEngine {
                 assetNeeds.count { n -> project.assets.any { it.needId == n.id } }
             CategoryProgress(c, done, total)
         }
-        return Completeness(cats, resolvedReq, required.size, missing, proposed, deferred, pending, unresolvedAssets, optionalOpen)
+        return Completeness(cats, resolvedReq, required.size, missing, proposed, deferred, pending, unresolvedAssets, optionalOpen, DesignDimensions.percent(project0), DerivedDefaults.refinable(project0))
     }
 }

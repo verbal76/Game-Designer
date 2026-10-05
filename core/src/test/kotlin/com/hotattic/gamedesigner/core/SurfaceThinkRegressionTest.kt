@@ -72,6 +72,8 @@ class SurfaceThinkRegressionTest {
         assertTrue(p.rejected.values.any { "TURN_BASED" in it })
         assertTrue(p.messages.any { it.role == Role.DIRECTOR && it.text.contains("not turn-based", true) }, "the correction is announced")
 
+        p = d.handleUserMessage(d.askAbout(p, Keys.SESSION_STRUCTURE), settings, "I'll go with the 30 to 60 minutes").project
+        p = d.handleUserMessage(d.askAbout(p, Keys.MENUS_SETTINGS), settings, "all of those").project
         p = finish(d, p)
         assertEquals("medium_sessions", p.value(Keys.SESSION_STRUCTURE))
         assertTrue(p.list(Keys.MENUS_SETTINGS).size >= 8, "all menus: " + p.list(Keys.MENUS_SETTINGS))
@@ -82,7 +84,7 @@ class SurfaceThinkRegressionTest {
         java.io.File("build/sample").resolve("surface-think-MASTER_PROMPT.md").writeText(gen.project.versions.single().masterPrompt)
         val lower = md.lowercase()
         for (bad in listOf("squad units", "plan each turn", "grid-based tactical", "tactical grid", "grid tactics", "turn order")) assertFalse(bad in lower, "stale text '$bad' leaked into the spec")
-        for (section in listOf("PART A - OWNER REQUIREMENTS", "PART B - ACCEPTED RECOMMENDATIONS", "PART C - IMPLEMENTATION GUIDANCE", "PART D - UNRESOLVED QUESTIONS", "Surface Think")) assertTrue(section in md, "missing $section")
+        for (section in listOf("PART A - OWNER REQUIREMENTS", "PART B - ACCEPTED RECOMMENDATIONS", "PART C - IMPLEMENTATION GUIDANCE", "PART D - UNRESOLVED AND DELEGATED DECISIONS", "Surface Think")) assertTrue(section in md, "missing $section")
         assertTrue(ConsistencyReview.review(gen.project, md).clean)
         assertTrue("two characters" in lower)
     }
@@ -92,9 +94,8 @@ class SurfaceThinkRegressionTest {
         var p = d.start(newProject(), settings)
         p = d.handleUserMessage(p, settings, concept).project
         p = d.handleUserMessage(p, settings, "yes").project
-        // Drive to the session question.
-        var guard = 0
-        while (p.pendingFieldKey != Keys.SESSION_STRUCTURE && guard++ < 60) p = d.handleUserMessage(p, settings, when (p.pendingFieldKey) { "__proposals__" -> "yes"; "__asset_plan__" -> "looks good"; else -> "choose for me" }).project
+        // Session length is routine, so Bob derives it; the owner can still open it from "refine".
+        p = d.askAbout(p, Keys.SESSION_STRUCTURE)
         assertEquals(Keys.SESSION_STRUCTURE, p.pendingFieldKey)
         val variants = listOf("30 to 60 minutes", "option three", "the third one", "I'll go with the 30 to 60 minutes")
         for (v in variants) {
@@ -109,8 +110,7 @@ class SurfaceThinkRegressionTest {
         val d = director()
         var p = d.start(newProject(), settings)
         p = d.handleUserMessage(p, settings, concept).project
-        var guard = 0
-        while (p.pendingFieldKey != Keys.MENUS_SETTINGS && guard++ < 80) p = d.handleUserMessage(p, settings, when (p.pendingFieldKey) { "__proposals__" -> "yes"; "__asset_plan__" -> "looks good"; "__ready__" -> "status"; else -> "choose for me" }).project
+        p = d.askAbout(p, Keys.MENUS_SETTINGS)
         assertEquals(Keys.MENUS_SETTINGS, p.pendingFieldKey)
         val q = p.messages.last { it.fieldKey == Keys.MENUS_SETTINGS }.question
         assertNotNull(q); assertEquals("MULTI", q.kind)
@@ -181,8 +181,7 @@ class SurfaceThinkRegressionTest {
         val d = director(DirectorDeps(cloud = llm, clock = FakeClock()))
         var p = d.start(newProject(), settings)
         p = d.handleUserMessage(p, settings, concept).project
-        var guard = 0
-        while (p.pendingFieldKey != Keys.SESSION_STRUCTURE && guard++ < 60) p = d.handleUserMessage(p, settings, when (p.pendingFieldKey) { "__proposals__" -> "yes"; "__asset_plan__" -> "looks good"; else -> "choose for me" }).project
+        p = d.askAbout(p, Keys.SESSION_STRUCTURE)
         val t = d.handleUserMessage(p, settings, "probably about half an hour, maybe an hour if it's going well")
         assertEquals("medium_sessions", t.project.value(Keys.SESSION_STRUCTURE))
         assertEquals(com.hotattic.gamedesigner.core.engine.InterpreterKind.CLOUD_LLM, t.interpreter)

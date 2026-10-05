@@ -4,6 +4,10 @@ import com.hotattic.gamedesigner.core.engine.Alternative
 import com.hotattic.gamedesigner.core.engine.Answer
 import com.hotattic.gamedesigner.core.engine.AnswerIntent
 import com.hotattic.gamedesigner.core.engine.Interpretation
+import com.hotattic.gamedesigner.core.engine.DerivedDefaults
+import com.hotattic.gamedesigner.core.engine.DesignSeeder
+import com.hotattic.gamedesigner.core.engine.ReviewGate
+import com.hotattic.gamedesigner.core.generate.DesignReview
 import com.hotattic.gamedesigner.core.engine.MetaConversation
 import com.hotattic.gamedesigner.core.model.BrandingAsset
 import com.hotattic.gamedesigner.core.model.BrandingMode
@@ -81,6 +85,7 @@ private const val PENDING_PROPOSALS = "__proposals__"
 private const val PENDING_ASSET_PLAN = "__asset_plan__"
 private const val PENDING_CONFLICT_PREFIX = "__conflict:"
 private const val PENDING_READY = "__ready__"
+private const val PENDING_REVIEW = "__review__"
 private const val MODEL_TIMEOUT_MS = 60_000L
 
 /**
@@ -116,6 +121,9 @@ class Director(private val deps: DirectorDeps) {
             }
         }
     }
+
+    /** Opens one specific question (used by "edit" and "refine"). */
+    fun askAbout(project: Project, fieldKey: String): Project = Fields.get(fieldKey)?.let { askField(ProjectOps.setPending(project, null), it, deps.clock()) } ?: project
 
     /** Switches an existing project between designing and playtest feedback, with an orienting message. */
     fun enterMode(project: Project, settings: AppSettings, mode: ProjectMode): Project {
@@ -230,6 +238,21 @@ class Director(private val deps: DirectorDeps) {
                     p = res.first
                 }
             }
+            pending == PENDING_REVIEW -> {
+                val sectionKey = if (text.trim().split(Regex("\\s+")).size <= 8 && Regex("(?i)^(change|edit|redo|fix|revise|update)\\b").containsMatchIn(text.trim())) DesignReview.sectionKeyFor(text) else null
+                when {
+                    isApproval(text) -> return approveReview(p, "owner")
+                    AnswerParser.isDelegate(text) -> return approveReview(p, "delegated")
+                    sectionKey != null && Fields.get(sectionKey) != null -> return DirectorTurn(askField(ProjectOps.setPending(p, null), Fields.get(sectionKey)!!, now))
+                    Regex("(?i)^(i want to change something|change something|something'?s wrong|not quite|no|nope|something is off)\\W*$").containsMatchIn(text.trim()) ->
+                        return DirectorTurn(reply(p, reviewChangePrompt, PENDING_REVIEW, reviewQuick(), reviewSpec()))
+                    else -> {
+                        val before = ReviewGate.fingerprint(p)
+                        absorbInto(null)
+                        if (ReviewGate.fingerprint(p) == before) return DirectorTurn(reply(p, "I didn't catch a change in that. $reviewChangePrompt", PENDING_REVIEW, reviewQuick(), reviewSpec()))
+                    }
+                }
+            }
             pending == PENDING_READY -> {
                 if (AnswerParser.isAffirm(text) || "generate" in lower) return generateRequest(p, settings)
                 absorbInto(null)
@@ -268,6 +291,10 @@ class Director(private val deps: DirectorDeps) {
     private suspend fun submitSelectionOnce(project: Project, settings: AppSettings, fieldKey: String, ids: List<String>): DirectorTurn {
         val now = deps.clock()
         if (fieldKey == PENDING_ASSET_PLAN) return assetPlanSelection(project, settings, ids.firstOrNull(), now)
+        if (fieldKey == PENDING_REVIEW) {
+            val said = ProjectOps.addMessage(project, Role.USER, if (ids.firstOrNull() == "looks_right") "Looks right" else "I want to change something", now)
+            return if (ids.firstOrNull() == "looks_right") approveReview(said, "owner") else DirectorTurn(reply(said, reviewChangePrompt, PENDING_REVIEW, reviewQuick(), reviewSpec()))
+        }
         val field = Fields.get(fieldKey) ?: return DirectorTurn(project)
         val t = Traits(project)
         val options = field.options(t)
@@ -283,6 +310,33 @@ class Director(private val deps: DirectorDeps) {
         if (res.directReply != null) return DirectorTurn(replyField(res.project, res.directReply, field), res.action, res.modelNote)
         if (res.action != null) return DirectorTurn(replyField(res.project, "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it.", field), res.action, res.modelNote)
         return DirectorTurn(askNext(res.project, settings), res.action, res.modelNote)
+    }
+
+    private val reviewChangePrompt = "Tell me what to change in your own words, or name a part to edit (world, loop, failure, progression, first build, look, sound, completion, must-not-change)."
+
+    private fun isApproval(text: String): Boolean {
+        val l = text.lowercase()
+        if (Regex("\\b(not|no|never|wrong|incorrect|but|except)\\b|n't").containsMatchIn(l)) return false
+        return AnswerParser.isAffirm(text) || Regex("\\b(looks? (right|good|correct|great)|that'?s (right|it|the game|correct)|approved?|go ahead|build it|ship it)\\b").containsMatchIn(l)
+    }
+
+    private fun reviewQuick() = listOf(QuickReply("Looks right", "looks right"), QuickReply("I want to change something", "I want to change something"))
+    private fun reviewSpec() = QuestionSpec(PENDING_REVIEW, "SINGLE", listOf(ChoiceOption("looks_right", "Looks right"), ChoiceOption("change", "I want to change something")), canDelegate = true)
+
+    private fun approveReview(p: Project, by: String): DirectorTurn {
+        val now = deps.clock()
+        var q = ReviewGate.approve(p, now, by)
+        q = ProjectOps.addMessage(q, Role.DIRECTOR, if (by == "delegated") "Okay - I'll treat that review as approved and lock the design in." else "Locked in. Generating the build package from the design you approved.", now)
+        return generateRequest(ProjectOps.setPending(q, null), AppSettings())
+    }
+
+    private fun reviewMessage(p: Project, now: Long): Project {
+        val audit = AuditEngine.audit(p)
+        if (!audit.passes) {
+            val msg = "Almost there, but the audit found blocking items:\n" + audit.errors.take(5).joinToString("\n") { "- ${it.message}" }
+            return ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now), null)
+        }
+        return ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, DesignReview.compose(p), now, quick = reviewQuick(), question = reviewSpec()), PENDING_REVIEW)
     }
 
     /** Structured answer to the asset-plan card: accept the plan, or fix the licensing policy and accept the resulting plan. */
@@ -335,7 +389,7 @@ class Director(private val deps: DirectorDeps) {
         var note: String? = null
         var kind: InterpreterKind? = null
         if (field.key == Keys.CONCEPT) p = ProjectOps.setOriginalConcept(p, raw)
-        if (field.key == Keys.CONCEPT || field.key == Keys.CORE_FANTASY) {
+        if (field.key == Keys.CONCEPT || field.key == Keys.CORE_FANTASY || field.key == Keys.FIVE_MINUTES) {
             val r = absorb(p, settings, raw, null, field, interp)
             p = r.project; note = r.note; kind = r.kind
             p = researchNewReferences(p, settings)
@@ -505,6 +559,7 @@ class Director(private val deps: DirectorDeps) {
         val category: String
         when {
             field?.key == Keys.CONCEPT -> { category = "concept"; newFacts += sentences(text) }
+            field?.key == Keys.FIVE_MINUTES -> { category = "five_minutes"; newFacts += sentences(text) }
             corrected -> {
                 category = "correction"
                 interp.rejectedTags.forEach { newFacts += "The game is NOT ${it.name.lowercase().replace('_', ' ')}; it plays in real time." }
@@ -563,6 +618,7 @@ class Director(private val deps: DirectorDeps) {
                 DirectorTurn(reply(p, "There's no open feedback yet. Tell me what you noticed first."))
             else DirectorTurn(ProjectOps.addMessage(p, Role.DIRECTOR, "Generating the continuation spec and prompt.", now), DirectorAction.GenerateSpec)
         }
+        if (audit.passes && !ReviewGate.approved(p)) return DirectorTurn(reviewMessage(p, now))
         if (audit.passes) {
             val review = com.hotattic.gamedesigner.core.generate.SpecVersioning.preflight(p, now)
             if (!review.clean) {
@@ -588,12 +644,14 @@ class Director(private val deps: DirectorDeps) {
             when (val step = InterviewPlanner.next(p)) {
                 is NextStep.Ask -> {
                     val d = ProjectOps.delegate(p, step.field.key, now)
+                    // An optional question with nothing to recommend (e.g. "a great five minutes") is simply skipped.
+                    if (d == null && !step.field.required) { p = ProjectOps.defer(p, step.field.key, now); return@repeat }
                     if (d == null) return DirectorTurn(askNext(finishBulk(p, count, now), settings))
                     p = d.first; count++
                 }
                 is NextStep.Confirm -> { p = ProjectOps.confirm(p, step.field.key, now); count++ }
                 is NextStep.AssetPlanStep -> { p = p.copy(assets = p.assets + AssetPlan.resolveMissing(p, now)); count++ }
-                is NextStep.ResolveConflicts, is NextStep.Optional, NextStep.Ready -> return DirectorTurn(askNext(finishBulk(p, count, now), settings))
+                is NextStep.ResolveConflicts, is NextStep.Optional, NextStep.Review, NextStep.Ready -> return DirectorTurn(askNext(finishBulk(p, count, now), settings))
             }
         }
         return DirectorTurn(askNext(finishBulk(p, count, now), settings))
@@ -667,22 +725,23 @@ class Director(private val deps: DirectorDeps) {
         else if (field.key != Keys.CONCEPT) add(QuickReply("Ask me later", "ask me later"))
     }
 
-    private fun reply(p: Project, text: String, pending: String? = p.pendingFieldKey, quick: List<QuickReply> = emptyList()): Project =
-        ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), pending?.takeUnless { it.startsWith("__") }, quick), pending)
+    private fun reply(p: Project, text: String, pending: String? = p.pendingFieldKey, quick: List<QuickReply> = emptyList(), question: QuestionSpec? = null): Project =
+        ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), pending?.takeUnless { it.startsWith("__") }, quick, question), pending)
 
     /** Re-asks a field with its structured question so the card stays usable after a clarification. */
     private fun replyField(p: Project, text: String, field: Field): Project =
         ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), field.key, quickFor(field, Traits(p)), specFor(field, Traits(p))), field.key)
 
     private fun specFor(field: Field, t: Traits): QuestionSpec = QuestionSpec(
-        field.key, field.kind.name, if (field.kind.isSelect) field.options(t).map { ChoiceOption(it.id, it.label, it.description) } else emptyList(),
+        field.key, if (field.key in Keys.brandingKeyForSlot.values) "ASSET_UPLOAD" else field.kind.name, if (field.kind.isSelect) field.options(t).map { ChoiceOption(it.id, it.label, it.description) } else emptyList(),
         canDelegate = field.suggest(t) != null, canSkip = !field.required,
     )
 
     /** Chooses the next thing to say. Announces at most one new conflict per turn, before the next question. */
     internal fun askNext(p0: Project, settings: AppSettings): Project {
-        var p = p0
         val now = deps.clock()
+        // "Do I already know this?" - use what the owner said, then take routine engineering decisions myself.
+        var p = DerivedDefaults.apply(DesignSeeder.seed(p0, now).first, now)
 
         // 1. Batch-confirm freshly inferred proposals so the owner isn't asked about each one.
         val proposals = ProjectOps.proposedKeys(p).filter { Fields.get(it)?.let { f -> f.isRelevant(Traits(p)) } == true || it in setOf(Keys.GENRE, Keys.DIMENSION, Keys.PLATFORMS, Keys.REFERENCES) }
@@ -732,6 +791,7 @@ class Director(private val deps: DirectorDeps) {
                 ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, Messages.conflict(c), now, quick = conflictQuick(c)), PENDING_CONFLICT_PREFIX + c.id + "__")
             }
             is NextStep.Optional -> askField(p, step.field, now)
+            NextStep.Review -> reviewMessage(p, now)
             NextStep.Ready -> readyMessage(p, now)
         }
     }

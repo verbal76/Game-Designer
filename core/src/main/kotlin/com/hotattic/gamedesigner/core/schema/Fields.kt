@@ -64,6 +64,9 @@ object Keys {
     const val CONTINUATION_GOAL = "continuation_goal"
     const val PRESERVE_SYSTEMS = "preserve_systems"
     const val KNOWN_ISSUES = "known_issues"
+    const val FIVE_MINUTES = "five_minutes"
+    const val FIRST_SLICE = "first_slice"
+    const val MUST_NOT_CHANGE = "must_not_change"
 
     val brandingKeyForSlot = mapOf(
         com.hotattic.gamedesigner.core.model.BrandingSlot.ICON to BRAND_ICON,
@@ -85,6 +88,23 @@ data class Option(val id: String, val label: String, val description: String = "
 /** What "choose for me" would pick, and why. */
 data class Suggestion(val value: String, val rationale: String)
 
+/**
+ * Which decisions the owner is asked about and which Bob derives himself. The owner decides what could change the game
+ * (vision, loop, world, failure, scope, look, invariants); routine engineering is derived with a recorded DEFAULT provenance and
+ * can still be reviewed through "refine". Kept apart from the field table so tiers can be tuned without touching schemas.
+ */
+object Tiers {
+    val derive = setOf(
+        Keys.PERSPECTIVE, Keys.REFERENCE_ASPECTS, Keys.SESSION_STRUCTURE, Keys.SAVE_SYSTEM, Keys.TUTORIAL, Keys.INPUT_METHODS, Keys.TOUCH_SCHEME,
+        Keys.INPUT_REMAP, Keys.VFX, Keys.AUDIO, Keys.HUD_UI, Keys.MENUS_SETTINGS, Keys.ACCESSIBILITY, Keys.PERFORMANCE, Keys.ENGINE,
+        Keys.NETWORK_POLICY, Keys.CI_BUILD, Keys.TESTING, Keys.SCOPE_CHOICE, Keys.PACKAGE_ID, Keys.VERSION_STRATEGY, Keys.STORE_PLAN,
+        Keys.MONETIZATION, Keys.PRIVACY, Keys.SIGNING, Keys.ENEMIES_BOSSES,
+    )
+    val forceAsk = setOf(Keys.PLAYER_FEELING, Keys.FIRST_SLICE, Keys.MUST_NOT_CHANGE)
+    val forceOptional = setOf(Keys.REFERENCES, Keys.FIVE_MINUTES)
+    fun required(key: String, declared: Boolean) = when (key) { in forceAsk -> true; in forceOptional -> false; else -> declared }
+}
+
 class Field(
     val key: String,
     val category: Category,
@@ -94,7 +114,7 @@ class Field(
     /** Plain-language explanation for beginners ("why am I being asked this?"). */
     val why: String,
     val priority: Int,
-    val required: Boolean = true,
+    required: Boolean = true,
     val modes: Set<ProjectMode> = NEW_ONLY,
     val expertOnly: Boolean = false,
     val relevant: (Traits) -> Boolean = { true },
@@ -109,6 +129,10 @@ class Field(
      */
     val derivedFrom: Set<String>? = null,
 ) {
+    val required: Boolean = Tiers.required(key, required)
+    /** Bob derives this himself (recorded as DEFAULT) instead of asking; the owner can still change it through "refine". */
+    val derived: Boolean get() = key in Tiers.derive
+
     fun isRelevant(t: Traits): Boolean = t.mode in modes && relevant(t)
 
     companion object {
@@ -226,7 +250,20 @@ object Fields {
         Field(Keys.PLAYER_FEELING, Category.GAMEPLAY, FieldKind.TEXT, "Intended feeling",
             "What feeling should the player have - tense, cozy, powerful, clever, relaxed?",
             "Tone guides pacing, audio, color and difficulty.",
-            52, required = false, relevant = { it.genresKnown }),
+            52, required = false, relevant = { it.genresKnown },
+            suggest = { t ->
+                val said = DimensionLexicon.sentencesFor(t.project, DimId.FEELING).firstOrNull()
+                if (said != null) Suggestion(said, "In your own words.")
+                else Suggestion(when (primary(t).id) {
+                    "survivors_like" -> "Powerful and frantic: fragile at the start, snowballing into overwhelming force."
+                    "action_roguelite" -> "Tense and rewarding: every run is a gamble that pays off when a build clicks."
+                    "platformer", "metroidvania" -> "Precise and flowing: tight control, with a rush when moves chain cleanly."
+                    "puzzle" -> "Calm and clever: quiet focus, with a satisfying click when the answer lands."
+                    "city_builder", "factory_automation", "sim_management" -> "Absorbing and orderly: steady, satisfying growth from small tweaks."
+                    "shooter", "fighting" -> "Fast and sharp: tense encounters and clean, readable feedback."
+                    else -> "Engaging and readable, with steady tension and clear payoffs."
+                }, "A fitting default for this kind of game; correct it in your own words any time.")
+            }),
 
         Field(Keys.REFERENCES, Category.GAMEPLAY, FieldKind.TEXT, "Reference games",
             "Which existing games are you drawing from, and which part of each? Say \"none\" if there aren't any.",
@@ -731,6 +768,23 @@ object Fields {
             199, relevant = { it.storePlan in setOf("play_internal_testing", "play_store", "app_store") },
             options = { listOf(o("owner_keystore_ci_secrets", "My own keystore stored as CI secrets"), o("play_app_signing", "Google Play App Signing + upload key"), o("debug_only", "Debug-signed test builds only")) },
             suggest = { Suggestion("play_app_signing", "Google manages the app signing key; you hold only an upload key kept out of the repo.") }),
+
+        Field(Keys.FIVE_MINUTES, Category.GAMEPLAY, FieldKind.TEXT, "A great five minutes",
+            "Describe one great five minutes of playing this game. What are you doing, seeing and feeling?",
+            "One vivid stretch of play tells me the loop, pace, feel and look at once, so I can skip a pile of smaller questions.",
+            58, required = false, relevant = { it.genresKnown && DimensionCoverage.uncoveredCore(it.project) >= 3 }),
+
+        Field(Keys.FIRST_SLICE, Category.CONTENT, FieldKind.TEXT, "First playable build",
+            "Let's define the first playable build. What should it contain so you can judge whether the game is fun? (A smaller, polished slice usually beats a bigger unfinished one.)",
+            "This is the line between a prototype that proves the idea and a pile of half-built content.",
+            106, relevant = { it.genresKnown },
+            suggest = { t -> SliceSuggester.suggest(t) }),
+
+        Field(Keys.MUST_NOT_CHANGE, Category.GAMEPLAY, FieldKind.TEXT, "Must not change",
+            "What are the things Claude absolutely must not reinterpret about this game? Say \"none\" or \"choose for me\" if you like.",
+            "A few hard invariants stop a builder from quietly turning your game into a different, more conventional one.",
+            203, relevant = { it.genresKnown },
+            suggest = { t -> SliceSuggester.invariants(t) }),
 
         Field(Keys.DONE, Category.RELEASE, FieldKind.TEXT, "Definition of done",
             "What must be true for you to call the first build done?",

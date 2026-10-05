@@ -2,6 +2,8 @@ package com.hotattic.gamedesigner.core.engine
 
 import com.hotattic.gamedesigner.core.model.Project
 import com.hotattic.gamedesigner.core.schema.Field
+import com.hotattic.gamedesigner.core.schema.Fields
+import com.hotattic.gamedesigner.core.schema.Keys
 
 sealed class NextStep {
     /** Ask an open field. */
@@ -14,7 +16,9 @@ sealed class NextStep {
     data class ResolveConflicts(val conflicts: List<Conflict>) : NextStep()
     /** An optional refinement question; the owner can generate at any time. */
     data class Optional(val field: Field) : NextStep()
-    /** Everything required is resolved and audited; ready to generate. */
+    /** Everything is resolved: show the plain-English design review and get the owner's approval. */
+    object Review : NextStep()
+    /** Everything required is resolved, audited and approved; ready to generate. */
     object Ready : NextStep()
 }
 
@@ -26,7 +30,10 @@ object InterviewPlanner {
         val postponed = project.postponed.toSet()
 
         val open = c.missingRequired.filter { it.key !in postponed }
-        open.firstOrNull()?.let { return NextStep.Ask(it) }
+        // "A great five minutes": only when the owner has said little about the core loop, feel, world and failure so far.
+        val five = Fields.get(Keys.FIVE_MINUTES)?.takeIf { f -> f.isRelevant(com.hotattic.gamedesigner.core.schema.Traits(project)) && project.decision(f.key) == null && f.key !in postponed }
+        val first = (open + listOfNotNull(five)).minByOrNull { it.priority }
+        first?.let { return NextStep.Ask(it) }
 
         c.proposed.firstOrNull { it.required && it.key !in postponed }?.let {
             return NextStep.Confirm(it, project.value(it.key).orEmpty())
@@ -43,10 +50,10 @@ object InterviewPlanner {
         val open2 = ConflictEngine.open(project)
         if (open2.isNotEmpty()) return NextStep.ResolveConflicts(open2)
 
-        return NextStep.Ready
+        return if (ReviewGate.approved(project)) NextStep.Ready else NextStep.Review
     }
 
     /** Next optional refinement question, if any (never blocks generation). */
     fun nextOptional(project: Project): Field? =
-        CompletenessEngine.compute(project).optionalOpen.firstOrNull { it.key !in project.postponed }
+        CompletenessEngine.compute(project).let { c -> (c.optionalOpen.filter { it.key != Keys.FIVE_MINUTES } + c.refinable).sortedBy { it.priority } }.firstOrNull { it.key !in project.postponed }
 }

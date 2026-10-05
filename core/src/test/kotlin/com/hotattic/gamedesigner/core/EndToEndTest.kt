@@ -46,7 +46,7 @@ class EndToEndTest {
         val lower = md.lowercase()
         assertFalse(lower.contains("tbd"), "spec contains TBD")
         assertFalse(lower.contains("todo"), "spec contains TODO")
-        assertTrue(v.masterPrompt.length in 800..6000, "master prompt size ${v.masterPrompt.length}")
+        assertTrue(v.masterPrompt.length in 1500..16000, "master prompt size ${v.masterPrompt.length}")
         assertTrue(v.masterPrompt.contains("CLAUDE.md"))
         assertTrue(md.length > 8000, "spec should be substantial, was ${md.length}")
 

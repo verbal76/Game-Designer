@@ -3,6 +3,8 @@ package com.hotattic.gamedesigner.core.generate
 import com.hotattic.gamedesigner.core.engine.AssetPlan
 import com.hotattic.gamedesigner.core.engine.AuditEngine
 import com.hotattic.gamedesigner.core.engine.CompletenessEngine
+import com.hotattic.gamedesigner.core.engine.DerivedDefaults
+import com.hotattic.gamedesigner.core.engine.ReviewGate
 import com.hotattic.gamedesigner.core.engine.ConflictEngine
 import com.hotattic.gamedesigner.core.engine.ConsistencyReview
 import com.hotattic.gamedesigner.core.engine.Reconciler
@@ -34,22 +36,30 @@ object SpecVersioning {
      * The only path to an export: revalidate dependencies, settle contradictions by owner precedence, generate, then run the
      * mandatory consistency review. If errors remain the project is returned unchanged (no version appended) with the findings.
      */
-    fun generate(project: Project, kind: VersionKind, nowMillis: Long, nowIso: String, label: String? = null): Generation {
+    fun generate(project: Project, kind: VersionKind, nowMillis: Long, nowIso: String, label: String? = null, requireApproval: Boolean = true): Generation {
         val notes = mutableListOf<String>()
-        val rec = Reconciler.revalidate(project, nowMillis); notes += rec.notices
-        val (resolved, fixes) = ConsistencyReview.resolve(rec.project, nowMillis); notes += fixes
+        // The authoritative spec is only generated from a design the owner approved (or delegated approval of).
+        val approval = project.designApproval
+        if (requireApproval && project.mode == ProjectMode.NEW_GAME && !ReviewGate.approved(project))
+            return Generation(project, ReviewReport(listOf(ReviewFinding(ReviewLevel.ERROR, "review_not_approved", "The owner has not approved the plain-English design review yet."))), notes)
+        val rec = Reconciler.revalidate(DerivedDefaults.apply(project, nowMillis), nowMillis); notes += rec.notices
+        val (resolved0, fixes) = ConsistencyReview.resolve(rec.project, nowMillis); notes += fixes
+        // Corrective clean-ups do not make the owner's approval stale.
+        val resolved = if (approval != null) resolved0.copy(designApproval = approval.copy(fingerprint = ReviewGate.fingerprint(resolved0))) else resolved0
         val withAssets = resolved.copy(assets = resolved.assets + AssetPlan.resolveMissing(resolved, nowMillis))
         val number = (project.versions.maxOfOrNull { it.number } ?: 0) + 1
         val lbl = label ?: kind.label
         val audit = AuditEngine.audit(withAssets)
         val md = ClaudeMdGenerator.generate(withAssets, number, lbl, nowIso, audit)
-        val review = ConsistencyReview.review(withAssets, md)
+        val prompt = MasterPromptGenerator.generate(withAssets, number)
+        val assetsMd = ExportPackage.assetsMarkdown(withAssets)
+        // Every authoritative document is checked against the structured state and against each other's claims.
+        val review = ConsistencyReview.reviewAll(withAssets, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to prompt, "ASSETS.md" to assetsMd))
         // Contradictory conflicts that remain are also blocking.
         val conflictFindings = ConflictEngine.all(withAssets).filter { it.id == "combat_turn_based_vs_real_time" }
             .map { ReviewFinding(ReviewLevel.ERROR, it.id, it.message) }
         val report = ReviewReport(review.findings + conflictFindings)
         if (!report.clean) return Generation(project, report, notes)
-        val prompt = MasterPromptGenerator.generate(withAssets, number)
         val readiness = CompletenessEngine.compute(withAssets).percent
         val v = SpecVersion(number, kind, lbl, nowMillis, md, prompt, withAssets.decisions, readiness, audit.summary())
         // Incorporate open feedback: it is now part of this version.
@@ -62,7 +72,7 @@ object SpecVersioning {
         generate(project, kind, nowMillis, nowIso, label).project
 
     /** Findings the owner must resolve before an export is possible (empty when generation would succeed). */
-    fun preflight(project: Project, nowMillis: Long): ReviewReport = generate(project, VersionKind.REVISION, nowMillis, "preflight").review
+    fun preflight(project: Project, nowMillis: Long): ReviewReport = generate(project, VersionKind.REVISION, nowMillis, "preflight", requireApproval = false).review
 
     data class DecisionChange(val key: String, val title: String, val before: String?, val after: String?)
 

@@ -73,7 +73,7 @@ class AnswerParserTest {
         assertTrue(AnswerParser.parse(dim, Traits(p), "what is 2.5D?") is Answer.Question)
     }
     @Test fun optionalSkipAndRequiredPostpone() {
-        val feeling = Fields.get(Keys.PLAYER_FEELING)!!
+        val feeling = Fields.get(Keys.COLOR_MOOD)!!
         assertEquals(Answer.Skip, AnswerParser.parse(feeling, Traits(p), "skip"))
         assertEquals(Answer.Postpone, AnswerParser.parse(dim, Traits(p), "ask me later"))
         assertEquals(Answer.Value("none"), AnswerParser.parse(Fields.get(Keys.REFERENCES)!!, Traits(p), "none"))

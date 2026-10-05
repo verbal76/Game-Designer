@@ -6,6 +6,7 @@ import com.hotattic.gamedesigner.core.engine.AuditReport
 import com.hotattic.gamedesigner.core.engine.ConflictEngine
 import com.hotattic.gamedesigner.core.engine.BuildObjective
 import com.hotattic.gamedesigner.core.engine.ConsistencyReview
+import com.hotattic.gamedesigner.core.engine.MetaConversation
 import com.hotattic.gamedesigner.core.engine.ProjectObjective
 import com.hotattic.gamedesigner.core.engine.ScopeEngine
 import com.hotattic.gamedesigner.core.model.AssetResolution
@@ -35,7 +36,8 @@ import com.hotattic.gamedesigner.core.schema.Traits
  */
 object ClaudeMdGenerator {
 
-    fun generate(project: Project, versionNumber: Int, versionLabel: String, nowIso: String, audit: AuditReport = AuditEngine.audit(project)): String {
+    fun generate(project0: Project, versionNumber: Int, versionLabel: String, nowIso: String, audit: AuditReport = AuditEngine.audit(project0)): String {
+        val project = com.hotattic.gamedesigner.core.engine.DerivedDefaults.apply(project0)
         val t = Traits(project)
         val scope = ScopeEngine.recommend(project)
         val prototype = ProjectObjective.of(project) == BuildObjective.PROTOTYPE
@@ -67,24 +69,23 @@ object ClaudeMdGenerator {
 
         // PART A / B: who said what.
         sb.append("# PART A - OWNER REQUIREMENTS (authoritative: implement exactly; nothing in Part B or C may contradict this)\n\n")
-        h2("A1. The owner's concept, in their own words")
+        h2("A1. Owner vision - the original concept, in their own words")
         val concept = project.originalConcept.ifBlank { project.value(Keys.CONCEPT).orEmpty() }
         sb.append(ConsistencyReview.VERBATIM_OPEN).append('\n')
         sb.append(concept.ifBlank { title }.lines().joinToString("\n") { "> $it" }).append('\n')
         sb.append(ConsistencyReview.VERBATIM_CLOSE).append("\n\n")
-        val ownerFacts = project.activeFacts()
-        val ownerDecisions = project.decisions.filter { (k, d) -> d.ownerAuthored && d.status == DecisionStatus.CONFIRMED && d.value.isNotBlank() && active(k) != null && k != Keys.CONCEPT }
-        h2("A2. What the owner has specified")
+        val ownerFacts = project.activeFacts().filter { it.category != "correction" }
+        val sectionKeys = setOf(Keys.CONCEPT, Keys.MUST_NOT_CHANGE, Keys.FIRST_SLICE, Keys.DONE, Keys.WIN_LOSS, Keys.ASSET_POLICY, Keys.FIVE_MINUTES) + Keys.brandingKeyForSlot.values
+        fun ownerDecision(k: String, d: com.hotattic.gamedesigner.core.model.Decision) = d.ownerAuthored && d.status == DecisionStatus.CONFIRMED && d.value.isNotBlank() && active(k) != null
+        val ownerDecisions = project.decisions.filter { (k, d) -> ownerDecision(k, d) && k !in sectionKeys && d.prov == Provenance.OWNER_EXPLICIT }
+        h2("A2. Owner requirements")
         if (ownerFacts.isEmpty() && ownerDecisions.isEmpty()) p("The owner specified nothing beyond the concept above.")
         bullets(ownerFacts.map { it.text })
-        bullets(ownerDecisions.map { (k, d) ->
-            val slotOf = Keys.brandingKeyForSlot.entries.firstOrNull { it.value == k }?.key
-            val up = slotOf?.let { project.branding[it] }?.takeIf { it.mode == BrandingMode.UPLOADED }
-            if (up != null) return@map "**${Fields.get(k)?.title ?: k}:** owner-supplied file `${up.originalName}` (${up.width}x${up.height}, sha256 ${up.sha256.take(16)}...), kept untouched at `branding/master/${up.localFile?.substringAfterLast('/')}`. Use it; do not generate a replacement."
-            val corr = if (d.prov == Provenance.OWNER_CORRECTION) " [owner correction - supersedes anything earlier]" else ""
-            "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}$corr" + if (d.rawAnswer.isNotBlank() && d.rawAnswer.length < 160) " (owner said: \"${d.rawAnswer.trim()}\")" else ""
-        })
+        bullets(ownerDecisions.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" + if (d.rawAnswer.isNotBlank() && d.rawAnswer.length < 160) " (owner said: \"${d.rawAnswer.trim()}\")" else "" })
+
         val retracted = project.facts.filter { it.status == FactStatus.RETRACTED }
+        val corrections = project.decisions.filter { (k, d) -> ownerDecision(k, d) && k !in sectionKeys && d.prov == Provenance.OWNER_CORRECTION }
+        val correctionFacts = project.activeFacts().filter { it.category == "correction" }
         val rejectedLines = project.rejected.flatMap { (k, ids) -> ids.map { id -> k to id } }.map { (k, id) ->
             when (k) {
                 Dependencies.TAG -> "Rejected by the owner: ${id.lowercase().replace('_', '-')} design"
@@ -92,29 +93,62 @@ object ClaudeMdGenerator {
                 else -> "Rejected by the owner: ${Fields.get(k)?.title ?: k} = ${optionLabel(t, k, id)}"
             }
         }.distinct()
-        if (retracted.isNotEmpty() || rejectedLines.isNotEmpty()) {
-            h2("A3. Withdrawn or rejected by the owner (do NOT implement)")
-            bullets(retracted.map { "WITHDRAWN (do not implement): ${it.text}" } + rejectedLines)
-        }
-        val overrides = project.decisions.filter { it.value.source == DecisionSource.OVERRIDE }
-        if (overrides.isNotEmpty()) {
-            h2("A4. Informed overrides")
-            p("The owner was informed of the tradeoffs and knowingly chose the following. Implement them as stated; do not reopen them.")
-            bullets(overrides.map { (k, d) -> "**${Fields.get(k)?.title ?: k}** = ${label(k, d.value)} (Director recommended: ${d.overrides ?: "an alternative"})." })
-        }
-        val acknowledged = ConflictEngine.acknowledged(project)
-        if (acknowledged.isNotEmpty()) {
-            p("Acknowledged risks (owner proceeded after being warned):")
-            bullets(acknowledged.map { "${it.title}: ${it.message}" })
+        h2("A3. Owner corrections (these supersede anything earlier; do NOT implement withdrawn items)")
+        if (corrections.isEmpty() && correctionFacts.isEmpty() && retracted.isEmpty() && rejectedLines.isEmpty()) p("None.")
+        bullets(correctionFacts.map { it.text })
+        bullets(corrections.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)} [corrected by the owner]" })
+        bullets(retracted.map { "WITHDRAWN (do not implement): ${it.text}" } + rejectedLines)
+
+        val invariants = v(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }
+        val derivedInvariants = com.hotattic.gamedesigner.core.schema.SliceSuggester.invariants(t).value.takeIf { it != "none" }
+        h2("A4. Must-not-change constraints (do not reinterpret, 'improve' or normalise these)")
+        if (invariants == null && derivedInvariants == null) p("None declared.")
+        else {
+            invariants?.let { bullets(MetaConversation.designSentences(it, 3)) }
+            if (derivedInvariants != null && derivedInvariants != invariants) { p("Implied by the owner's own decisions:"); bullets(MetaConversation.designSentences(derivedInvariants, 3)) }
         }
 
+        h2("A5. First playable build scope")
+        p(v(Keys.FIRST_SLICE) ?: "Not separately defined; build the smallest polished slice that fully demonstrates the concept.")
+        p(if (prototype) "Objective: a FULLY FUNCTIONAL PROTOTYPE (the owner's own word) - real gameplay, representative presentation, a beginning-to-end slice, actual controls and core loop, representative content; not full commercial content volume." else "Objective: a complete, genuinely playable first version.")
+
+        h2("A6. Completion criteria")
+        bullets(listOfNotNull(v(Keys.WIN_LOSS)?.let { "Win and loss: $it" }, v(Keys.DONE)?.let { "The first build is done when: $it" }))
+
+        h2("A7. Asset policy and owner-supplied assets")
+        v(Keys.ASSET_POLICY)?.let { pol -> p("Asset policy: **${label(Keys.ASSET_POLICY, pol)}**" + (project.decision(Keys.ASSET_POLICY)?.let { if (it.ownerAuthored) " (chosen by the owner)" else "" } ?: "") + ".") }
+        val slotLines = Keys.brandingKeyForSlot.map { (slot, key) ->
+            val up = project.branding[slot]?.takeIf { it.mode == BrandingMode.UPLOADED }
+            val nice = when (slot) { BrandingSlot.ICON -> "Game icon"; BrandingSlot.STUDIO_SPLASH -> "Studio logo / splash"; else -> "Game splash / title image" }
+            when {
+                up != null -> "**$nice:** OWNER-SUPPLIED file `${up.originalName}` (${up.width}x${up.height}, sha256 ${up.sha256.take(16)}...), kept untouched at `branding/master/${up.localFile?.substringAfterLast('/')}`. Use it; never generate a replacement."
+                else -> when (v(key)) { "generate_original" -> "**$nice:** none supplied; create an original one."; "generic_temporary" -> "**$nice:** none supplied; use a clean generic replaceable one."; "skip" -> "**$nice:** intentionally omitted."; else -> null }
+            }
+        }.filterNotNull()
+        bullets(slotLines)
+
+        h2("A8. Informed overrides and acknowledged risks")
+        val overrides = project.decisions.filter { it.value.source == DecisionSource.OVERRIDE }
+        if (overrides.isEmpty()) p("None.")
+        else bullets(overrides.map { (k, d) -> "**${Fields.get(k)?.title ?: k}** = ${label(k, d.value)} (the owner was informed; Director recommended: ${d.overrides ?: "an alternative"})." })
+        val acknowledged = ConflictEngine.acknowledged(project)
+        if (acknowledged.isNotEmpty()) bullets(acknowledged.map { "Acknowledged risk - ${it.title}: ${it.message}" })
+
         sb.append("# PART B - ACCEPTED RECOMMENDATIONS (Game Designer's suggestions the owner accepted or delegated; keep unless there is a strong engineering reason)\n\n")
-        val accepted = project.decisions.filter { (k, d) -> !d.ownerAuthored && d.status == DecisionStatus.CONFIRMED && d.value.isNotBlank() && active(k) != null && k != Keys.CONCEPT }
+        val accepted = project.decisions.filter { (k, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION && d.status == DecisionStatus.CONFIRMED && d.value.isNotBlank() && active(k) != null && k != Keys.CONCEPT && k !in Keys.brandingKeyForSlot.values && k != Keys.ASSET_POLICY }
         if (accepted.isEmpty()) p("None.")
         else bullets(accepted.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" + (d.note.takeIf { it.isNotBlank() }?.let { " - $it" } ?: "") })
 
         sb.append("# PART C - IMPLEMENTATION GUIDANCE (how to build it; derived from Parts A and B plus engineering practice)\n\n")
         p("Where anything in this part appears to conflict with Part A, Part A wins.")
+        val derivedDefaults = project.decisions.filter { (k, d) -> d.prov == Provenance.DEFAULT && d.value.isNotBlank() && active(k) != null }
+        if (derivedDefaults.isNotEmpty()) {
+            h3("Engineering decisions Bob made so the owner did not have to (change any of them for a good reason)")
+            bullets(derivedDefaults.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" })
+        }
+        val slop = AntiSlop.derive(project)
+        h3("Anti-slop acceptance criteria (what does NOT count as satisfying this design)")
+        bullets(slop)
 
         // 2. Vision
         h2("2. Vision and non-negotiables")
@@ -328,9 +362,19 @@ object ClaudeMdGenerator {
             "Build the real artifact for every target platform in CI and confirm it installs/launches (emulator or headless where available). Report only what you actually ran.",
             "UI inspection: capture screenshots of every screen at phone and tablet aspect ratios and review them for clipping, overlap and unreadable text.",
         ))
+        h3("Verify before finishing (game-specific - actually play these paths)")
+        bullets(VerificationPlan.steps(project))
         h3("Definition of done for the first build")
         p(v(Keys.DONE) ?: "The complete core loop is playable start to finish; all systems in this file are implemented; automated validation is green; installable artifact produced.")
         if (prototype) p("Interpretation: this is a fully functional PROTOTYPE of the game described in Part A. Done means the intended game and core loop are really playable and the automated validation is green with an installable build; it does not mean full production content.")
+
+        h3("Deliverable contract")
+        bullets(listOfNotNull(
+            "A working " + (if (prototype) "prototype" else "game") + " project with source, assets and any editable sources committed to the repository.",
+            "The installable/runnable build for ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "the target platform" }}, with its location reported.",
+            "A README with exact install/launch instructions and controls, and `docs/VERIFICATION.md` listing what was actually exercised, what was not, and known remaining issues.",
+            if (Platforms.ANDROID in t.platforms) "Android: the studio splash (Hot Attic Games, or the owner-supplied logo above) then the game's own title screen, a current target SDK, 16 KB page-size compatibility where native code is used, GitHub Actions producing the artifact, coherent versioning, release artifact naming, and rollback-safe update behaviour where over-the-air updates are used." else null,
+        ))
 
         // 14. Release
         h2("14. Packaging, identity and release")
@@ -391,11 +435,13 @@ object ClaudeMdGenerator {
         }
 
         // PART D
-        sb.append("# PART D - UNRESOLVED QUESTIONS\n\n")
+        sb.append("# PART D - UNRESOLVED AND DELEGATED DECISIONS\n\n")
         val unresolved = Fields.all.filter { f -> f.isRelevant(t) && f.required && f.key != Keys.CONCEPT && project.decision(f.key)?.let { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() } != true }
             .map { f -> if (project.decision(f.key)?.status == DecisionStatus.PROPOSED) "${f.title}: inferred but not confirmed by the owner (${label(f.key, project.value(f.key))}); treat as a recommendation and make the least surprising reversible choice." else "${f.title}: not yet decided (${f.prompt})" }
         val deferred = project.decisions.filter { it.value.status == DecisionStatus.DEFERRED }.keys.map { "${Fields.get(it)?.title ?: it}: deliberately deferred by the owner; do not build it." }
-        if (unresolved.isEmpty() && deferred.isEmpty()) p("None. Every required decision is resolved.") else bullets(unresolved + deferred)
+        val delegated = project.decisions.filter { (_, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION }.keys.map { "${Fields.get(it)?.title ?: it}: delegated to Bob's recommendation (listed in Part B)." }
+        if (unresolved.isEmpty() && deferred.isEmpty() && delegated.isEmpty()) p("None. Every build-critical decision is resolved by the owner or left to implementation discretion above.") else bullets(unresolved + deferred + delegated)
+        project.designApproval?.let { p("The owner's plain-English design review was ${if (it.by == "delegated") "delegated (approved on the owner's behalf)" else "approved"}.") }
 
         // 18. Human-only
         h2(if (project.mode == ProjectMode.NEW_GAME) "17. Human-only steps" else "18. Human-only steps")

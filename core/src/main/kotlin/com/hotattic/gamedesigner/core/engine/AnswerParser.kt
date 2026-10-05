@@ -38,6 +38,7 @@ object AnswerParser {
     fun isAffirm(text: String): Boolean {
         val t = norm(text)
         if (t.isEmpty()) return false
+        if (Regex("\\b(not|no|never|wrong|incorrect|isn t|isnt|but|except|however)\\b").containsMatchIn(t)) return false
         val words = t.split(' ')
         return words.size <= 6 && affirmPhrases.any { a -> t == a || t.startsWith("$a ") || t.endsWith(" $a") || t.startsWith("$a,") }
     }
@@ -84,7 +85,7 @@ object AnswerParser {
         val n = norm(raw)
         val onlySkip = skipPhrases.any { n == it || n == "$it it" || n == "$it this" || n == "i $it" }
         if (onlySkip) return when {
-            field.key == Keys.REFERENCES -> Answer.Value("none")
+            field.key == Keys.REFERENCES || field.key == Keys.MUST_NOT_CHANGE -> Answer.Value("none")
             !field.required -> Answer.Skip
             else -> Answer.Postpone
         }

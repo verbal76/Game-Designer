@@ -62,6 +62,13 @@ object ConsistencyReview {
     fun saysAll(raw: String): Boolean = Regex("(?i)\\b(all|everything|every one|the lot)\\b").containsMatchIn(raw)
     fun hasExceptionCue(raw: String): Boolean = Regex("(?i)\\b(except|but not|other than|excluding|apart from|without|minus)\\b").containsMatchIn(raw)
 
+    /** Reviews the structured state against every generated document; findings name the document they came from. */
+    fun reviewAll(p: Project, docs: Map<String, String>): ReviewReport {
+        val structural = review(p, docs.values.firstOrNull().orEmpty()).findings.filter { it.line.isEmpty() }
+        val textual = docs.flatMap { (name, text) -> review(p, text).findings.filter { it.line.isNotEmpty() }.map { it.copy(message = "[$name] ${it.message}") } }
+        return ReviewReport((structural + textual).distinctBy { it.code + it.message + it.line })
+    }
+
     /** Reviews the structured state and the generated markdown. */
     fun review(p: Project, markdown: String): ReviewReport {
         val t = Traits(p)

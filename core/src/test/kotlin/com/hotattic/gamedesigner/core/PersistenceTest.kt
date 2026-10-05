@@ -101,7 +101,7 @@ class VersioningAndPlaytestTest {
     @Test fun versionsAreAppendOnlyAndDiffable() = runBlocking {
         val (p, _) = driveToReady(director(), newProject(), "A cozy 2D puzzle game for my android phone about arranging cats")
         val v1 = SpecVersioning.createVersion(p, VersionKind.INITIAL, 10L, "2026-10-04")
-        val changed = ProjectOps.setDecision(v1, Keys.ORIENTATION, "landscape", DecisionSource.USER, 20L)
+        val changed = com.hotattic.gamedesigner.core.engine.ReviewGate.approve(ProjectOps.setDecision(v1, Keys.ORIENTATION, "landscape", DecisionSource.USER, 20L), 25L, "owner")
         val v2 = SpecVersioning.createVersion(changed, VersionKind.REVISION, 30L, "2026-10-05", "Tweaks")
         assertEquals(listOf(1, 2), v2.versions.map { it.number })
         assertEquals(v1.versions[0].claudeMd, v2.versions[0].claudeMd, "earlier version untouched")

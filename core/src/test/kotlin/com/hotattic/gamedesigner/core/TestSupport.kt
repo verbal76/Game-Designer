@@ -34,6 +34,7 @@ suspend fun driveToReady(director: Director, start: Project, concept: String, ma
             pending == "__asset_plan__" -> "looks good"
             pending?.startsWith("__conflict:") == true -> "use alternative 1"
             pending == "__ready__" -> "generate"
+            pending == "__review__" -> "looks right"
             else -> "choose for me"
         }
         t = director.handleUserMessage(p, settings, reply)

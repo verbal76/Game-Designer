@@ -330,6 +330,9 @@ data class ProjectPrefs(
 )
 
 @Serializable
+data class DesignApproval(val fingerprint: String, val at: Long, /** "owner" or "delegated" */ val by: String)
+
+@Serializable
 data class Project(
     val id: String,
     val schemaVersion: Int = PROJECT_SCHEMA_VERSION,
@@ -364,6 +367,8 @@ data class Project(
     val rejected: Map<String, List<String>> = emptyMap(),
     /** Ids of owner actions already committed (newest last, capped). A repeated callback with a known id is a no-op. Additive. */
     val processedTurns: List<String> = emptyList(),
+    /** The owner's approval of the plain-English design review, bound to a fingerprint of the reviewed state. Additive. */
+    val designApproval: DesignApproval? = null,
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }
