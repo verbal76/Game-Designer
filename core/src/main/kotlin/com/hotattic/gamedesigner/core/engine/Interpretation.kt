@@ -49,9 +49,42 @@ data class Interpretation(
     val question: String? = null,
     val reason: String = "",
     val by: InterpreterKind = InterpreterKind.RULES,
+    /** Softer wishes ("I'd like", "maybe"): remembered, but not hard requirements. */
+    val preferences: List<String> = emptyList(),
+    /** Things that must never change ("never turn it into levels"); they join the must-not-change list. */
+    val constraints: List<String> = emptyList(),
+    /** Statements that could mean two different games: Bob asks instead of guessing. */
+    val ambiguities: List<String> = emptyList(),
+    /** Field keys the owner handed to Bob inside a longer reply ("you pick the audio, but I want pixel art"). */
+    val delegated: List<String> = emptyList(),
+    /** The owner changed what the first build must be (their words). */
+    val scope: String? = null,
+    /** Field keys the model thinks this statement may have invalidated; only a hint, the Reconciler decides. */
+    val stale: List<String> = emptyList(),
+    val acceptsRecommendation: Boolean = false,
+    /** "That's not what I meant": undo the last interpretation and re-ask. */
+    val misunderstood: Boolean = false,
 ) {
     val hasCorrections get() = rejectedGenres.isNotEmpty() || rejectedTags.isNotEmpty() || retract.isNotEmpty()
+
+    /** The typed changes this message proposes. The Director validates and commits each one deterministically; none is trusted as written. */
+    val proposals: List<Proposal> get() = buildList {
+        facts.forEach { add(Proposal(ProposalKind.OWNER_FACT, null, it)) }
+        preferences.forEach { add(Proposal(ProposalKind.OWNER_PREFERENCE, null, it)) }
+        (rejectedGenres + rejectedTags.map { it.name }).forEach { add(Proposal(ProposalKind.OWNER_REJECTION, null, it)) }
+        retract.forEach { add(Proposal(ProposalKind.OWNER_CORRECTION, null, it)) }
+        constraints.forEach { add(Proposal(ProposalKind.NEW_CONSTRAINT, null, it)) }
+        delegated.forEach { add(Proposal(ProposalKind.OWNER_DELEGATION, it, "")) }
+        ambiguities.forEach { add(Proposal(ProposalKind.UNRESOLVED_AMBIGUITY, null, it)) }
+        scope?.let { add(Proposal(ProposalKind.SCOPE_CHANGE, null, it)) }
+        if (acceptsRecommendation) add(Proposal(ProposalKind.ACCEPTED_RECOMMENDATION, null, ""))
+        edits.forEach { (k, v) -> add(Proposal(if (hasCorrections) ProposalKind.OWNER_CORRECTION else ProposalKind.OWNER_FACT, k, v)) }
+    }
 }
+
+enum class ProposalKind { OWNER_FACT, OWNER_CORRECTION, OWNER_PREFERENCE, OWNER_REJECTION, OWNER_DELEGATION, ACCEPTED_RECOMMENDATION, UNRESOLVED_AMBIGUITY, NEW_CONSTRAINT, SCOPE_CHANGE }
+
+data class Proposal(val kind: ProposalKind, val key: String?, val text: String)
 
 /** Deterministic interpreter: used offline, and as the fallback and cross-check for the LLM interpreter. */
 object LocalInterpreter {
@@ -63,6 +96,7 @@ object LocalInterpreter {
             intent = AnswerIntent.UNCLEAR, edits = ex.values.filterKeys { it != field?.key },
             rejectedGenres = ex.negatedGenres, rejectedTags = ex.negatedTags, affirmedTags = ex.affirmedTags, references = ex.referenceGames,
             retract = retractKeywords(text, ex),
+            misunderstood = Regex("(?i)\\b(that'?s not what i (meant|said)|not what i meant|you (misunderstood|got (it|that) wrong)|that'?s wrong|no,? i meant)\\b").containsMatchIn(text),
         )
         if (field == null) return base.copy(intent = if (ex.isEmpty) AnswerIntent.FREEFORM else AnswerIntent.FREEFORM, value = text.trim())
         return when (val a = AnswerParser.parse(field, t, text)) {
@@ -91,30 +125,54 @@ object LocalInterpreter {
 }
 
 /**
- * LLM-backed interpreter. It receives a compact, explicit state (never the whole project, never assets or files) and must
- * answer with one JSON object. Everything it returns is validated against the schema and the question's real options.
+ * LLM-backed interpreter: the language layer in front of the structured design state. It receives a compact, explicit state
+ * (never the whole project, never assets or files) and answers with ONE JSON object of typed proposals. Everything it returns is
+ * validated against the schema and the question's real options; malformed or invalid output is discarded (after one stricter
+ * retry) and the deterministic rules take over, so a model can never corrupt the project.
  */
 object LlmInterpreter {
 
-    const val TIMEOUT_MS = 45_000L
+    const val TIMEOUT_MS = 60_000L
 
-    fun systemPrompt(directorName: String): String = buildString {
-        appendLine("You are the language-understanding layer of $directorName, a game-design director. You do not chat; you convert the owner's latest message into JSON.")
-        appendLine("Reply with ONLY one JSON object (no prose, no markdown) with these optional keys:")
-        appendLine("- intent: select|all|none|delegate|postpone|skip|affirm|negate|question|freeform|unclear")
-        appendLine("- selected: array of option ids from the CURRENT QUESTION options (only those the owner chose; for single-select at most one)")
-        appendLine("- value: the owner's answer for a freeform/number/boolean question (boolean: \"true\"/\"false\")")
-        appendLine("- edits: object of other decisions the message states, keys from the field list, values as option ids or text")
-        appendLine("- reject_genres: genre ids the owner rules out; reject_tags: from [TURN_BASED]; affirm_tags: from [TURN_BASED]")
-        appendLine("- retract: short keywords of earlier statements the owner is withdrawing")
-        appendLine("- facts: short factual statements of owner intent worth remembering (their words, not yours)")
-        appendLine("- references: game titles named as references")
-        appendLine("Rules: the owner's latest message overrides everything earlier. Negations matter (\"not turn based\" means turn-based is REJECTED). \"All of those\", \"everything except X\", \"the third one\", \"option 3\" refer to the current question's options in order. \"You choose\"/\"whatever you recommend\" is intent delegate. Never invent option ids. Omit keys you are unsure about.")
+    fun systemPrompt(directorName: String): String = """
+You are the language layer of $directorName, a game-design director. Convert the owner's LATEST message into ONE JSON object. Output the JSON only: no prose, no markdown, no reasoning text.
+Keys (omit any that do not apply):
+"intent": what the owner does with the CURRENT QUESTION: select|delegate|postpone|skip|affirm|negate|question|freeform|unclear
+"selected": option ids chosen from the CURRENT QUESTION (a single-choice question allows at most one)
+"value": the answer text for a freeform, number or boolean question (boolean: "true" or "false")
+"edits": {"field_key": "option id or text"} for other decisions the message states (use only keys from FIELDS; for choice fields use only the listed option ids)
+"facts": things the owner says about THEIR game, in their own words
+"preferences": softer wishes ("I'd like", "maybe")
+"constraints": things that must never change ("never", "always", "must stay")
+"reject_genres": genre ids ruled out; "reject_tags"/"affirm_tags": TURN_BASED only
+"retract": short keywords of earlier statements the owner withdraws
+"delegate": field keys the owner hands to you ("you pick the audio")
+"scope": what the owner now wants the first build to be, in their words
+"ambiguous": short clarifying questions, only when the message could mean two different games
+"accept_recommendation": true when the owner accepts what you just recommended
+"misunderstood": true when the owner says you got it wrong
+"stale": field keys the new statement probably invalidates
+"references": game titles named as references
+Rules: the owner's latest words override everything earlier. Negation matters ("not turn based" REJECTS turn-based). Ordinal and list answers ("the third one", "option 3", "1, 3 and 5", "all of them", "everything except X", "both") refer to the CURRENT QUESTION's options in order. "You decide" or "whatever you recommend" is intent delegate. Never invent option ids or field keys. Never copy the owner's chat remarks about the app ("I already told you") into facts.
+Example: owner says "Actually no, forget turn based. Make it real time and keep the shaft." -> {"intent":"freeform","reject_tags":["TURN_BASED"],"facts":["The game is real time"],"edits":{"world_structure":"vertical_shaft"},"constraints":["Keep the single shaft"]}
+Example: CURRENT QUESTION options "1. bite_sized=1-5 minutes; 2. short_runs=10-20 minutes; 3. medium_sessions=30-60 minutes", owner says "the third one" -> {"intent":"select","selected":["medium_sessions"]}
+""".trim()
+
+    /** The few fields a message might touch, with their option ids, so the model can only name real choices. */
+    private fun fieldMenu(project: Project, current: Field?): String {
+        val t = Traits(project)
+        val menu = Fields.all.filter { it.isRelevant(t) && !it.derived && it.key != current?.key && it.key != Keys.CONCEPT && (project.decision(it.key)?.ownerAuthored != true) }
+            .sortedBy { it.priority }.take(14)
+        return (listOfNotNull(current).map { it.key } + menu.map { it.key }).distinct().joinToString("; ") { k ->
+            val f = Fields.get(k)!!
+            val opts = if (f.kind.isSelect) f.options(t).joinToString("|") { it.id }.take(220) else ""
+            if (f.kind.isSelect) "$k[${f.kind.name.lowercase()}:$opts]" else "$k(${f.kind.name.lowercase()})"
+        }
     }
 
     fun userPrompt(project: Project, field: Field?, text: String): String = buildString {
         val t = Traits(project)
-        appendLine("ORIGINAL CONCEPT: ${project.originalConcept.ifBlank { project.value(Keys.CONCEPT).orEmpty() }.take(600)}")
+        appendLine("ORIGINAL CONCEPT: ${project.originalConcept.ifBlank { project.value(Keys.CONCEPT).orEmpty() }.take(700)}")
         val known = project.decisions.filter { it.value.value.isNotBlank() }.entries.take(40)
             .joinToString("; ") { (k, d) -> "$k=${d.value.take(40)}[${d.prov.name.lowercase()}${if (d.status.name == "PROPOSED") ",proposed" else ""}]" }
         appendLine("DECISIONS: ${known.ifBlank { "(none)" }}")
@@ -124,24 +182,68 @@ object LlmInterpreter {
         if (field != null) {
             appendLine("CURRENT QUESTION (${field.key}, ${field.kind.name}): ${field.prompt.take(220)}")
             val opts = field.options(t)
-            if (opts.isNotEmpty()) appendLine("OPTIONS: " + opts.mapIndexed { i, o -> "${i + 1}. ${o.id} = ${o.label}" }.joinToString("; "))
-        } else appendLine("CURRENT QUESTION: none (owner is volunteering information)")
-        appendLine("FIELDS: " + Fields.all.filter { it.kind.isSelect || it.key in setOf(Keys.CONCEPT, Keys.CORE_FANTASY) }.take(60).joinToString(",") { it.key })
+            if (opts.isNotEmpty()) appendLine("OPTIONS: " + opts.mapIndexed { i, o -> "${i + 1}. ${o.id}=${o.label}" }.joinToString("; "))
+            field.suggest(t)?.let { appendLine("BOB'S RECOMMENDATION WAS: ${it.value.take(120)}") }
+        } else appendLine("CURRENT QUESTION: none (the owner is volunteering information)")
+        appendLine("FIELDS: " + fieldMenu(project, field))
         val recent = project.messages.filter { it.role != Role.SYSTEM }.takeLast(4)
         if (recent.isNotEmpty()) appendLine("RECENT: " + recent.joinToString(" / ") { "${it.role.name.lowercase()}: ${it.text.take(140).replace('\n', ' ')}" })
         appendLine("OWNER'S LATEST MESSAGE: $text")
     }
 
-    /** Parses and strictly validates the model's JSON. Returns null if it is unusable, so the caller falls back to rules. */
+    /** Extracts the first complete JSON object from model text, tolerating code fences, reasoning blocks and trailing commas. */
+    fun extractJson(raw: String): JsonObject? {
+        val cleaned = raw.replace(Regex("(?s)<think>.*?</think>"), " ").replace(Regex("(?s)<think>.*"), " ").replace("```json", " ").replace("```", " ")
+        var i = cleaned.indexOf('{')
+        while (i >= 0) {
+            var depth = 0; var inStr = false; var esc = false; var j = i
+            while (j < cleaned.length) {
+                val c = cleaned[j]
+                if (inStr) { if (esc) esc = false else if (c == '\\') esc = true else if (c == '"') inStr = false }
+                else when (c) { '"' -> inStr = true; '{' -> depth++; '}' -> { depth--; if (depth == 0) break } }
+                j++
+            }
+            if (depth == 0 && j < cleaned.length) {
+                val candidate = cleaned.substring(i, j + 1).replace(Regex(",\\s*([}\\]])"), "$1")
+                (runCatching { Json.parseToJsonElement(candidate) as? JsonObject }.getOrNull())?.let { return it }
+            }
+            i = cleaned.indexOf('{', i + 1)
+        }
+        return null
+    }
+
+    /** Keeps only edits that name a real field and, for choice fields, only real option ids (a MULTI field may hold several). */
+    fun validateEdits(project: Project, raw: Map<String, String>, exclude: String?): Map<String, String> {
+        val t = Traits(project)
+        val out = linkedMapOf<String, String>()
+        for ((k, v0) in raw) {
+            if (k == exclude || k == Keys.CONCEPT) continue
+            val f = Fields.get(k) ?: continue
+            val v = v0.trim().ifEmpty { continue }
+            when {
+                k == Keys.GENRE -> { val ids = Fields.genreOptions.map { it.id }.toSet(); val kept = v.split('|', ',').map { it.trim() }.filter { it in ids }; if (kept.isNotEmpty()) out[k] = Decision.joinList(kept.take(3)) }
+                f.kind.isSelect -> {
+                    val valid = f.options(t).map { it.id }.toSet()
+                    val kept = v.split('|', ',').map { it.trim() }.filter { it in valid }.distinct()
+                    if (kept.isNotEmpty()) out[k] = Decision.joinList(if (f.kind == FieldKind.SINGLE) kept.take(1) else kept)
+                }
+                f.kind == FieldKind.BOOLEAN -> if (v.lowercase() in setOf("true", "false")) out[k] = v.lowercase()
+                f.kind == FieldKind.NUMBER -> if (Regex("-?\\d+(?:\\.\\d+)?").matches(v)) out[k] = v
+                else -> out[k] = v.take(500)
+            }
+        }
+        return out
+    }
+
+    /** Parses and strictly validates the model's JSON. Returns null if it is unusable, so the caller retries or falls back to rules. */
     fun parse(raw: String, project: Project, field: Field?, by: InterpreterKind): Interpretation? {
-        val s = raw.indexOf('{'); val e = raw.lastIndexOf('}')
-        if (s < 0 || e <= s) return null
-        val obj = runCatching { Json.parseToJsonElement(raw.substring(s, e + 1)) as? JsonObject }.getOrNull() ?: return null
+        val obj = extractJson(raw) ?: return null
         fun strs(k: String): List<String> = when (val v = obj[k]) {
             is JsonArray -> v.mapNotNull { (it as? JsonPrimitive)?.content }
-            is JsonPrimitive -> v.content.split(',', '|').map { it.trim() }
+            is JsonPrimitive -> if (v.isString) v.content.split(',', '|').map { it.trim() } else emptyList()
             else -> emptyList()
         }.filter { it.isNotBlank() }
+        fun bool(k: String) = (obj[k] as? JsonPrimitive)?.content?.lowercase() == "true"
         val intent = when ((obj["intent"] as? JsonPrimitive)?.content?.lowercase()) {
             "select" -> AnswerIntent.SELECT; "all" -> AnswerIntent.ALL; "none" -> AnswerIntent.NONE; "delegate" -> AnswerIntent.DELEGATE
             "postpone" -> AnswerIntent.POSTPONE; "skip" -> AnswerIntent.SKIP; "affirm" -> AnswerIntent.AFFIRM; "negate" -> AnswerIntent.NEGATE
@@ -150,7 +252,7 @@ object LlmInterpreter {
         val t = Traits(project)
         val options = field?.options(t).orEmpty()
         val valid = options.map { it.id }.toSet()
-        var selected = strs("selected").filter { it in valid }
+        var selected = strs("selected").filter { it in valid }.distinct()
         if (field?.kind == FieldKind.SINGLE && selected.size > 1) selected = selected.take(1)
         var finalIntent = intent
         if (intent == AnswerIntent.ALL && field?.kind == FieldKind.MULTI) { selected = options.map { it.id }; finalIntent = AnswerIntent.SELECT }
@@ -158,24 +260,35 @@ object LlmInterpreter {
         val value = (obj["value"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }
         val edits = (obj["edits"] as? JsonObject)?.mapNotNull { (k, v) -> (v as? JsonPrimitive)?.content?.let { k to it } }?.toMap().orEmpty()
         // Also accept the flat extraction format (genre/dimension/... at the top level) for compatibility with simple models.
-        val (flat, flatRefs) = com.hotattic.gamedesigner.core.llm.DirectorPrompts.parseExtraction(raw.substring(s, e + 1))
-        val cleanEdits = (DecisionExtractor.sanitize(flat) + DecisionExtractor.sanitize(edits)).filterKeys { it != field?.key }
+        val (flat, flatRefs) = com.hotattic.gamedesigner.core.llm.DirectorPrompts.parseExtraction(obj.toString())
+        val cleanEdits = validateEdits(project, flat + edits, field?.key)
         val tags = { k: String -> strs(k).mapNotNull { n -> runCatching { Tag.valueOf(n.uppercase().replace(' ', '_').replace('-', '_')) }.getOrNull() }.filter { it == Tag.TURN_BASED } }
         val genreIds = GenreKnowledge.all.map { it.id }.toSet()
+        fun fieldKeys(k: String) = strs(k).filter { Fields.get(it) != null && it != Keys.CONCEPT }.distinct().take(8)
         return Interpretation(
             intent = finalIntent, selected = selected, value = value, edits = cleanEdits,
             rejectedGenres = strs("reject_genres").filter { it in genreIds }, rejectedTags = tags("reject_tags"), affirmedTags = tags("affirm_tags"),
             references = (strs("references") + flatRefs).distinct(), facts = strs("facts").map { it.take(200) }.take(8), retract = strs("retract").map { it.take(40) }.take(8),
             question = if (finalIntent == AnswerIntent.QUESTION) (value ?: "") else null, by = by,
+            preferences = strs("preferences").map { it.take(200) }.take(5), constraints = strs("constraints").map { it.take(200) }.take(5),
+            ambiguities = strs("ambiguous").map { it.take(160) }.take(3), delegated = fieldKeys("delegate"),
+            scope = (obj["scope"] as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() }?.take(300), stale = fieldKeys("stale"),
+            acceptsRecommendation = bool("accept_recommendation"), misunderstood = bool("misunderstood"),
         )
     }
 
     suspend fun interpret(provider: LlmProvider, by: InterpreterKind, directorName: String, project: Project, field: Field?, text: String): Interpretation? {
-        val r = runCatching {
-            kotlinx.coroutines.withTimeoutOrNull(TIMEOUT_MS) {
-                provider.complete(LlmRequest(systemPrompt(directorName), listOf(LlmMessage("user", userPrompt(project, field, text))), maxTokens = 400, temperature = 0f))
-            }
-        }.getOrNull()
-        return if (r is LlmResult.Ok) parse(r.text, project, field, by) else null
+        val base = userPrompt(project, field, text)
+        for (attempt in 0..1) {
+            val prompt = if (attempt == 0) base else base + "\nYour previous reply was not a valid JSON object. Reply with ONLY the JSON object."
+            val r = runCatching {
+                kotlinx.coroutines.withTimeoutOrNull(TIMEOUT_MS) {
+                    provider.complete(LlmRequest(systemPrompt(directorName), listOf(LlmMessage("user", prompt)), maxTokens = 500, temperature = 0f))
+                }
+            }.getOrNull()
+            if (r !is LlmResult.Ok) return null // a transport failure or timeout: retrying would only double the wait
+            parse(r.text, project, field, by)?.let { return it }
+        }
+        return null
     }
 }
