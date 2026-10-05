@@ -14,8 +14,9 @@ android {
         applicationId = "com.hotatticgames.gamedesigner"
         minSdk = 28
         targetSdk = 36
-        // CI run number gives a monotonically increasing build code; local builds use 1.
-        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        // CI sets GD_VERSION_CODE = minutes since the Unix epoch: monotonic across every workflow (run numbers are per-workflow
+        // and are not comparable). Local builds use 1.
+        versionCode = System.getenv("GD_VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = "2.0.0"
         buildConfigField("String", "RUNTIME_FINGERPRINT", "\"$runtimeFingerprint\"")
         buildConfigField("int", "SHELL_API_LEVEL", libs.versions.shellApi.get())

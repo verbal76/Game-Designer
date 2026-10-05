@@ -23,6 +23,8 @@ jobs:
       - name: Accept Android SDK licenses (SDK is preinstalled on the runner)
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4
+      - name: Monotonic version code
+        run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
       - name: JVM unit tests (core, OTA kit)
         run: ./gradlew :core:test :otakit:test --stacktrace
       - name: Android lint, debug APK, layer unit tests (incl. theme contrast)

@@ -28,6 +28,8 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4
+      - name: Monotonic version code
+        run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
 
       - name: Load persistent signing material
         run: tools/ota/ensure-keys.sh "$RUNNER_TEMP/keys"
@@ -59,7 +61,7 @@ jobs:
           "$BT/aapt2" dump badging Game-Designer-v2.apk | tee badging.txt | head -8
           grep -q "package: name='com.hotatticgames.gamedesigner'" badging.txt
           grep -q "versionName='2.0.0'" badging.txt
-          grep -q "sdkVersion:'28'" badging.txt
+          grep -q "minSdkVersion:'28'" badging.txt
           unzip -l Game-Designer-v2.apk | tee contents.txt >/dev/null
           awk '$1>100000 && /webp$/ {f=1} END{exit !f}' contents.txt   # the large Hot Attic Games logo webp (paths may be shortened by AGP)
           grep -q "assets/ota/trusted_keys.txt" contents.txt          # OTA trust anchor
