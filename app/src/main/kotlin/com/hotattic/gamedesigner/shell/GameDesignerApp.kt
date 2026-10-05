@@ -29,8 +29,8 @@ class GameDesignerApp : Application(), ShellServices {
     override fun onCreate() {
         super.onCreate()
         secrets = SecretStore(this)
-        models = ModelManager(this) { secrets.get(SecretStore.HF_TOKEN) }
-        localLlm = LiteRtLocalLlm(this) { models.anyPath() }
+        models = ModelManager(this)
+        localLlm = LiteRtLocalLlm(this, BuildConfig.LITERTLM_VERSION)
         val identity = ShellIdentity(BuildConfig.VERSION_CODE, BuildConfig.VERSION_NAME, BuildConfig.SHELL_API_LEVEL, BuildConfig.RUNTIME_FINGERPRINT,
             AppLayerEntry.LAYER_VERSION, AppLayerEntry.LAYER_LABEL)
         otaManager = OtaManager(this, identity, readTrustedKeys())

@@ -59,6 +59,6 @@ jobs:
         run: |
           set -euo pipefail
           tools/ota/build-bundle.sh "${{ steps.req.outputs.version }}" "${{ steps.req.outputs.label }}" "${{ steps.req.outputs.channel }}" "$RUNNER_TEMP/out" "$RUNNER_TEMP/keys/ota-private.b64" "$GITHUB_SHA"
-          ./gradlew -q :otakit:run --args="verify-channel --dir $RUNNER_TEMP/out --public-key $RUNNER_TEMP/keys/ota-public.b64 --api 1 --fingerprint $(tools/ota/fingerprint.sh)"
+          ./gradlew -q :otakit:run --args="verify-channel --dir $RUNNER_TEMP/out --public-key $RUNNER_TEMP/keys/ota-public.b64 --api $(tools/ota/shellapi.sh) --fingerprint $(tools/ota/fingerprint.sh)"
       - name: Publish
         run: tools/ota/publish.sh "${{ steps.req.outputs.channel }}" "$RUNNER_TEMP/out"

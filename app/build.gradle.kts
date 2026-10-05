@@ -17,10 +17,11 @@ android {
         // CI sets GD_VERSION_CODE = minutes since the Unix epoch: monotonic across every workflow (run numbers are per-workflow
         // and are not comparable). Local builds use 1.
         versionCode = System.getenv("GD_VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = "2.0.0"
+        versionName = "3.0.0"
         buildConfigField("String", "RUNTIME_FINGERPRINT", "\"$runtimeFingerprint\"")
         buildConfigField("int", "SHELL_API_LEVEL", libs.versions.shellApi.get())
         buildConfigField("String", "OTA_REPO", "\"verbal76/Game-Designer\"")
+        buildConfigField("String", "LITERTLM_VERSION", "\"${libs.versions.litertlm.get()}\"")
     }
 
     // Release signing comes from the environment (CI), never from source. Without it, a local release build is debug-signed.

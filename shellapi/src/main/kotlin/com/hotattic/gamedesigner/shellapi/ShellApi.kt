@@ -11,12 +11,48 @@ import androidx.compose.runtime.Composable
  */
 const val SHELL_API_LEVEL_DOC = "see BuildConfig.SHELL_API_LEVEL"
 
-data class LocalLlmResult(val text: String?, val error: String?)
+enum class LlmFailure { NOT_LOADED, TIMEOUT, OUT_OF_MEMORY, BUSY, EMPTY, RUNTIME }
 
-/** On-device model access. The native runtime (LiteRT-LM) lives in the shell because it needs native libraries. */
+data class LocalLlmResult(
+    val text: String?,
+    val error: String?,
+    val failure: LlmFailure? = null,
+    val latencyMillis: Long = 0,
+)
+
+/** What the on-device runtime is actually doing right now. Used for diagnostics and to prove real local inference. */
+data class LlmStatus(
+    /** e.g. "LiteRT-LM 0.16.0 (CPU)". */
+    val runtime: String,
+    /** A model file is selected and exists. */
+    val ready: Boolean,
+    /** The engine has loaded that file into memory. */
+    val loaded: Boolean,
+    val modelFile: String?,
+    val modelPath: String?,
+    val backend: String,
+    val loadMillis: Long,
+    val lastError: String?,
+    val inferences: Int,
+    val lastLatencyMillis: Long,
+)
+
+/**
+ * On-device model access. The native runtime (LiteRT-LM) lives in the shell because it needs native libraries.
+ * The application layer decides WHICH model file to use (it owns the catalog, download and verification); the shell only runs it.
+ */
 interface LocalLlm {
+    /** Cheap, non-blocking snapshot. */
+    fun status(): LlmStatus
+    /** Selects the model file to use (null clears the selection). Does not load it. */
+    fun select(modelPath: String?)
+    /** Loads the selected model now (so a failure is reported at install time, not mid-conversation). */
+    suspend fun load(): LlmStatus
+    /** Releases the engine and its memory. */
+    fun unload()
     suspend fun isReady(): Boolean
-    suspend fun complete(system: String, user: String, maxTokens: Int): LocalLlmResult
+    /** One stateless generation. Never throws; failures are reported in the result. */
+    suspend fun complete(system: String, user: String, maxTokens: Int, timeoutMs: Long = 90_000): LocalLlmResult
 }
 
 data class OtaDiagnostics(

@@ -40,7 +40,7 @@ jobs:
           set -euo pipefail
           K="$RUNNER_TEMP/k"; ./gradlew -q :otakit:run --args="genkey $K" > /dev/null
           tools/ota/build-bundle.sh 2 ci-validation dev "$RUNNER_TEMP/ota-validate" "$K/ota-private.b64"
-          ./gradlew -q :otakit:run --args="verify-channel --dir $RUNNER_TEMP/ota-validate --public-key $K/ota-public.b64 --api 1 --fingerprint $(tools/ota/fingerprint.sh)"
+          ./gradlew -q :otakit:run --args="verify-channel --dir $RUNNER_TEMP/ota-validate --public-key $K/ota-public.b64 --api $(tools/ota/shellapi.sh) --fingerprint $(tools/ota/fingerprint.sh)"
       - uses: actions/upload-artifact@v4
         with:
           name: game-designer-debug-apk
