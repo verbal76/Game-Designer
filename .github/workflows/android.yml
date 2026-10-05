@@ -35,6 +35,8 @@ jobs:
         if: failure()
         run: |
           { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
+      - name: 16 KB page-size qualification of every native library in the debug APK
+        run: python3 tools/check-16kb.py app/build/outputs/apk/debug/app-debug.apk
       - name: Validate that an OTA bundle can be built, signed and verified (throwaway key, not published)
         run: |
           set -euo pipefail
