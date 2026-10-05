@@ -9,6 +9,8 @@ data class ModelChoice(
     val fits: String,
     /** Something the owner should know before choosing (needs a token, tight on RAM...). Empty if nothing. */
     val caution: String,
+    /** The one to suggest first: Balanced when it exists, otherwise the best that fits. */
+    val recommended: Boolean = false,
 )
 
 /**
@@ -38,6 +40,7 @@ object ModelRecommender {
         val middle = ok.filter { it.id != fastest.id && it.id != best.id }.maxByOrNull { it.quality * 2 + it.speed }
         if (middle != null) picks += ChoiceLabel.BALANCED to middle
         if (best.id != fastest.id) picks += ChoiceLabel.BEST to best
+        val star = (picks.firstOrNull { it.first == ChoiceLabel.BALANCED } ?: picks.last()).second.id
         return picks.distinctBy { it.second.id }.map { (l, m) ->
             val roomy = p.totalRamMb >= m.minTotalRamMb * 1.4
             ModelChoice(l, m,
@@ -45,7 +48,7 @@ object ModelRecommender {
                 caution = buildList {
                     if (m.gated) add("The host requires accepting the model's license and a (free) Hugging Face token.")
                     if (!roomy) add("This one will be a tight fit while other apps are open.")
-                }.joinToString(" "))
+                }.joinToString(" "), recommended = m.id == star)
         }
     }
 }

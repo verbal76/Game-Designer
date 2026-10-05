@@ -133,7 +133,7 @@ fun ModelsScreen(vm: AppViewModel, nav: NavController) {
 private fun ModelCard(mc: ModelController, e: ModelEntry, st: ModelUi, active: Boolean, label: String, choice: ModelChoice?, @Suppress("UNUSED_PARAMETER") depth: Int) {
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (label.isNotBlank()) Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
+            if (label.isNotBlank()) Text(label + if (choice?.recommended == true) "  -  RECOMMENDED" else "", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
             Text(e.name, style = MaterialTheme.typography.titleSmall)
             Text("${e.family} - ${e.variant} - ${e.quantization} - ${e.format}", style = MaterialTheme.typography.bodySmall)
             Text("Download ${e.sizeMb / 1000.0} GB  |  memory about ${e.runtimeRamMb / 1000.0} GB  |  context ${e.contextTokens / 1000}k tokens", style = MaterialTheme.typography.bodySmall)
