@@ -41,6 +41,18 @@ object AntiSlop {
         listOf("gravity", "spherical", "grapple", "glide", "gliding", "swim", "swimming", "fly", "flying", "wall run", "double jump", "dash").firstOrNull { has(it) }?.let { m ->
             out += "A mechanic the owner named ($m) must be a real, controllable mechanic with consequences in play; a visual effect or an animation alone does not satisfy it."
         }
+        if (has("2.5d", "two and a half d", "2d side view with depth"))
+            out += "A flat single-plane scene does not satisfy 2.5D: the playfield must have genuine depth layering (parallax backgrounds, foreground occluders, depth-staggered lighting) while play stays on the intended plane."
+        if (has("cozy", "relaxing", "wholesome", "calm", "peaceful", "gentle"))
+            out += "Harsh palettes, abrupt jump-scares, punishing fail states or aggressive audio do not satisfy a cozy, relaxing mood; warm colour, soft motion, forgiving failure and gentle sound are required."
+        if (has("claustrophobic", "dread", "tense", "horror", "oppressive", "grim", "brutal"))
+            out += "Even, bright, well-lit visuals and cheerful audio do not satisfy a tense or dreadful mood; use restricted light, narrow sightlines, heavy darkness gradients and sound that builds unease."
+        if (has("farm", "farming", "crops", "garden", "plant", "harvest"))
+            out += "Crops that pop from seed to ripe in one step, or that look identical at every stage, do not satisfy farming; each growth stage must be visibly distinct and take real time."
+        if (has("rifle", "gun", "shooter", "shooting", "pistol", "shotgun", "blaster"))
+            out += "A gun that fires with no muzzle effect, recoil, impact feedback or audio does not satisfy a shooting game; hits must be felt and readable."
+        if (has("first person", "first-person", "fps"))
+            out += "A camera that clips through geometry, lacks weapon or hand presence, or ignores look sensitivity settings does not satisfy a first-person view."
         if (t.has(Tag.COMBAT) || p.value(Keys.COMBAT_MODEL) != null)
             out += "Enemies that stand still or cannot hurt the player, or attacks with no feedback (hit flash, sound, knockback or equivalent), do not satisfy combat."
         if ((p.value(Keys.DIFFICULTY_FAILURE) != null && p.value(Keys.DIFFICULTY_FAILURE) != "no_fail") || has("die", "death", "respawn", "checkpoint"))
