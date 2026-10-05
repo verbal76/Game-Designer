@@ -103,6 +103,7 @@ object MasterPromptGenerator {
 
             section("VISUAL QUALITY IS PART OF COMPLETION", listOfNotNull(
                 lab(Keys.ART_DIRECTION)?.let { "Art direction: $it" }, v(Keys.COLOR_MOOD)?.let { "Colour and mood: $it" },
+                "The very first view the player sees (title or opening scene) must look intentional: run the game, capture it, inspect the screenshot critically and fix what looks default, flat or unreadable before moving on.",
                 "Visual quality is part of done. A constrained scope is fine; ugly, engine-default, placeholder-looking, incoherent or unreadable output is not.",
                 "What does NOT count:") + AntiSlop.derive(project).map { "- $it" })
 
@@ -125,6 +126,8 @@ object MasterPromptGenerator {
             section("AUTONOMOUS WORKFLOW", listOf(
                 "The owner defines the vision; you solve the engineering. Work autonomously: implement rather than merely plan, make reasonable reversible engineering decisions yourself and record them in `docs/DECISIONS.md`, and never stop to ask the owner anything `CLAUDE.md` already answers.",
                 "Escalate only a genuine creative decision not covered, credentials or permissions only the owner can supply, or a verified blocker with no engineering alternative.",
+                "Start by inspecting the repository, the owner-supplied assets and the tools actually installed; never assume them. Build the smallest vertical slice that proves the riskiest assumption (movement feel, the world structure, the render path, the build pipeline) before widening, and fix a failing assumption immediately instead of building on it.",
+                "The deliverable is the working game, not a tutorial, a plan or a pile of source. If a playable build was requested, do not finish with source only.",
                 "Do not stop at the first compile or the first screenshot. Do not claim success without actually playing the game. Research current facts (versions, SDK requirements, licenses) when they matter and record sources; do not repeat settled research.",
                 "Never commit secrets. Never force-push or rewrite shared history. $usage Use subagents only when their value clearly exceeds their cost.$heavy",
                 "Commit stable, tested milestones; when a context nears its limit or a phase ends, update `HANDOFF.md` with branch + SHA, what is implemented, test/build status, known defects and next work."))

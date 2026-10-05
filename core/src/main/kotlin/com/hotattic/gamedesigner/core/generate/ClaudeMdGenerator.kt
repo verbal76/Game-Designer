@@ -101,12 +101,8 @@ object ClaudeMdGenerator {
 
         val invariants = v(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }
         val derivedInvariants = com.hotattic.gamedesigner.core.schema.SliceSuggester.invariants(t).value.takeIf { it != "none" }
-        h2("A4. Must-not-change constraints (do not reinterpret, 'improve' or normalise these)")
-        if (invariants == null && derivedInvariants == null) p("None declared.")
-        else {
-            invariants?.let { bullets(MetaConversation.designSentences(it, 3)) }
-            if (derivedInvariants != null && derivedInvariants != invariants) { p("Implied by the owner's own decisions:"); bullets(MetaConversation.designSentences(derivedInvariants, 3)) }
-        }
+        h2("A4. Must-not-change constraints")
+        p(if (invariants == null && derivedInvariants == null) "None declared. (See Part E.)" else "These are binding and are listed in full in Part E. Do not reinterpret, 'improve' or normalise them.")
 
         fun ownerV(k: String) = project.decision(k)?.takeIf { ownerDecision(k, it) }?.value
         h2("A5. First playable build scope")
@@ -445,6 +441,15 @@ object ClaudeMdGenerator {
         if (unresolved.isEmpty() && deferred.isEmpty()) p("None unresolved. Every build-critical decision is resolved by the owner, delegated, or left to implementation discretion above.") else bullets(unresolved + deferred)
         if (delegated.isNotEmpty()) p("Delegated to Bob's recommendation (recorded in Part B): ${delegated.joinToString(", ")}.")
         project.designApproval?.let { p("The owner's plain-English design review was ${if (it.by == "delegated") "delegated (approved on the owner's behalf)" else "approved"}.") }
+
+
+        // PART E
+        sb.append("\n# PART E - MUST NOT CHANGE (binding constraints; do not reinterpret, 'improve' or normalise any of them)\n\n")
+        if (invariants == null && derivedInvariants == null) p("None declared by the owner.")
+        else {
+            invariants?.let { p("Stated by the owner:"); bullets(MetaConversation.designSentences(it.replace(" | ", ". "), 6)) }
+            if (derivedInvariants != null && derivedInvariants != invariants) { p("Implied by the owner's own decisions:"); bullets(MetaConversation.designSentences(derivedInvariants, 3)) }
+        }
 
         // 18. Human-only
         h2(if (project.mode == ProjectMode.NEW_GAME) "17. Human-only steps" else "18. Human-only steps")

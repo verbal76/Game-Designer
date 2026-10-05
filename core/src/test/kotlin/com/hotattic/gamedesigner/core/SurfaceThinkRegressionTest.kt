@@ -84,7 +84,7 @@ class SurfaceThinkRegressionTest {
         java.io.File("build/sample").resolve("surface-think-MASTER_PROMPT.md").writeText(gen.project.versions.single().masterPrompt)
         val lower = md.lowercase()
         for (bad in listOf("squad units", "plan each turn", "grid-based tactical", "tactical grid", "grid tactics", "turn order")) assertFalse(bad in lower, "stale text '$bad' leaked into the spec")
-        for (section in listOf("PART A - OWNER REQUIREMENTS", "PART B - ACCEPTED RECOMMENDATIONS", "PART C - IMPLEMENTATION GUIDANCE", "PART D - UNRESOLVED AND DELEGATED DECISIONS", "Surface Think")) assertTrue(section in md, "missing $section")
+        for (section in listOf("PART A - OWNER REQUIREMENTS", "PART B - ACCEPTED RECOMMENDATIONS", "PART C - IMPLEMENTATION GUIDANCE", "PART D - UNRESOLVED AND DELEGATED DECISIONS", "PART E - MUST NOT CHANGE", "Surface Think")) assertTrue(section in md, "missing $section")
         assertTrue(ConsistencyReview.review(gen.project, md).clean)
         assertTrue("two characters" in lower)
     }
