@@ -31,6 +31,7 @@ import androidx.compose.material3.PrimaryScrollableTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -68,6 +69,8 @@ fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
     val saveMd = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/markdown")) { uri -> if (uri != null) vm.saveText(uri, pendingSave) }
     var exportVersion by remember { mutableIntStateOf(0) }
     val saveZip = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) vm.exportPackage(exportVersion, uri) }
+    // Naming the file comes before the picker: (is it the zip?, suggested name).
+    var naming by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Spec and prompt") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } })
@@ -111,9 +114,9 @@ fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton({ copy(ctx, text) }) { Text("Copy") }
                     OutlinedButton({ share(ctx, text) }) { Text("Share") }
-                    OutlinedButton({ pendingSave = text; saveMd.launch(if (tab == 1) "MASTER_PROMPT.md" else "CLAUDE.md") }) { Text("Save") }
+                    OutlinedButton({ pendingSave = text; naming = false to (if (tab == 1) "MASTER_PROMPT.md" else "CLAUDE.md") }) { Text("Save") }
                 }
-                OutlinedButton({ exportVersion = v.number; saveZip.launch("${(p.value("display_name") ?: "game").replace(' ', '_')}_spec_v${v.number}.zip") }, Modifier.fillMaxWidth()) { Text("Export full package (.zip)") }
+                OutlinedButton({ exportVersion = v.number; naming = true to "${(p.value("display_name") ?: "game").replace(' ', '_')}_spec_v${v.number}.zip" }, Modifier.fillMaxWidth()) { Text("Export full package (.zip)") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                 Button({ vm.generate() }, Modifier.weight(1f), enabled = busy == null) { Text(if (p.versions.isEmpty()) "Generate" else "New version") }
@@ -122,6 +125,25 @@ fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
             if (busy != null) Text(busy ?: "", style = MaterialTheme.typography.bodySmall)
             if (p.versions.isEmpty() && !completeness.readyForGeneration) Text("Tip: generating before the design is complete is allowed, but the audit will list what is missing.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+    }
+    naming?.let { (isZip, suggested) ->
+        var name by remember(suggested) { mutableStateOf(suggested) }
+        AlertDialog(
+            onDismissRequest = { naming = null },
+            title = { Text(if (isZip) "Name the package" else "Name the file") },
+            text = { OutlinedTextField(name, { name = it }, singleLine = true, label = { Text("File name") }) },
+            confirmButton = {
+                TextButton({
+                    val ext = if (isZip) ".zip" else ".md"
+                    // Keep it a plain, safe file name: no folders, no characters providers reject; the extension stays correct.
+                    var clean = name.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_").trim('.', ' ').ifEmpty { suggested.substringBeforeLast('.') }
+                    if (!clean.endsWith(ext, ignoreCase = true)) clean += ext
+                    naming = null
+                    if (isZip) saveZip.launch(clean) else saveMd.launch(clean)
+                }) { Text("Continue") }
+            },
+            dismissButton = { TextButton({ naming = null }) { Text("Cancel") } },
+        )
     }
     review?.let { r -> AlertDialog({ review = null }, confirmButton = { TextButton({ review = null }) { Text("Close") } }, title = { Text("Claude's review") }, text = { Column(Modifier.verticalScroll(rememberScrollState())) { SelectionContainer { Text(r) } } }) }
 }
