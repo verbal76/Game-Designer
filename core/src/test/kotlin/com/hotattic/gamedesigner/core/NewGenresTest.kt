@@ -178,3 +178,18 @@ class CombatMultiSelectTest {
         assertTrue(p.messages.any { it.text.contains("exactly as you wrote it") })
     }
 }
+
+class GameTitleTest {
+    @Test fun aTitleIsAcceptedAsTheNameWhateverWordsItContains() = runBlocking {
+        for (title in listOf("Tryin' To Not Die", "No Way Out", "Never Alone Again", "Not Another Zombie Game", "Don't Starve Together Too", "Turn Based Hero")) {
+            val d = director()
+            var p = d.start(newProject(), settings)
+            p = d.handleUserMessage(p, settings, "A top-down action roguelike on my phone about surviving a dangerous city.").project
+            p = d.askAbout(p, Keys.DISPLAY_NAME)
+            val t = d.handleUserMessage(p, settings, title).project
+            assertEquals(title, t.value(Keys.DISPLAY_NAME), title)
+            assertTrue(t.references.isEmpty(), "no phantom reference for '$title': ${t.references.map { it.name }}")
+            assertTrue(t.pendingFieldKey != Keys.DISPLAY_NAME, "moved on after '$title'")
+        }
+    }
+}

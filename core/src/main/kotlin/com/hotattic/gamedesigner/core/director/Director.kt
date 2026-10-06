@@ -491,7 +491,11 @@ class Director(private val deps: DirectorDeps) {
 
     private suspend fun answerField(p0: Project, settings: AppSettings, field: Field, text: String, now: Long): FieldResult {
         val traits = Traits(p0)
-        val interp = interpret(p0, settings, field, text)
+        val interp0 = interpret(p0, settings, field, text)
+        // A title or an identifier is a name, not a statement about the design: never mine it for reference games, rejections or facts.
+        val interp = if (field.key == Keys.DISPLAY_NAME || field.key == Keys.PACKAGE_ID)
+            interp0.copy(references = emptyList(), rejectedTags = emptyList(), rejectedGenres = emptyList(), affirmedTags = emptyList(), retract = emptyList(), facts = emptyList(), edits = emptyMap())
+        else interp0
         val kind = interp.by
         val model = if (kind == InterpreterKind.RULES) null else kind.label
         // "That's not what I meant": undo what Bob last recorded from the owner's answer and ask again, rather than building on a misreading.
