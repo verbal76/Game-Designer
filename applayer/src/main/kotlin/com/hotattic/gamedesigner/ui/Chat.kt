@@ -118,6 +118,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                     IconButton({ menu = true }) { Icon(Icons.Default.MoreVert, "More") }
                     DropdownMenu(menu, { menu = false }) {
                         DropdownMenuItem({ Text("Status") }, { menu = false; showStatus = true })
+                        if (p != null && (p.decisions.isNotEmpty() || p.messages.any { it.role == Role.USER })) DropdownMenuItem({ Text("Reevaluate this design") }, { menu = false; vm.reevaluate(p.id) { nav.navigate("reeval/$it") } })
                         DropdownMenuItem({ Text("Rename project") }, { menu = false; showRename = true })
                         DropdownMenuItem({ Text("Claude plan and usage") }, { menu = false; showPrefs = true })
                         if (p?.mode == ProjectMode.PLAYTEST_CONTINUE) DropdownMenuItem({ Text("Back to designing") }, { menu = false; vm.setMode(ProjectMode.NEW_GAME) })

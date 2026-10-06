@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material3.AlertDialog
@@ -63,6 +64,7 @@ fun HomeScreen(vm: AppViewModel, nav: NavController) {
             item { ActionCard(Icons.Default.Add, "New game", "Start from an idea, a reference game, or a rough feeling.") { vm.createProject(ProjectMode.NEW_GAME) { nav.navigate("chat/$it") } } }
             item { ActionCard(Icons.Default.Code, "Existing game (GitHub)", "Inspect a repository first, then plan changes that keep what works.") { nav.navigate("repos") } }
             item { ActionCard(Icons.Default.SportsEsports, "Playtest feedback", "Tell ${s.directorName} how a build felt and get a continuation spec.") { playtestPicker = true } }
+            item { ActionCard(Icons.Default.Refresh, "Reevaluate", "Run a saved design through ${s.directorName}'s newest design intelligence.") { nav.navigate("reeval-pick") } }
             if (projects.isNotEmpty()) item { Text("Your projects", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp)) }
             items(projects, key = { it.id }) { p ->
                 Card(Modifier.fillMaxWidth().clickable { nav.navigate("chat/${p.id}") }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {

@@ -99,6 +99,8 @@ fun AppNav(vm: AppViewModel, shell: ShellServices) {
                 composable("settings") { SettingsScreen(vm, nav, shell) }
                 composable("repos") { ReposScreen(vm, nav) }
                 composable("models") { ModelsScreen(vm, nav) }
+                composable("reeval-pick") { ReevalPickerScreen(vm, nav) }
+                composable("reeval/{id}") { ReevalScreen(vm, nav, it.arguments?.getString("id").orEmpty()) }
             }
             UpdateBanner(shell, Modifier.align(Alignment.BottomCenter).navigationBarsPadding())
         }

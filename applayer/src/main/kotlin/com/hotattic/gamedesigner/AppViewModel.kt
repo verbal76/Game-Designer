@@ -173,6 +173,30 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         }
     }
 
+    // ---- Reevaluate ----
+
+    /**
+     * One implementation for both entry points (home and inside a project): runs the saved design through the current design
+     * intelligence. Spec versions are untouched; [onReady] is called with the project id once the result is saved.
+     */
+    fun reevaluate(projectId: String, onReady: (String) -> Unit = {}) = viewModelScope.launch {
+        _busy.value = "${c.settings.value.directorName} is reevaluating this design..."
+        try {
+            if (current.value?.id != projectId) {
+                val p = withContext(Dispatchers.IO) { c.store.load(projectId) }
+                session.open(p)
+            }
+            session.mutate { p -> val t = c.director().reevaluate(p, c.settings.value); t.project to Unit }
+            refresh()
+            onReady(projectId)
+        } catch (t: kotlinx.coroutines.CancellationException) { throw t }
+        catch (t: Throwable) { toast("Could not reevaluate: ${t.message ?: t.javaClass.simpleName}. Your design is unchanged.") }
+        finally { _busy.value = null }
+    }
+
+    /** Throws the reevaluation away: the design returns to exactly what it was. */
+    fun discardReevaluation() = viewModelScope.launch { session.update { p -> c.director().discardReevaluation(p) } }
+
     /** Resumes an owner message that was saved but never answered (crash, backgrounding, timeout). */
     fun retryPending() {
         val pt = current.value?.pendingTurn ?: return
