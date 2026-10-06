@@ -48,7 +48,8 @@ object SpecVersioning {
         val resolved = if (approval != null) resolved0.copy(designApproval = approval.copy(fingerprint = ReviewGate.fingerprint(resolved0))) else resolved0
         val withAssets = resolved.copy(assets = resolved.assets + AssetPlan.resolveMissing(resolved, nowMillis))
         val number = (project.versions.maxOfOrNull { it.number } ?: 0) + 1
-        val lbl = label ?: kind.label
+        val reevalOpen = project.reeval?.status == "OPEN"
+        val lbl = label ?: if (reevalOpen) "Reevaluation" else kind.label
         val audit = AuditEngine.audit(withAssets)
         val md = ClaudeMdGenerator.generate(withAssets, number, lbl, nowIso, audit)
         val prompt = MasterPromptGenerator.generate(withAssets, number)
@@ -64,7 +65,9 @@ object SpecVersioning {
         val v = SpecVersion(number, kind, lbl, nowMillis, md, prompt, withAssets.decisions, readiness, audit.summary())
         // Incorporate open feedback: it is now part of this version.
         val fb = withAssets.feedback.map { if (it.status == FeedbackStatus.OPEN) it.copy(status = FeedbackStatus.INCORPORATED) else it }
-        return Generation(withAssets.copy(versions = withAssets.versions + v, feedback = fb, updatedAt = nowMillis), report, notes)
+        // Approving a reevaluation is what appends the new spec version; the old versions stay exactly as they were.
+        val reeval = withAssets.reeval?.let { if (it.status == "OPEN") it.copy(status = "APPROVED", approvedSpec = number) else it }
+        return Generation(withAssets.copy(versions = withAssets.versions + v, feedback = fb, reeval = reeval, updatedAt = nowMillis), report, notes)
     }
 
     /** Generates a new version and appends it; returns the project unchanged if the consistency review blocks export. */

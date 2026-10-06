@@ -5,6 +5,7 @@ import com.hotattic.gamedesigner.core.engine.Answer
 import com.hotattic.gamedesigner.core.engine.AnswerIntent
 import com.hotattic.gamedesigner.core.engine.Interpretation
 import com.hotattic.gamedesigner.core.engine.ReferenceAspects
+import com.hotattic.gamedesigner.core.engine.Reevaluation
 import com.hotattic.gamedesigner.core.engine.DerivedDefaults
 import com.hotattic.gamedesigner.core.engine.DesignSeeder
 import com.hotattic.gamedesigner.core.engine.ReviewGate
@@ -38,6 +39,7 @@ import com.hotattic.gamedesigner.core.llm.LlmResult
 import com.hotattic.gamedesigner.core.model.AckChoice
 import com.hotattic.gamedesigner.core.model.AppSettings
 import com.hotattic.gamedesigner.core.model.Decision
+import com.hotattic.gamedesigner.core.model.FactStatus
 import com.hotattic.gamedesigner.core.model.DecisionSource
 import com.hotattic.gamedesigner.core.model.DecisionStatus
 import com.hotattic.gamedesigner.core.model.FeedbackSeverity
@@ -137,6 +139,71 @@ class Director(private val deps: DirectorDeps) {
         val cleared = ProjectOps.clearDecision(project, key, now).copy(answerTrail = project.answerTrail - key, lastAnsweredKey = null, pendingTurn = null)
         val settled = reconciled(project, cleared, now)
         return askField(ProjectOps.setPending(ProjectOps.addMessage(settled, Role.DIRECTOR, "Okay, going back. I've cleared your answer to \"${field.title}\".", now), null), field, now)
+    }
+
+    // ---- Reevaluate ----------------------------------------------------------------------------------------------
+
+    /**
+     * Runs a saved design through the current design intelligence: re-reads the owner's stored words, reconsiders only what old Bob
+     * inferred, keeps every owner decision exactly, and reports what changed. Follow-up questions (only genuinely build-important
+     * gaps) and the plain-English review then flow through the normal conversation; approving generates the next spec version.
+     */
+    suspend fun reevaluate(project: Project, settings: AppSettings): DirectorTurn {
+        val now = deps.clock()
+        val base = if (project.reeval?.status == "OPEN") Reevaluation.discard(project, now) else project
+        if (base.messages.none { it.role == Role.USER } && base.decisions.isEmpty())
+            return DirectorTurn(ProjectOps.addMessage(base, Role.DIRECTOR, "There is nothing saved in this design to reevaluate yet.", now))
+        var p = base
+        var recovered = false
+        if (p.originalConcept.isBlank()) p.messages.firstOrNull { it.role == Role.USER && it.text.trim().length >= 8 }?.let { p = ProjectOps.setOriginalConcept(p, it.text); recovered = true }
+        p = rereadOwnerWords(p, settings, now)
+        p = Reevaluation.run(base, p, now, recovered)
+        val r = p.reeval!!
+        val tail = buildString {
+            append("\n\n")
+            append("Your own decisions were not changed. ")
+            if (r.source.fidelity == "VERBATIM") append("I re-read your original words (${r.source.ownerMessages} messages). ") else append("Your original words aren't stored for this design, so I worked from the saved decisions only. ")
+            if (r.newQuestions > 0) append("I need ${r.newQuestions} more decision(s) from you; I'll ask only those.") else append("No new questions. Review the design, then approve it to create the next spec version.")
+        }
+        p = ProjectOps.addMessage(p, Role.DIRECTOR, Reevaluation.summary(r) + tail, now)
+        return DirectorTurn(askNext(p, settings))
+    }
+
+    /** Owner discards a reevaluation: the design returns to exactly what it was; the old spec versions were never touched. */
+    fun discardReevaluation(project: Project): Project {
+        val now = deps.clock()
+        val back = Reevaluation.discard(project, now)
+        return if (back === project) project else ProjectOps.addMessage(back, Role.DIRECTOR, "Reevaluation discarded. Your design is exactly as it was.", now)
+    }
+
+    /**
+     * Reads the owner's stored messages again with the current interpreter and makes only SAFE additions: missing facts from their own
+     * sentences, volunteered decisions as proposals (never over an owner decision), reference games found in the concept, and
+     * must-not-change statements grounded in their words. It never reapplies corrections or rejections, which are already stored.
+     */
+    private suspend fun rereadOwnerWords(p0: Project, settings: AppSettings, now: Long): Project {
+        var p = p0
+        val llmReady = readyProvider() != null
+        val concept = p.originalConcept.trim()
+        val longest = p.messages.filter { it.role == Role.USER }.map { it.text.trim() }
+            .filter { it.length >= 25 && !MetaConversation.isMeta(it) && it != concept }.distinctBy { it.lowercase() }
+            .sortedByDescending { it.length }.take(if (llmReady) 3 else 7)
+        val retracted = p.facts.filter { it.status == FactStatus.RETRACTED }.map { it.text.lowercase().filter { c -> c.isLetterOrDigit() } }.toSet()
+        for (text in listOfNotNull(concept.takeIf { it.isNotBlank() }) + longest) {
+            val isConcept = text == concept
+            val interp = interpret(p, settings, null, text)
+            for ((k, v) in interp.edits) p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, ProjectOps.FROM_OWNER_WORDS)
+            // Reference games are only trusted from the concept (or from a model), never from short answers such as a game's title.
+            if (interp.references.isNotEmpty() && (isConcept || interp.by != InterpreterKind.RULES)) p = ProjectOps.addReferences(p, interp.references, now)
+            if (isConcept || text.length >= 60) {
+                val facts = sentences(text).filter { !negationWord.containsMatchIn(it) && it.lowercase().filter { c -> c.isLetterOrDigit() } !in retracted }
+                p = ProjectOps.addFacts(p, facts, if (isConcept) "concept" else "owner", Provenance.OWNER_EXPLICIT, now)
+            }
+            val constraints = interp.constraints.filter { grounded(it, text) }
+            if (constraints.isNotEmpty() && p.decision(Keys.MUST_NOT_CHANGE) == null)
+                p = ProjectOps.setDecision(p, Keys.MUST_NOT_CHANGE, constraints.joinToString(" | ") { it.trim().trimEnd('.') }, Provenance.OWNER_EXPLICIT, now, raw = text.take(200))
+        }
+        return p
     }
 
     fun askAbout(project: Project, fieldKey: String): Project = Fields.get(fieldKey)?.let { askField(ProjectOps.setPending(project, null), it, deps.clock()) } ?: project

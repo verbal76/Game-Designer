@@ -332,6 +332,79 @@ data class ProjectPrefs(
 @Serializable
 data class PendingTurn(val id: String, val text: String, val at: Long)
 
+/** What a saved project actually contains, reported honestly before a reevaluation relies on it. */
+@Serializable
+data class SourceAudit(
+    val ownerMessages: Int = 0,
+    val directorMessages: Int = 0,
+    /** The owner's original concept is stored verbatim in the project. */
+    val verbatimConcept: Boolean = false,
+    /** The concept field was empty (older project) and was recovered from the first stored owner message. */
+    val conceptRecovered: Boolean = false,
+    val decisionsTotal: Int = 0,
+    /** Decisions that carry the owner's own words. */
+    val withRawAnswer: Int = 0,
+    /** Decisions written before provenance existed; their authority is inferred from the legacy source and flagged uncertain. */
+    val legacyProvenance: Int = 0,
+    val ownerExplicit: Int = 0,
+    val ownerCorrection: Int = 0,
+    val acceptedRecommendations: Int = 0,
+    val inferred: Int = 0,
+    val defaults: Int = 0,
+    val rejections: Int = 0,
+    val facts: Int = 0,
+    val retractedFacts: Int = 0,
+    val specVersions: Int = 0,
+    val uploadedAssets: Int = 0,
+    /** VERBATIM when owner messages are stored; STRUCTURED_ONLY when only structured decisions survive. */
+    val fidelity: String = "STRUCTURED_ONLY",
+    val note: String = "",
+)
+
+/** One substantive difference (or protection) found by a reevaluation. [kind]: NEW, CHANGED, REMOVED, PRESERVED, KEPT_REC, NEEDS_DECISION, CONTRADICTION. */
+@Serializable
+data class ReevalItem(
+    val kind: String,
+    val key: String,
+    val title: String,
+    val before: String? = null,
+    val after: String? = null,
+    val note: String = "",
+)
+
+/** The saved state a reevaluation started from, so it can be discarded without losing anything. */
+@Serializable
+data class ReevalBaseline(
+    val decisions: Map<String, Decision> = emptyMap(),
+    val facts: List<DesignFact> = emptyList(),
+    val rejected: Map<String, List<String>> = emptyMap(),
+    val references: List<ReferenceGame> = emptyList(),
+    val originalConcept: String = "",
+    val designApproval: DesignApproval? = null,
+    val pendingFieldKey: String? = null,
+    val announcedConflicts: List<String> = emptyList(),
+)
+
+/** A reevaluation of this project by the current design intelligence. Old spec versions are never touched; approval appends a new one. */
+@Serializable
+data class ReevalRecord(
+    val startedAt: Long,
+    /** OPEN until a spec is generated from it (APPROVED) or the owner discards it (DISCARDED). */
+    val status: String = "OPEN",
+    val fromSpec: Int? = null,
+    val approvedSpec: Int? = null,
+    val source: SourceAudit = SourceAudit(),
+    val items: List<ReevalItem> = emptyList(),
+    val preservedOwner: Int = 0,
+    val newRecommendations: Int = 0,
+    val changedRecommendations: Int = 0,
+    val contradictions: Int = 0,
+    val newQuestions: Int = 0,
+    val completenessBefore: Int = 0,
+    val completenessAfter: Int = 0,
+    val baseline: ReevalBaseline = ReevalBaseline(),
+)
+
 @Serializable
 data class DesignApproval(val fingerprint: String, val at: Long, /** "owner" or "delegated" */ val by: String)
 
@@ -378,6 +451,8 @@ data class Project(
     val lastAnsweredKey: String? = null,
     /** Fields the owner answered, oldest first (capped), so Back can revisit them one at a time. Additive. */
     val answerTrail: List<String> = emptyList(),
+    /** The latest reevaluation of this design by the current design intelligence, if any. Additive. */
+    val reeval: ReevalRecord? = null,
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }
