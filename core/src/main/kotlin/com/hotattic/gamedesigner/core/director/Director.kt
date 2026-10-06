@@ -86,6 +86,7 @@ private const val PENDING_ASSET_PLAN = "__asset_plan__"
 private const val PENDING_CONFLICT_PREFIX = "__conflict:"
 private const val PENDING_READY = "__ready__"
 private const val PENDING_REVIEW = "__review__"
+private const val PENDING_MORE_REFS = "__more_refs__"
 private const val MODEL_TIMEOUT_MS = 60_000L
 
 /**
@@ -283,6 +284,20 @@ class Director(private val deps: DirectorDeps) {
                     }
                 }
             }
+            pending == PENDING_MORE_REFS -> {
+                val t = lower.trim('.', '!', ' ')
+                val refField = Fields.get(Keys.REFERENCES)!!
+                when {
+                    t in setOf("done", "that's all", "thats all", "that's it", "thats it", "no more", "no", "nope", "none", "i'm done", "im done", "finished", "next") -> p = ProjectOps.setPending(p, null)
+                    t in setOf("add another", "add another game", "another", "one more", "yes", "yeah", "yep", "sure") ->
+                        return DirectorTurn(reply(p, "Which game is next? Name it, and say what you like about it if you want.", PENDING_MORE_REFS, moreRefsQuick(false)))
+                    else -> {
+                        val r = answerField(p, settings, refField, text.trim(), now)
+                        p = r.project; note = r.modelNote; kind = r.kind
+                        return DirectorTurn(moreRefsPrompt(p), null, note, kind)
+                    }
+                }
+            }
             pending == PENDING_READY -> {
                 if (AnswerParser.isAffirm(text) || "generate" in lower) return generateRequest(p, settings)
                 absorbInto(null)
@@ -297,6 +312,9 @@ class Director(private val deps: DirectorDeps) {
                     kind = r.kind
                     action = r.action
                     if (r.directReply != null) return DirectorTurn(replyField(p, r.directReply, field), action, note, kind)
+                    // Several inspirations are normal: offer to add more instead of silently moving on after one.
+                    if (field.key == Keys.REFERENCES && p.references.isNotEmpty() && p.value(Keys.REFERENCES) != "none" && action == null)
+                        return DirectorTurn(moreRefsPrompt(p), null, note, kind)
                     if (action != null) {
                         // Upload requested: keep the question open until the file arrives or the owner changes their mind.
                         val ask = "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it."
@@ -821,6 +839,11 @@ class Director(private val deps: DirectorDeps) {
         ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), pending?.takeUnless { it.startsWith("__") }, quick, question), pending)
 
     /** Re-asks a field with its structured question so the card stays usable after a clarification. */
+    private fun moreRefsQuick(withAdd: Boolean) = if (withAdd) listOf(QuickReply("Add another game", "add another"), QuickReply("Done", "done")) else listOf(QuickReply("Done", "done"))
+
+    private fun moreRefsPrompt(p: Project): Project =
+        reply(p, "Got it. So far: ${p.references.joinToString(", ") { it.name }}. Add another game, or are you done?", PENDING_MORE_REFS, moreRefsQuick(true))
+
     private fun replyField(p: Project, text: String, field: Field): Project =
         ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), field.key, quickFor(field, Traits(p)), specFor(field, Traits(p))), field.key)
 

@@ -71,3 +71,23 @@ class BackNavigationTest {
         assertEquals(null, d.goBack(newProject()))
     }
 }
+
+class MultipleReferencesTest {
+    @Test fun addAnotherCollectsSeveralGamesThenDoneMovesOn() = runBlocking {
+        val d = director()
+        var p = d.start(newProject(), settings)
+        p = d.handleUserMessage(p, settings, "A colony simulator on a hostile planet.").project
+        p = d.askAbout(p, Keys.REFERENCES)
+        p = d.handleUserMessage(p, settings, "Dwarf Fortress").project
+        assertEquals("__more_refs__", p.pendingFieldKey)
+        assertTrue(p.messages.last().quickReplies.any { it.label == "Add another game" } && p.messages.last().quickReplies.any { it.label == "Done" })
+        p = d.handleUserMessage(p, settings, "add another").project
+        assertEquals("__more_refs__", p.pendingFieldKey)
+        p = d.handleUserMessage(p, settings, "Songs of Syx").project
+        assertEquals(setOf("Dwarf Fortress", "Songs of Syx"), p.references.map { it.name }.toSet())
+        assertEquals("__more_refs__", p.pendingFieldKey)
+        p = d.handleUserMessage(p, settings, "done").project
+        assertTrue(p.pendingFieldKey != "__more_refs__")
+        assertTrue(p.value(Keys.REFERENCES)!!.contains("Songs of Syx"))
+    }
+}
