@@ -165,6 +165,9 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                     items(last.quickReplies) { q -> SuggestionChip({ vm.send(q.send) }, { Text(q.label) }) }
                 }
             }
+            if (busy == null && p?.answerTrail?.isNotEmpty() == true && p.pendingTurn == null) {
+                TextButton({ vm.goBack() }, Modifier.padding(start = 8.dp)) { Text("\u2190 Back to previous question") }
+            }
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(
                     input, { input = it }, Modifier.weight(1f),

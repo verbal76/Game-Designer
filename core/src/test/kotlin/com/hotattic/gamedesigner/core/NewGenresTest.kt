@@ -51,3 +51,23 @@ class NewGenresTest {
         assertEquals("2D", td.value(Keys.DIMENSION)); assertEquals("top_down", td.value(Keys.PERSPECTIVE))
     }
 }
+
+class BackNavigationTest {
+    @Test fun backTakesBackTheLastAnswerAndAsksItAgain() = runBlocking {
+        val d = director()
+        var p = d.start(newProject(), settings)
+        p = d.handleUserMessage(p, settings, "A phone action platformer about a wizard.").project
+        p = d.askAbout(p, Keys.ORIENTATION)
+        p = d.submitSelection(p, settings, Keys.ORIENTATION, listOf("landscape")).project
+        assertEquals("landscape", p.value(Keys.ORIENTATION))
+        assertTrue(Keys.ORIENTATION in p.answerTrail)
+        val back = d.goBack(p)!!
+        assertEquals(null, back.value(Keys.ORIENTATION))
+        assertEquals(Keys.ORIENTATION, back.pendingFieldKey)
+        assertTrue(Keys.ORIENTATION !in back.answerTrail)
+        // answering again works and is recorded again
+        val again = d.submitSelection(back, settings, Keys.ORIENTATION, listOf("portrait")).project
+        assertEquals("portrait", again.value(Keys.ORIENTATION))
+        assertEquals(null, d.goBack(newProject()))
+    }
+}

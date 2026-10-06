@@ -376,6 +376,8 @@ data class Project(
     val pendingTurn: PendingTurn? = null,
     /** The field the owner most recently answered, so "that's not what I meant" can undo exactly that. Additive. */
     val lastAnsweredKey: String? = null,
+    /** Fields the owner answered, oldest first (capped), so Back can revisit them one at a time. Additive. */
+    val answerTrail: List<String> = emptyList(),
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }

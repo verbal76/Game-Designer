@@ -123,6 +123,19 @@ class Director(private val deps: DirectorDeps) {
     }
 
     /** Opens one specific question (used by "edit" and "refine"). */
+    /**
+     * Back: takes back the owner's most recent answer and asks that question again, with its choices. Anything Bob derived from it
+     * is released by the Reconciler; other owner decisions are untouched. Repeated Back walks further back.
+     */
+    fun goBack(project: Project): Project? {
+        val now = deps.clock()
+        val key = project.answerTrail.lastOrNull() ?: return null
+        val field = Fields.get(key) ?: return project.copy(answerTrail = project.answerTrail - key)
+        val cleared = ProjectOps.clearDecision(project, key, now).copy(answerTrail = project.answerTrail - key, lastAnsweredKey = null, pendingTurn = null)
+        val settled = reconciled(project, cleared, now)
+        return askField(ProjectOps.setPending(ProjectOps.addMessage(settled, Role.DIRECTOR, "Okay, going back. I've cleared your answer to \"${field.title}\".", now), null), field, now)
+    }
+
     fun askAbout(project: Project, fieldKey: String): Project = Fields.get(fieldKey)?.let { askField(ProjectOps.setPending(project, null), it, deps.clock()) } ?: project
 
     /** Switches an existing project between designing and playtest feedback, with an orienting message. */
@@ -141,6 +154,8 @@ class Director(private val deps: DirectorDeps) {
     }
 
     private suspend fun <T> timed(block: suspend () -> T): T? = kotlinx.coroutines.withTimeoutOrNull(MODEL_TIMEOUT_MS) { block() }
+
+    private fun Project.withTrail(key: String): Project = copy(answerTrail = (answerTrail.filter { it != key } + key).takeLast(30))
 
     private fun Project.withTurn(id: String?): Project = if (id == null) this else copy(processedTurns = (processedTurns + id).takeLast(64))
 
@@ -408,7 +423,7 @@ class Director(private val deps: DirectorDeps) {
         }
         val recommended = p.decision(field.key)
         val acceptedRec = interp?.acceptsRecommendation == true && recommended != null && recommended.status == DecisionStatus.PROPOSED && recommended.value == value
-        p = ProjectOps.setDecision(p, field.key, value, if (acceptedRec) Provenance.OWNER_ACCEPTED_RECOMMENDATION else Provenance.OWNER_EXPLICIT, now, raw = raw).copy(lastAnsweredKey = field.key)
+        p = ProjectOps.setDecision(p, field.key, value, if (acceptedRec) Provenance.OWNER_ACCEPTED_RECOMMENDATION else Provenance.OWNER_EXPLICIT, now, raw = raw).copy(lastAnsweredKey = field.key).withTrail(field.key)
         var note: String? = null
         var kind: InterpreterKind? = null
         if (field.key == Keys.CONCEPT) p = ProjectOps.setOriginalConcept(p, raw)
@@ -467,7 +482,7 @@ class Director(private val deps: DirectorDeps) {
                 else if (d == null) FieldResult(p, directReply = "I can't pick that one for you - it's your idea. ${field.prompt}", kind = kind)
                 else {
                     val np = d.first
-                    FieldResult(ProjectOps.setPending(ProjectOps.addMessage(reconciled(p, np, now), Role.DIRECTOR, "Going with my recommendation: ${Messages.display(np, field.key, d.second.value).trimEnd('.', ' ')}. ${d.second.rationale}", now, field.key), null), kind = kind)
+                    FieldResult(ProjectOps.setPending(ProjectOps.addMessage(reconciled(p, np, now).withTrail(field.key), Role.DIRECTOR, "Going with my recommendation: ${Messages.display(np, field.key, d.second.value).trimEnd('.', ' ')}. ${d.second.rationale}", now, field.key), null), kind = kind)
                 }
             }
             AnswerIntent.POSTPONE -> FieldResult(ProjectOps.postpone(ProjectOps.addMessage(p, Role.DIRECTOR, "No problem, we'll come back to that.", now), field.key, now), kind = kind)

@@ -165,6 +165,14 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         } finally { _busy.value = null }
     }
 
+    /** Back: revisit the owner's previous answer and ask it again. */
+    fun goBack() {
+        viewModelScope.launch {
+            val ok = session.mutate { p -> val n = c.director().goBack(p); (n ?: p) to (n != null) }
+            if (ok == false) toast("There's nothing to go back to yet.")
+        }
+    }
+
     /** Resumes an owner message that was saved but never answered (crash, backgrounding, timeout). */
     fun retryPending() {
         val pt = current.value?.pendingTurn ?: return
