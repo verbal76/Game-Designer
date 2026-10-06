@@ -32,6 +32,8 @@ jobs:
         with: { distribution: temurin, java-version: "17" }
       - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
       - name: Read request
         id: req
         run: |

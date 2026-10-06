@@ -1,9 +1,14 @@
+# Android CI - deliberately NOT run on every push (GitHub Actions minutes are a scarce, shared budget; see CLAUDE.md section 32).
+# It checks only what cannot be proven locally: the Android modules (shell, layer, resources) compile, lint passes, the layer unit
+# tests (incl. theme contrast) pass, and the native libraries are 16 KB page-size aligned. JVM tests of :core and :otakit run locally
+# and are repeated inside the OTA and release workflows, so they are not repeated here.
+# Runs: manually (workflow_dispatch), or on pull requests that are READY FOR REVIEW (draft PRs are skipped). Docs/tooling-only changes never run it.
 name: Android CI
 
 on:
-  push:
-    branches: ["**"]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ["**.md", "docs/**", "tools/models/**", "ota/publish-request.json", ".github/workflows/release-*.yml", ".github/workflows/model-catalog.yml", ".github/workflows/ota-publish.yml"]
   workflow_dispatch:
 
 concurrency:
@@ -12,8 +17,10 @@ concurrency:
 
 jobs:
   build:
+    # Skipped jobs are not billed: draft pull requests never start the runner.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -23,10 +30,10 @@ jobs:
       - name: Accept Android SDK licenses (SDK is preinstalled on the runner)
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false   # feature branches may save the Gradle cache so later runs are not cold
       - name: Monotonic version code
         run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
-      - name: JVM unit tests (core, OTA kit)
-        run: ./gradlew :core:test :otakit:test --stacktrace
       - name: Android lint, debug APK, layer unit tests (incl. theme contrast)
         run: |
           set -o pipefail
@@ -37,23 +44,10 @@ jobs:
           { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
       - name: 16 KB page-size qualification of every native library in the debug APK
         run: python3 tools/check-16kb.py app/build/outputs/apk/debug/app-debug.apk
-      - name: Validate that an OTA bundle can be built, signed and verified (throwaway key, not published)
-        run: |
-          set -euo pipefail
-          K="$RUNNER_TEMP/k"; ./gradlew -q :otakit:run --args="genkey $K" > /dev/null
-          tools/ota/build-bundle.sh 2 ci-validation dev "$RUNNER_TEMP/ota-validate" "$K/ota-private.b64"
-          ./gradlew -q :otakit:run --args="verify-channel --dir $RUNNER_TEMP/ota-validate --public-key $K/ota-public.b64 --api $(tools/ota/shellapi.sh) --fingerprint $(tools/ota/fingerprint.sh)"
       - uses: actions/upload-artifact@v4
-        with:
-          name: game-designer-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: reports
           path: |
-            core/build/reports/tests
-            otakit/build/reports/tests
             app/build/reports
             applayer/build/reports

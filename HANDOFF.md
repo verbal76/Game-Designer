@@ -45,3 +45,6 @@ Reference-game fork gap; asset search; emulator smoke test in CI; consider movin
 - dev line: automatic check/download/schedule + "Update ready - Restart now" banner. stable line: drop-down of the last 10 published builds, never automatic, downloads continue into the cache. See `docs/OTA.md`.
 - `tools/ota/publish.sh` now keeps per-build files and `index.json` (newest 10 per runtime generation).
 - First v4-line OTA must use publish-request version >= 8.
+
+## Actions budget (see CLAUDE.md section 32)
+CI does not run on push. Validate locally, dispatch `Android CI` once per Android-touching candidate, publish OTAs through `ota-publish.yml` (it runs its own tests). Obsolete one-shot release workflows (baseline, v2, v3) were removed; `release-v4.yml` is the template for the next APK.
