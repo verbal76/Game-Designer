@@ -91,3 +91,42 @@ class MultipleReferencesTest {
         assertTrue(p.value(Keys.REFERENCES)!!.contains("Songs of Syx"))
     }
 }
+
+class ReferenceAspectsTest {
+    private suspend fun twoGames(d: com.hotattic.gamedesigner.core.director.Director): com.hotattic.gamedesigner.core.model.Project {
+        var p = d.start(newProject(), settings)
+        p = d.handleUserMessage(p, settings, "A colony simulator on a hostile planet.").project
+        p = d.askAbout(p, Keys.REFERENCES)
+        p = d.handleUserMessage(p, settings, "Dwarf Fortress").project
+        p = d.handleUserMessage(p, settings, "add another").project
+        p = d.handleUserMessage(p, settings, "Songs of Syx").project
+        return d.handleUserMessage(p, settings, "done").project
+    }
+
+    @Test fun eachGameGetsItsOwnChoiceListAndPicksAreRecordedPerGame() = runBlocking {
+        val d = director()
+        var p = twoGames(d)
+        assertEquals("__ref_aspects__", p.pendingFieldKey)
+        val q1 = p.messages.last().question!!
+        assertTrue(p.messages.last().text.contains("Dwarf Fortress"))
+        assertTrue(q1.options.size in 5..6 && q1.kind == "MULTI")
+        p = d.submitSelection(p, settings, "__ref_aspects__", listOf(q1.options[0].id, q1.options[1].id)).project
+        assertEquals("__ref_aspects__", p.pendingFieldKey)
+        assertTrue(p.messages.last().text.contains("Songs of Syx"))
+        // typed free text is accepted for the second game
+        p = d.handleUserMessage(p, settings, "I love how the whole city feels alive and crowded").project
+        assertTrue(p.pendingFieldKey != "__ref_aspects__")
+        val dwarf = p.references.first { it.name.contains("Dwarf") }
+        val syx = p.references.first { it.name.contains("Syx") }
+        assertEquals(2, dwarf.aspects.size)
+        assertTrue(syx.aspects.single().contains("alive and crowded"))
+        assertTrue(p.value(Keys.REFERENCE_ASPECTS)!!.let { "Dwarf Fortress" in it && "Songs of Syx" in it })
+    }
+
+    @Test fun llmOptionsAreValidatedAndRulesAreTheFallback() {
+        assertTrue(com.hotattic.gamedesigner.core.engine.ReferenceAspects.validateLlm("nope") == null)
+        assertTrue(com.hotattic.gamedesigner.core.engine.ReferenceAspects.validateLlm("[\"a\"]") == null)
+        val ok = com.hotattic.gamedesigner.core.engine.ReferenceAspects.validateLlm("```[\"Digging through z-levels\",\"Fun failure stories\",\"Deep dwarf needs\",\"Water and magma physics\",\"Huge fortress scale\"]```")
+        assertEquals(5, ok!!.size)
+    }
+}

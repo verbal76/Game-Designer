@@ -4,6 +4,7 @@ import com.hotattic.gamedesigner.core.engine.Alternative
 import com.hotattic.gamedesigner.core.engine.Answer
 import com.hotattic.gamedesigner.core.engine.AnswerIntent
 import com.hotattic.gamedesigner.core.engine.Interpretation
+import com.hotattic.gamedesigner.core.engine.ReferenceAspects
 import com.hotattic.gamedesigner.core.engine.DerivedDefaults
 import com.hotattic.gamedesigner.core.engine.DesignSeeder
 import com.hotattic.gamedesigner.core.engine.ReviewGate
@@ -87,6 +88,7 @@ private const val PENDING_CONFLICT_PREFIX = "__conflict:"
 private const val PENDING_READY = "__ready__"
 private const val PENDING_REVIEW = "__review__"
 private const val PENDING_MORE_REFS = "__more_refs__"
+private const val PENDING_REF_ASPECTS = "__ref_aspects__"
 private const val MODEL_TIMEOUT_MS = 60_000L
 
 /**
@@ -284,11 +286,30 @@ class Director(private val deps: DirectorDeps) {
                     }
                 }
             }
+            pending == PENDING_REF_ASPECTS -> {
+                val options = p.messages.lastOrNull { it.question?.fieldKey == PENDING_REF_ASPECTS }?.question?.options.orEmpty()
+                val l = lower.trim('.', '!', ' ')
+                val picked: List<String> = when {
+                    AnswerParser.isDelegate(text) -> options.take(3).map { it.label }
+                    l in setOf("skip", "none", "nothing", "no", "ask me later") -> listOf("its overall feel")
+                    else -> {
+                        val byLabel = options.filter { o -> o.label.substringBefore(" - ").lowercase().let { k -> k.length > 4 && k in l } }.map { it.label }
+                        val byNumber = Regex("\\b([1-9])\\b").findAll(l).mapNotNull { options.getOrNull(it.groupValues[1].toInt() - 1)?.label }.toList()
+                        val chosen = (byLabel + byNumber).distinct()
+                        if (chosen.isNotEmpty() && l.length < 40) chosen else (chosen + text.trim()).distinct()
+                    }
+                }
+                return DirectorTurn(recordRefAspects(p, picked, settings))
+            }
             pending == PENDING_MORE_REFS -> {
                 val t = lower.trim('.', '!', ' ')
                 val refField = Fields.get(Keys.REFERENCES)!!
                 when {
-                    t in setOf("done", "that's all", "thats all", "that's it", "thats it", "no more", "no", "nope", "none", "i'm done", "im done", "finished", "next") -> p = ProjectOps.setPending(p, null)
+                    t in setOf("done", "that's all", "thats all", "that's it", "thats it", "no more", "no", "nope", "none", "i'm done", "im done", "finished", "next") -> {
+                        val asked = askRefAspects(ProjectOps.setPending(p, null))
+                        if (asked != null) return DirectorTurn(asked)
+                        p = ProjectOps.setPending(p, null)
+                    }
                     t in setOf("add another", "add another game", "another", "one more", "yes", "yeah", "yep", "sure") ->
                         return DirectorTurn(reply(p, "Which game is next? Name it, and say what you like about it if you want.", PENDING_MORE_REFS, moreRefsQuick(false)))
                     else -> {
@@ -339,6 +360,12 @@ class Director(private val deps: DirectorDeps) {
     private suspend fun submitSelectionOnce(project: Project, settings: AppSettings, fieldKey: String, ids: List<String>): DirectorTurn {
         val now = deps.clock()
         if (fieldKey == PENDING_ASSET_PLAN) return assetPlanSelection(project, settings, ids.firstOrNull(), now)
+        if (fieldKey == PENDING_REF_ASPECTS) {
+            val opts = project.messages.lastOrNull { it.question?.fieldKey == PENDING_REF_ASPECTS }?.question?.options.orEmpty()
+            val labels = ids.mapNotNull { id -> opts.firstOrNull { it.id == id }?.label }
+            val said = ProjectOps.addMessage(project, Role.USER, if (labels.isEmpty()) "Nothing in particular" else labels.joinToString("; "), now)
+            return DirectorTurn(recordRefAspects(said, labels.ifEmpty { listOf("its overall feel") }, settings))
+        }
         if (fieldKey == PENDING_REVIEW) {
             val said = ProjectOps.addMessage(project, Role.USER, if (ids.firstOrNull() == "looks_right") "Looks right" else "I want to change something", now)
             return if (ids.firstOrNull() == "looks_right") approveReview(said, "owner") else DirectorTurn(reply(said, reviewChangePrompt, PENDING_REVIEW, reviewQuick(), reviewSpec()))
@@ -839,6 +866,38 @@ class Director(private val deps: DirectorDeps) {
         ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), pending?.takeUnless { it.startsWith("__") }, quick, question), pending)
 
     /** Re-asks a field with its structured question so the card stays usable after a clarification. */
+    /** Asks, for the first reference whose aspects are not yet known, what the owner likes about it. Null when every reference is covered. */
+    private suspend fun askRefAspects(p: Project): Project? {
+        val game = p.references.firstOrNull { it.aspects.isEmpty() } ?: return null
+        val labels = refAspectOptions(p, game)
+        val options = labels.mapIndexed { i, l -> ChoiceOption("a$i", l) }
+        val intro = if (p.references.size > 1) "You picked ${game.name}." else "Now ${game.name}."
+        val summary = game.summary.takeIf { it.isNotBlank() }?.let { " (${it.take(120).trimEnd('.', ' ')}...)" }.orEmpty()
+        return reply(p, "$intro What do you like about it?$summary\n\nPick everything that applies, or type your own.",
+            PENDING_REF_ASPECTS, listOf(QuickReply("Choose for me", "choose for me"), QuickReply("Skip this game", "skip")),
+            QuestionSpec(PENDING_REF_ASPECTS, "MULTI", options, canDelegate = true, canSkip = true))
+    }
+
+    private suspend fun refAspectOptions(p: Project, game: com.hotattic.gamedesigner.core.model.ReferenceGame): List<String> {
+        val rules = ReferenceAspects.rules(game, p)
+        val provider = readyProvider()?.first ?: return rules
+        val r = timed { provider.complete(LlmRequest("You help a game designer. Be concrete and brief.", listOf(LlmMessage("user", ReferenceAspects.prompt(game))), maxTokens = 300, temperature = 0f)) }
+        val llm = (r as? LlmResult.Ok)?.let { ReferenceAspects.validateLlm(it.text) } ?: return rules
+        return (llm + rules).distinctBy { it.lowercase() }.take(6)
+    }
+
+    /** Stores the owner's picks for the game currently being asked about, then asks about the next game or finishes. */
+    private suspend fun recordRefAspects(p0: Project, picked: List<String>, settings: AppSettings): Project {
+        val now = deps.clock()
+        val game = p0.references.firstOrNull { it.aspects.isEmpty() } ?: return ProjectOps.setPending(p0, null)
+        var p = ProjectOps.updateReference(p0, game.copy(aspects = picked.map { it.substringBefore(" - ").trim() }.filter { it.isNotBlank() }.ifEmpty { listOf("its overall feel") }))
+        askRefAspects(p)?.let { return it }
+        val text = p.references.joinToString(" ") { r -> "From ${r.name}: ${r.aspects.joinToString(", ")}." } + " Take design ideas only, never characters, art, maps, music or writing."
+        p = ProjectOps.setDecision(p, Keys.REFERENCE_ASPECTS, text, Provenance.OWNER_EXPLICIT, now, raw = picked.joinToString("; "))
+        p = ProjectOps.addMessage(p, Role.DIRECTOR, "Noted what you like from ${p.references.joinToString(" and ") { it.name }}.", now)
+        return askNext(ProjectOps.setPending(p, null), settings)
+    }
+
     private fun moreRefsQuick(withAdd: Boolean) = if (withAdd) listOf(QuickReply("Add another game", "add another"), QuickReply("Done", "done")) else listOf(QuickReply("Done", "done"))
 
     private fun moreRefsPrompt(p: Project): Project =
