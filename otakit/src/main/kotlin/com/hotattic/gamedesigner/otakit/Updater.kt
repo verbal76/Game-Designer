@@ -110,6 +110,12 @@ class OtaUpdater(
             .distinctBy { it.version }.sortedByDescending { it.version }.take(limit)
     }
 
+    /** The last list fetched for [channel], without touching the network. */
+    fun cachedBuilds(channel: String, limit: Int = 10): List<OtaIndexEntry> =
+        runCatching { OtaJson.decodeFromString(OtaIndex.serializer(), File(store.root, "index-$channel.json").readText()).builds }.getOrDefault(emptyList())
+            .filter { it.shellApiLevel == shell.shellApiLevel && it.runtimeFingerprint == shell.runtimeFingerprint }
+            .distinctBy { it.version }.sortedByDescending { it.version }.take(limit)
+
     private fun finish(r: CheckResult, event: String? = null): CheckResult {
         val (s, _) = store.readState()
         store.writeState(s.copy(lastCheckAt = clock(), lastCheckResult = r.summary, lastEvent = event ?: s.lastEvent))

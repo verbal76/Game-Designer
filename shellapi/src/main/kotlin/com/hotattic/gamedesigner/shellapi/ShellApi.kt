@@ -72,6 +72,28 @@ data class OtaDiagnostics(
     val pendingVersion: Int?,
     val badVersions: List<String>,
     val startupNote: String,
+    /** Build the owner chose on the stable line, if any. */
+    val pinnedVersion: Int? = null,
+    /** True only on the dev line: updates download AND get scheduled for the next start without any action. */
+    val autoApply: Boolean = false,
+    /** Builds that are downloaded and verified on this phone. */
+    val downloadedVersions: List<Int> = emptyList(),
+    /** Display name of the scheduled build, if one is waiting for a restart. */
+    val pendingName: String? = null,
+)
+
+/** One published build on the stable line, as shown in the build picker. */
+data class OtaBuild(
+    val version: Int,
+    val name: String,
+    val sourceSha: String,
+    val date: String,
+    /** Downloaded and verified on this phone: choosing it is instant. */
+    val downloaded: Boolean,
+    /** This is the build currently running. */
+    val running: Boolean,
+    /** The owner's chosen build. */
+    val chosen: Boolean,
 )
 
 interface OtaControl {
@@ -84,6 +106,17 @@ interface OtaControl {
     fun setChannel(channel: String)
     /** Abandons any OTA layer; the bundled layer runs from the next start and the abandoned bundle is not re-offered. */
     fun resetToBundled()
+    /** Non-blocking snapshot of the stable line's last published builds (at most 10, newest first); empty until fetched or when none exist. */
+    fun builds(): List<OtaBuild>
+    /** Fetches the build list from the network (background); [onResult] runs on the main thread. */
+    fun refreshBuilds(onResult: (String) -> Unit)
+    /**
+     * Stable line only: choose which build to run. Downloads and verifies it if needed, then schedules it for the next restart.
+     * null returns to "no chosen build". Never changes the running layer.
+     */
+    fun chooseBuild(version: Int?, onResult: (String) -> Unit)
+    /** Restarts the app now so a scheduled build starts. */
+    fun restartNow()
 }
 
 interface ShellServices {

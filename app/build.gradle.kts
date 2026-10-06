@@ -17,7 +17,7 @@ android {
         // CI sets GD_VERSION_CODE = minutes since the Unix epoch: monotonic across every workflow (run numbers are per-workflow
         // and are not comparable). Local builds use 1.
         versionCode = System.getenv("GD_VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = "3.0.0"
+        versionName = "4.0.0"
         buildConfigField("String", "RUNTIME_FINGERPRINT", "\"$runtimeFingerprint\"")
         buildConfigField("int", "SHELL_API_LEVEL", libs.versions.shellApi.get())
         buildConfigField("String", "OTA_REPO", "\"verbal76/Game-Designer\"")

@@ -175,16 +175,61 @@ private fun DiagnosticsSection(shell: ShellServices) {
     Text("Application layer: ${com.hotattic.gamedesigner.VersionIdentity.layerName(d.nativeVersionName, d.layerVersion)} (${if (d.layerSource == "ota") "OTA #${d.layerVersion} - ${d.layerLabel}" else "built into the APK"}); running code identity ${AppLayerEntry.LAYER_LABEL} (sequence ${AppLayerEntry.LAYER_VERSION})", style = MaterialTheme.typography.bodySmall)
     Text("Update channel: ${d.channel}${if (!d.trustedKeyPresent) " (disabled: this build has no trusted update key)" else ""}", style = MaterialTheme.typography.bodySmall)
     Text("Last check: ${if (d.lastCheckAt == 0L) "never" else java.text.DateFormat.getDateTimeInstance().format(java.util.Date(d.lastCheckAt))} - ${d.lastCheckResult}", style = MaterialTheme.typography.bodySmall)
-    d.pendingVersion?.let { Text("Update $it is downloaded and verified. It activates the next time the app starts (close it from recents and reopen).", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary) }
+    d.pendingVersion?.let { v ->
+        Text("${d.pendingName ?: "Build $v"} is downloaded and verified. It starts the next time the app restarts.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+        Button({ shell.ota.restartNow() }) { Text("Restart now") }
+    }
+    Text(when (d.channel) {
+        "dev" -> "Dev line: new builds download and are scheduled automatically. A banner offers Restart when one is ready."
+        "stable" -> "Stable line: automatic updates are OFF. Newer builds still download in the background, so they are ready when you choose them below."
+        else -> "Updates are off."
+    }, style = MaterialTheme.typography.bodySmall)
     if (d.startupNote.isNotBlank()) Text("Startup: ${d.startupNote}", style = MaterialTheme.typography.bodySmall)
     if (d.lastEvent.isNotBlank()) Text("Last event: ${d.lastEvent}", style = MaterialTheme.typography.bodySmall)
     if (d.badVersions.isNotEmpty()) Text("Rejected/rolled back: ${d.badVersions.joinToString()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("off", "dev", "stable").forEach { ch -> androidx.compose.material3.FilterChip(d.channel == ch, { shell.ota.setChannel(ch); d = shell.ota.diagnostics() }, { Text(ch) }) }
+        listOf("off" to "Off", "dev" to "Dev (automatic)", "stable" to "Stable (choose build)").forEach { (ch, label) ->
+            androidx.compose.material3.FilterChip(d.channel == ch, { shell.ota.setChannel(ch); d = shell.ota.diagnostics() }, { Text(label) })
+        }
     }
+    if (d.channel == "stable") BuildPicker(shell, onChanged = { d = shell.ota.diagnostics() }, say = { msg = it })
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedButton({ msg = "Checking..."; shell.ota.checkNow { msg = it; d = shell.ota.diagnostics() } }, enabled = d.channel != "off") { Text("Check for update") }
         TextButton({ shell.ota.resetToBundled(); d = shell.ota.diagnostics(); msg = "Reset. The bundled layer runs from the next start." }) { Text("Use bundled layer") }
     }
     msg?.let { Text(it, color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.bodySmall) }
+}
+
+
+/** The stable line: pick one of the last 10 published builds. Choosing downloads it if needed and schedules it for the next restart. */
+@Composable
+private fun BuildPicker(shell: ShellServices, onChanged: () -> Unit, say: (String) -> Unit) {
+    var builds by remember { mutableStateOf(shell.ota.builds()) }
+    var open by remember { mutableStateOf(false) }
+    var loading by remember { mutableStateOf(true) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { shell.ota.refreshBuilds { say(it); builds = shell.ota.builds(); loading = false } }
+    fun label(b: com.hotattic.gamedesigner.shellapi.OtaBuild) = buildString {
+        append("#${b.version} ${b.name}")
+        if (b.date.isNotBlank()) append(" - ${b.date.take(10)}")
+        if (b.sourceSha.isNotBlank()) append(" - ${b.sourceSha.take(7)}")
+        if (b.running) append("  (running)") else if (b.chosen) append("  (chosen)") else if (b.downloaded) append("  (downloaded)")
+    }
+    val current = builds.firstOrNull { it.chosen } ?: builds.firstOrNull { it.running }
+    if (builds.isEmpty()) {
+        Text(if (loading) "Loading the list of stable builds..." else "No stable builds have been published for this app version yet. Nothing will change until one is.", style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    androidx.compose.foundation.layout.Box {
+        OutlinedButton({ open = true }, Modifier.fillMaxWidth()) { Text(current?.let { label(it) } ?: "Choose a stable build  \u25BE") }
+        androidx.compose.material3.DropdownMenu(open, { open = false }) {
+            builds.forEach { b ->
+                androidx.compose.material3.DropdownMenuItem(text = { Text(label(b)) }, onClick = {
+                    open = false
+                    say(if (b.downloaded) "Switching..." else "Downloading and verifying build ${b.version}...")
+                    shell.ota.chooseBuild(b.version) { r -> say(r); builds = shell.ota.builds(); onChanged() }
+                })
+            }
+        }
+    }
+    Text("Choosing a build never changes the running app by itself. It starts after you tap Restart.", style = MaterialTheme.typography.bodySmall)
 }

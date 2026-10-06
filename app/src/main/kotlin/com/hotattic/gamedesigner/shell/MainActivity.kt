@@ -28,6 +28,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             Box(Modifier.fillMaxSize().background(Color(0xFF130F0C))) { layer.Content(app) }
         }
-        app.otaManager.autoCheckIfDue()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Every return to the app (rate limited inside) looks for a new build on the dev line / refreshes the stable cache.
+        (application as GameDesignerApp).otaManager.autoCheckIfDue()
     }
 }

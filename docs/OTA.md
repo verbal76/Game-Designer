@@ -32,11 +32,14 @@ A bundle that depends on any of these is rejected on the device by the compatibi
 
 Loader: `ChildFirstDexClassLoader` loads `com.hotattic.gamedesigner.*` from the bundle first (except `shellapi`, `shell`, `otakit`), everything else from the shell.
 
-## Channels
-- `dev` - controlled test channel; GitHub prerelease `ota-dev` (assets `manifest.json`, `manifest.sig`, `bundle.zip`). **This build defaults to `dev`** because it is a physical-test build.
-- `stable` - GitHub prerelease `ota-stable`; requires `confirm: PUBLISH-STABLE`.
-- `off` - no checks. Switch in Settings -> Diagnostics and updates.
+## Update lines (channels)
+- **dev - automatic.** GitHub prerelease `ota-dev`. The app checks on every launch and every return to it (at most every 15 minutes), downloads the newest build, verifies it and schedules it for the next start, all without any action. An **"Update ready - Restart now"** banner appears so it can be applied immediately; it never restarts by itself. This build defaults to `dev` because it is a physical-test build.
+- **stable - not automatic.** GitHub prerelease `ota-stable`, publishing requires `confirm: PUBLISH-STABLE`. Settings -> Diagnostics and updates shows a **drop-down of the last 10 published builds** (name, date, source SHA, downloaded/running/chosen). Choosing one downloads and verifies it if needed and schedules exactly that build for the next restart (the Restart banner appears). While on stable **nothing is ever scheduled automatically**, but newer builds keep downloading into the local cache so they are ready to choose. Choosing an older build is allowed (the owner's explicit choice bypasses anti-rollback; automatic updates never can).
+- **off** - no checks.
 Ordinary source pushes **never** publish. Publishing happens only when `ota/publish-request.json` is changed on a pushed branch (or the `Publish OTA bundle` workflow is dispatched manually): set `channel`, a `version` higher than the channel's current one, and a `label`. CI runs tests, builds the bundle, signs, verifies, then publishes.
+
+### Channel contents (history)
+Each channel release keeps the latest files older apps read (`manifest.json`, `manifest.sig`, `bundle.zip`) plus, per recent build, `manifest-<N>.json`, `manifest-<N>.sig`, `bundle-<N>.zip`, and an `index.json` listing the newest 10 builds **per runtime generation**. `index.json` is a discovery hint only: every build is verified against its own signed manifest (signature, hash, compatibility gate) on the phone. Builds for another runtime generation are never shown. If a channel has no index, its latest build is still listed.
 
 ## Keys
 CI cannot use repository secrets here (the authoring environment cannot create them), so persistent key material lives in a **private draft release named `gd-signing-keys`** (visible only to repository writers; created on first use by `tools/ota/ensure-keys.sh`): the OTA signing key pair and the Android release keystore. **Do not publish or delete that draft**: deleting it changes the APK signing identity (forces reinstall) and the OTA trust key (forces a new APK). Moving the same files into repository secrets later is recommended hardening.
