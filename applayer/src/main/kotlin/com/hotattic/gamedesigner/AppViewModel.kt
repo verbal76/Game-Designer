@@ -194,6 +194,33 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         finally { _busy.value = null }
     }
 
+    /**
+     * An independent opinion from a DIFFERENT AI than the one that helped design the game. [useCloud] sends a summary of the design to the
+     * configured cloud provider (the owner pressed the button knowing that); otherwise the on-device model reads it locally.
+     */
+    fun secondOpinion(useCloud: Boolean) = viewModelScope.launch {
+        val p = current.value ?: return@launch
+        if (p.reeval == null) return@launch
+        val provider = when {
+            useCloud && c.cloudConfigured() -> c.cloud
+            !useCloud && c.localModelAvailable() -> c.local
+            else -> { toast(if (useCloud) "No cloud provider is configured. Add a key in Settings." else "No on-device model is loaded. Set one up under Settings -> AI."); return@launch }
+        }
+        _busy.value = "Asking ${provider.displayName} for a second opinion..."
+        try {
+            when (val r = provider.complete(LlmRequest(com.hotattic.gamedesigner.core.engine.SecondOpinion.SYSTEM, listOf(LlmMessage("user", com.hotattic.gamedesigner.core.engine.SecondOpinion.brief(p))), maxTokens = 800))) {
+                is LlmResult.Ok -> session.update { cur -> cur.copy(reeval = cur.reeval?.copy(secondOpinion = com.hotattic.gamedesigner.core.model.SecondOpinion(provider.displayName, System.currentTimeMillis(), r.text.trim()))) }
+                is LlmResult.Failure -> toast("The second opinion failed: ${r.reason}")
+            }
+        } finally { _busy.value = null }
+    }
+
+    /** Turns one point of a second opinion into a normal question in the conversation. */
+    fun raiseWithBob(point: String, onDone: () -> Unit) = viewModelScope.launch {
+        session.update { p -> ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, "A second opinion raised this: \"$point\"\n\nHow should we handle it? Tell me in your own words, or say \"ignore it\".", System.currentTimeMillis()), null) }
+        onDone()
+    }
+
     /** Throws the reevaluation away: the design returns to exactly what it was. */
     fun discardReevaluation() = viewModelScope.launch { session.update { p -> c.director().discardReevaluation(p) } }
 

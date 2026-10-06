@@ -111,10 +111,11 @@ fun ReevalScreen(vm: AppViewModel, nav: NavController, id: String) {
                     "DISCARDED" -> "Discarded: your design is back to exactly what it was."
                     else -> "Not applied yet. Answer anything new and approve in the chat; that creates the next spec version and keeps Spec v${r.fromSpec ?: "-"}."
                 }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-            androidx.compose.material3.TabRow(tab) {
+            androidx.compose.material3.PrimaryScrollableTabRow(tab, edgePadding = 0.dp) {
                 androidx.compose.material3.Tab(tab == 0, { tab = 0 }, text = { Text("Side by side") })
                 androidx.compose.material3.Tab(tab == 1, { tab = 1 }, text = { Text(if (attention.isEmpty()) "Needs attention" else "Needs attention (${attention.size})") })
-                androidx.compose.material3.Tab(tab == 2, { tab = 2 }, text = { Text("What was stored") })
+                androidx.compose.material3.Tab(tab == 2, { tab = 2 }, text = { Text("Second opinion") })
+                androidx.compose.material3.Tab(tab == 3, { tab = 3 }, text = { Text("What was stored") })
             }
             Column(Modifier.weight(1f).fillMaxWidth()) {
                 when (tab) {
@@ -133,6 +134,29 @@ fun ReevalScreen(vm: AppViewModel, nav: NavController, id: String) {
                                     Text("${kindLabel(it.kind)}: ${it.title}", style = MaterialTheme.typography.labelLarge)
                                     if (it.before != null && it.after != null) Text("${it.before}  ->  ${it.after}", style = MaterialTheme.typography.bodySmall)
                                     if (it.note.isNotBlank()) Text(it.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                    2 -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Have a different AI look at this design cold, without ${vm.settings.collectAsState().value.directorName}'s history with it. It lists contradictions, missing systems and anything that looks like a guess. It only advises: nothing changes unless you raise a point.", style = MaterialTheme.typography.bodySmall)
+                        val busy by vm.busy.collectAsState()
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton({ vm.secondOpinion(true) }, enabled = busy == null) { Text("Ask Claude (cloud)") }
+                            OutlinedButton({ vm.secondOpinion(false) }, enabled = busy == null) { Text("Ask the on-device model") }
+                        }
+                        Text("Cloud sends a summary of this design (your words and decisions, no uploaded files or keys) to your configured provider. The on-device model stays on this phone.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (busy != null) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp), strokeWidth = 2.dp); Text(busy ?: "", style = MaterialTheme.typography.bodySmall) }
+                        r.secondOpinion?.let { so ->
+                            Text("Second opinion from ${so.provider}  -  ${DateFormat.getDateTimeInstance().format(Date(so.at))}", style = MaterialTheme.typography.labelLarge)
+                            val pts = com.hotattic.gamedesigner.core.engine.SecondOpinion.points(so.text)
+                            if (pts.isEmpty()) Text(so.text, style = MaterialTheme.typography.bodySmall)
+                            pts.forEach { pt ->
+                                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                    Column(Modifier.padding(10.dp)) {
+                                        Text(pt, style = MaterialTheme.typography.bodySmall)
+                                        TextButton({ vm.raiseWithBob(pt) { nav.navigate("chat/$id") { popUpTo("reeval/$id") { inclusive = true } } } }) { Text("Raise with Bob") }
+                                    }
                                 }
                             }
                         }
