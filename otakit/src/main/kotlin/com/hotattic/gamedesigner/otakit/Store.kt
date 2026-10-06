@@ -58,5 +58,13 @@ class OtaStore(val root: File) {
         staging.listFiles()?.forEach { it.delete() }
     }
 
+    /** Keeps every protected version plus the newest [limit] others; removes the rest and clears staging. */
+    fun prune(protected: Set<Int>, limit: Int = 10) {
+        val installed = installedVersions()
+        val keep = protected + installed.filter { it !in protected }.sortedDescending().take(limit)
+        installed.filter { it !in keep }.forEach { delete(it) }
+        staging.listFiles()?.forEach { it.delete() }
+    }
+
     fun installedVersions(): List<Int> = versions.listFiles()?.mapNotNull { it.name.toIntOrNull() }.orEmpty().sorted()
 }

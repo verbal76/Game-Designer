@@ -20,7 +20,7 @@ class OtaSelector(private val store: OtaStore, private val shell: ShellIdentity,
         fun mark(v: Int, why: String): OtaState {
             val sha = runCatching { OtaJson.decodeFromString(OtaManifest.serializer(), store.manifestFile(v).readText()).bundle.sha256 }.getOrDefault("")
             store.delete(v)
-            return s.copy(bad = (s.bad + BadVersion(v, sha, why, clock())).takeLast(20), lastEvent = "rolled back v$v: $why")
+            return s.copy(bad = (s.bad + BadVersion(v, sha, why, clock())).takeLast(20), pinned = s.pinned.takeIf { it != v }, lastEvent = "rolled back v$v: $why")
         }
 
         // A trial that never became healthy. A recorded crash rolls back at once; a silent death (user swipe, OOM kill)
@@ -68,7 +68,33 @@ class OtaSelector(private val store: OtaStore, private val shell: ShellIdentity,
         val t = s.trial ?: return
         val old = s.active
         store.writeState(s.copy(active = t, trial = null, trialBoots = 0, highWater = maxOf(s.highWater, t), lastEvent = "committed v$t"))
-        if (old != null && old != t) store.delete(old)
+        // The previous build stays in the local cache (pruned to the newest few by the updater), so switching back is instant.
+    }
+
+    /** What happened when the owner chose a build. */
+    sealed class PinResult(val message: String) {
+        object Unpinned : PinResult("Following the latest build again")
+        data class Scheduled(val version: Int) : PinResult("Build $version is ready; it applies when the app restarts")
+        data class AlreadyRunning(val version: Int) : PinResult("Build $version is already running")
+        data class Refused(val why: String) : PinResult(why)
+    }
+
+    /** Owner action: choose exactly which downloaded build runs (the stable line). Does not touch the running layer. */
+    fun pin(version: Int?): PinResult {
+        val (s, _) = store.readState()
+        if (version == null) { store.writeState(s.copy(pinned = null, lastEvent = "unpinned")); return PinResult.Unpinned }
+        if (s.bad.any { it.version == version }) return PinResult.Refused("Build $version failed on this phone before, so it will not be used.")
+        if (!verifyOnDisk(version)) return PinResult.Refused("Build $version is not downloaded and verified yet.")
+        val running = s.trial ?: s.active
+        if (running == version) { store.writeState(s.copy(pinned = version, pending = null, lastEvent = "pinned v$version (already running)")); return PinResult.AlreadyRunning(version) }
+        store.writeState(s.copy(pinned = version, pending = version, lastEvent = "pinned v$version"))
+        return PinResult.Scheduled(version)
+    }
+
+    /** Drops any scheduled-but-not-started update (the files stay cached). Used when switching to a line that never applies automatically. */
+    fun unschedule() {
+        val (s, _) = store.readState()
+        if (s.pending != null) store.writeState(s.copy(pending = null, lastEvent = "unscheduled v${s.pending}"))
     }
 
     /** Owner action: abandon the current OTA layer and run the bundled one; that bundle will not be re-offered. */
