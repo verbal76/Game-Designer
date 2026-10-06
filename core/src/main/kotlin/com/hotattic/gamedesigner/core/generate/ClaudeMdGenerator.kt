@@ -308,9 +308,22 @@ object ClaudeMdGenerator {
             "Target platforms: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not specified" }}",
             v(Keys.PERFORMANCE)?.let { "Performance target: ${label(Keys.PERFORMANCE, it)}" },
             v(Keys.MIN_HARDWARE)?.let { "Minimum hardware: $it" },
-            v(Keys.NETWORK_POLICY)?.let { "Network policy: ${label(Keys.NETWORK_POLICY, it)}. ${if (it == "fully_offline") "The build must request no INTERNET permission and make no network calls." else "Network features degrade gracefully when offline."}" },
+            v(Keys.NETWORK_POLICY)?.let { "Network policy: ${label(Keys.NETWORK_POLICY, it)}. ${if (it == "fully_offline" && v(Keys.OTA_UPDATES) == "content_ota") "Apart from the signed update check described below, the game makes no network calls and works fully offline." else if (it == "fully_offline") "The build must request no INTERNET permission and make no network calls." else "Network features degrade gracefully when offline."}" },
             v(Keys.TOOLCHAIN_PREFS)?.let { "Owner toolchain preferences: $it" },
         ))
+        if (v(Keys.OTA_UPDATES) == "content_ota") {
+            h3("Over-the-air updates (owner chose this; implement the LEAST INTRUSIVE design)")
+            bullets(listOf(
+                "**Scope:** data only - levels, tuning tables, text and localisation, art/audio assets and config. Never download or execute code; code changes ship as normal builds. This keeps the game inside store policy and needs no embedded runtime.",
+                "**Checking:** silent and non-blocking, at most once every 24 hours and at app start, only on an unmetered connection, with a short timeout. Failure is silent. Nothing interrupts play, nothing is shown unless the player opens Settings.",
+                "**Applying:** only on the next cold start, never mid-session. No restart prompts, no popups, no forced updates.",
+                "**Safety:** a signed manifest (public key pinned in the app), a SHA-256 for every file, a minimum-app-version and schema gate, atomic staging, an anti-rollback counter, and automatic fallback to the bundled content if anything fails to verify or load.",
+                "**Hosting and privacy:** static files on free hosting (for example GitHub Releases or Pages); no server of your own, no accounts, no analytics, and no device identifiers or personal data in the request.",
+                "**Permissions:** INTERNET only. No foreground service, no notifications, no background-fetch permission beyond what the platform grants by default.",
+                "**Controls:** a Settings switch (default on) and a visible content version in an About/diagnostics line; a manual 'check now' lives only in Settings.",
+                "**Tests:** bad signature rejected, corrupt file rejected, interrupted download resumes or discards cleanly, rollback works, offline start works, version gate holds. Record the result in `docs/VERIFICATION.md`.",
+            ))
+        }
         h3("Repository layout and rules")
         bullets(listOf(
             "Keep game logic separate from rendering/engine glue so rules, simulation and data validation are unit-testable headlessly.",

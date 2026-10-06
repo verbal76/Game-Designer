@@ -244,3 +244,39 @@ class AssetPlanLoopTest {
         return p to (p.pendingFieldKey == "__asset_plan__")
     }
 }
+
+class OtaQuestionTest {
+    private suspend fun designed(d: com.hotattic.gamedesigner.core.director.Director, choice: String?): com.hotattic.gamedesigner.core.model.Project {
+        var p = d.start(newProject(), settings)
+        p = d.handleUserMessage(p, settings, "A top-down action roguelike for my Android phone about surviving a dangerous city.").project
+        p = d.askAbout(p, Keys.OTA_UPDATES)
+        return if (choice == null) p else d.submitSelection(p, settings, Keys.OTA_UPDATES, listOf(choice)).project
+    }
+
+    @Test fun bobAsksAndOffersTheLeastIntrusiveOption() = runBlocking {
+        val p = designed(director(), null)
+        val q = p.messages.last().question!!
+        assertEquals(Keys.OTA_UPDATES, q.fieldKey)
+        assertTrue(q.options.map { it.id }.containsAll(listOf("none", "content_ota")))
+        assertTrue(p.messages.last().text.contains("least intrusive", true))
+    }
+
+    @Test fun yesProducesTheLeastIntrusiveSpecAndNoDoesNot() = runBlocking {
+        val d = director()
+        val yes = designed(d, "content_ota")
+        val md = com.hotattic.gamedesigner.core.generate.ClaudeMdGenerator.generate(yes, 1, "Initial", "2026-10-06T00:00:00Z")
+        assertTrue("Over-the-air updates" in md && "next cold start" in md && "Never download or execute code" in md)
+        assertTrue(com.hotattic.gamedesigner.core.generate.VerificationPlan.steps(yes).any { it.contains("update pipeline") })
+        val no = designed(d, "none")
+        val md2 = com.hotattic.gamedesigner.core.generate.ClaudeMdGenerator.generate(no, 1, "Initial", "2026-10-06T00:00:00Z")
+        assertTrue("next cold start" !in md2)
+    }
+
+    @Test fun notAskedForWebOnlyGames() = runBlocking {
+        val d = director()
+        var p = d.start(newProject(), settings)
+        p = d.handleUserMessage(p, settings, "A browser puzzle game that runs in the web browser.").project
+        val f = com.hotattic.gamedesigner.core.schema.Fields.get(Keys.OTA_UPDATES)!!
+        if (p.list("platforms") == listOf("web")) assertTrue(!f.isRelevant(com.hotattic.gamedesigner.core.schema.Traits(p)))
+    }
+}

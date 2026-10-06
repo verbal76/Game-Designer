@@ -45,6 +45,7 @@ object Keys {
     const val ENGINE = "engine"
     const val TOOLCHAIN_PREFS = "toolchain_prefs"
     const val NETWORK_POLICY = "network_policy"
+    const val OTA_UPDATES = "ota_updates"
     const val CI_BUILD = "ci_build"
     const val TESTING = "testing_strategy"
     const val ASSET_POLICY = "asset_policy"
@@ -658,6 +659,15 @@ object Fields {
                 o("optional_online", "Offline play with optional online extras"),
                 o("online_required", "Requires internet")) },
             suggest = { Suggestion("fully_offline", "No servers, no recurring cost, no privacy overhead.") }),
+
+        Field(Keys.OTA_UPDATES, Category.TECHNICAL, FieldKind.SINGLE, "Over-the-air updates",
+            "Do you want your game to be able to update itself over the air, without people reinstalling? If yes, I'll use the least intrusive way: quiet background checks, applied the next time the game starts.",
+            "An update pipeline lets you fix balance, content and bugs after release. The least intrusive version only downloads data (levels, tuning, text, art), never code, so it needs no extra permissions, accounts or prompts and cannot break store rules.",
+            156, relevant = { it.genresKnown && it.platformsKnown && it.platforms.any { p -> p != "web" } },
+            options = { listOf(
+                o("none", "No - updates come as a normal new install", "Simplest. Nothing extra to build or host."),
+                o("content_ota", "Yes - over-the-air updates (least intrusive)", "Signed content and tuning updates, checked quietly, applied on next launch, automatic rollback.")) },
+            suggest = { Suggestion("none", "Skip it unless you plan to update the game often after release; it can be added later.") }),
 
         Field(Keys.CI_BUILD, Category.TECHNICAL, FieldKind.SINGLE, "Build pipeline",
             "How should the installable build get produced?",

@@ -112,7 +112,8 @@ object MasterPromptGenerator {
             section("CONTROLS / PLATFORM", listOfNotNull(
                 "Platforms: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not set" }}.",
                 lab(Keys.INPUT_METHODS)?.let { "Input: $it. Map the game's semantic actions to these inputs yourself; the owner did not specify every button." },
-                lab(Keys.ORIENTATION)?.let { "Orientation: $it" }))
+                lab(Keys.ORIENTATION)?.let { "Orientation: $it" },
+                if (v(Keys.OTA_UPDATES) == "content_ota") "Over-the-air updates were requested: implement the least intrusive design in `CLAUDE.md` (signed data-only updates, quiet check, applied on next launch, automatic rollback). Do not download code." else null))
 
             val ups = project.branding.values.filter { it.mode == BrandingMode.UPLOADED }
             section("SUPPLIED ASSETS / ASSET POLICY", listOfNotNull(
