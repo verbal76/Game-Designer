@@ -400,6 +400,12 @@ class Director(private val deps: DirectorDeps) {
     /** Records the answer for [field] as an owner decision (with their words kept as raw), then handles field-specific effects. */
     private suspend fun commitValue(p0: Project, settings: AppSettings, field: Field, value: String, raw: String, now: Long, interp: Interpretation? = null): FieldResult {
         var p = p0
+        // "Top-down" and "Isometric" answer the dimension question and the camera in one tap.
+        if (field.key == Keys.DIMENSION && value in setOf("top_down", "isometric")) {
+            val (dim, cam) = if (value == "top_down") "2D" to "top_down" else "2.5D" to "isometric_2d"
+            p = ProjectOps.setDecision(p, Keys.PERSPECTIVE, cam, Provenance.OWNER_EXPLICIT, now, raw = raw)
+            return commitValue(p, settings, field, dim, raw, now, interp)
+        }
         val recommended = p.decision(field.key)
         val acceptedRec = interp?.acceptsRecommendation == true && recommended != null && recommended.status == DecisionStatus.PROPOSED && recommended.value == value
         p = ProjectOps.setDecision(p, field.key, value, if (acceptedRec) Provenance.OWNER_ACCEPTED_RECOMMENDATION else Provenance.OWNER_EXPLICIT, now, raw = raw).copy(lastAnsweredKey = field.key)

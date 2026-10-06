@@ -186,10 +186,10 @@ object Fields {
             20, modes = Field.ALL_MODES, options = { genreOptions }, allowCustom = true),
 
         Field(Keys.DIMENSION, Category.GAMEPLAY, FieldKind.SINGLE, "2D or 3D",
-            "Should it be 2D, 3D, or 2.5D (3D look, 2D play)?",
+            "Should it be 2D, top-down, isometric, 2.5D (3D look, 2D play) or full 3D?",
             "3D costs far more in art, performance and build risk. 2D can still look fantastic.",
             30, modes = Field.ALL_MODES,
-            options = { listOf(o("2D", "2D"), o("2.5D", "2.5D", "3D visuals on a 2D plane or fixed camera."), o("3D", "3D")) },
+            options = { listOf(o("2D", "2D", "Flat 2D, usually side-view."), o("2.5D", "2.5D", "3D visuals on a 2D plane or fixed camera."), o("3D", "3D"), o("top_down", "Top-down (2D)", "2D seen from directly above."), o("isometric", "Isometric (2.5D)", "Angled fixed camera, 2D play on a grid or plane.")) },
             suggest = { t ->
                 val g = primary(t)
                 if (t.mobileOnly && g.complexity >= 4) Suggestion("2D", "A ${g.label.lowercase()} is already a big system; 2D keeps asset and performance risk low on a phone.")
@@ -211,11 +211,11 @@ object Fields {
             suggest = { t ->
                 val g = primary(t).id
                 val v = when {
-                    t.dimension == "3D" -> when (g) { "shooter" -> "first_person"; "racing" -> "third_person"; "city_builder", "factory_automation", "strategy_rts" -> "isometric_3d"; else -> "third_person" }
+                    t.dimension == "3D" -> when (g) { "shooter" -> "first_person"; "racing" -> "third_person"; "city_builder", "colony_sim", "fantasy_city_builder", "factory_automation", "strategy_rts" -> "isometric_3d"; else -> "third_person" }
                     g in setOf("platformer", "metroidvania", "fighting") -> "side_view"
                     g in setOf("puzzle", "narrative_adventure") -> "fixed_screen"
-                    g in setOf("card_deckbuilder", "sim_management") -> "ui_driven"
-                    g in setOf("city_builder", "factory_automation", "strategy_rts", "turn_based_strategy") -> "isometric_2d"
+                    g in setOf("card_deckbuilder", "sim_management", "management_sim") -> "ui_driven"
+                    g in setOf("city_builder", "colony_sim", "fantasy_city_builder", "factory_automation", "strategy_rts", "turn_based_strategy") -> "isometric_2d"
                     else -> "top_down"
                 }
                 Suggestion(v, "Most common and best-tested choice for a ${primary(t).label.lowercase()}.")
@@ -236,7 +236,7 @@ object Fields {
             suggest = { t ->
                 val g = primary(t).id
                 if (t.value(Keys.PERSPECTIVE) == "vertical_scroll") Suggestion("portrait", "A vertical scroller reads best in portrait, with the long axis along the scroll direction.")
-                else if (g in setOf("puzzle", "card_deckbuilder", "sim_management", "narrative_adventure")) Suggestion("portrait", "One-handed portrait play fits ${primary(t).label.lowercase()} games.")
+                else if (g in setOf("puzzle", "card_deckbuilder", "sim_management", "management_sim", "narrative_adventure")) Suggestion("portrait", "One-handed portrait play fits ${primary(t).label.lowercase()} games.")
                 else Suggestion("landscape", "Action, platforming and builders need width for controls and visibility.")
             }),
 
@@ -259,7 +259,7 @@ object Fields {
                     "action_roguelite" -> "Tense and rewarding: every run is a gamble that pays off when a build clicks."
                     "platformer", "metroidvania" -> "Precise and flowing: tight control, with a rush when moves chain cleanly."
                     "puzzle" -> "Calm and clever: quiet focus, with a satisfying click when the answer lands."
-                    "city_builder", "factory_automation", "sim_management" -> "Absorbing and orderly: steady, satisfying growth from small tweaks."
+                    "city_builder", "colony_sim", "fantasy_city_builder", "management_sim", "factory_automation", "sim_management" -> "Absorbing and orderly: steady, satisfying growth from small tweaks."
                     "shooter", "fighting" -> "Fast and sharp: tense encounters and clean, readable feedback."
                     else -> "Engaging and readable, with steady tension and clear payoffs."
                 }, "A fitting default for this kind of game; correct it in your own words any time.")
@@ -307,7 +307,7 @@ object Fields {
                 when (primary(t).id) {
                     "survivors_like", "action_roguelite", "card_deckbuilder", "tower_defense" -> Suggestion("short_runs", "Run-based games fit 10-20 minute phone sessions.")
                     "puzzle", "platformer" -> Suggestion("bite_sized", "Short levels respect phone play.")
-                    "city_builder", "factory_automation", "survival_crafting", "sim_management" -> Suggestion("endless", "Builders and survival games are open-ended; autosave covers interruptions.")
+                    "city_builder", "colony_sim", "fantasy_city_builder", "management_sim", "factory_automation", "survival_crafting", "sim_management" -> Suggestion("endless", "Builders and survival games are open-ended; autosave covers interruptions.")
                     else -> Suggestion("medium_sessions", "A balanced default for story/action games.")
                 }
             }),
@@ -330,7 +330,7 @@ object Fields {
                     "survivors_like" -> Suggestion("single_arena", "Survivors-likes thrive on scalable arenas with escalating density.")
                     "action_roguelite", "survival_crafting" -> Suggestion("procedural_stages", "Procedural content gives replay value without hand-building huge amounts of levels.")
                     "metroidvania", "rpg" -> Suggestion("open_map", "Exploration is central.")
-                    "city_builder", "factory_automation", "sim_management" -> Suggestion("single_arena", "A single large map or board with scenarios.")
+                    "city_builder", "colony_sim", "fantasy_city_builder", "management_sim", "factory_automation", "sim_management" -> Suggestion("single_arena", "A single large map or board with scenarios.")
                     else -> Suggestion("authored_levels", "Hand-authored levels give the best-quality first playable.")
                 }
             }),
@@ -404,7 +404,7 @@ object Fields {
                 if (t.continuousWorld) Suggestion("abilities_gear", "A continuous world is best paced by new abilities and equipment rather than level unlocks.")
                 else when (primary(t).id) {
                     "survivors_like", "action_roguelite", "card_deckbuilder" -> Suggestion("both", "Run-based games feel best with build-crafting in a run plus permanent growth.")
-                    "factory_automation", "city_builder", "strategy_rts" -> Suggestion("tech_tree", "Unlocks gate complexity.")
+                    "factory_automation", "city_builder", "colony_sim", "fantasy_city_builder", "strategy_rts" -> Suggestion("tech_tree", "Unlocks gate complexity.")
                     "rpg", "metroidvania" -> Suggestion("xp_levels", "Classic fit.")
                     else -> Suggestion("content_unlocks", "Simple and satisfying.")
                 }
@@ -463,7 +463,7 @@ object Fields {
             suggest = { t ->
                 when (primary(t).id) {
                     "survivors_like", "action_roguelite", "card_deckbuilder" -> Suggestion("permadeath_meta", "Genre expectation; rewards soften the sting.")
-                    "puzzle", "sim_management", "city_builder", "narrative_adventure" -> Suggestion("no_fail", "Relaxed play fits the genre.")
+                    "puzzle", "sim_management", "management_sim", "city_builder", "fantasy_city_builder", "narrative_adventure" -> Suggestion("no_fail", "Relaxed play fits the genre.")
                     "platformer", "metroidvania", "shooter", "fighting" -> Suggestion("checkpoint_retry", "Action games feel best with checkpoints and a quick retry.")
                     else -> Suggestion("adjustable", "Lets different players enjoy the game, and doubles as an accessibility feature.")
                 }
@@ -484,7 +484,7 @@ object Fields {
                 when (primary(t).id) {
                     "survivors_like", "action_roguelite", "card_deckbuilder" -> Suggestion("run_meta_save", "Meta progress must persist; resuming an interrupted run is expected on phones.")
                     "puzzle", "platformer" -> Suggestion("progress_only", "Short sessions need only progress and best scores.")
-                    "city_builder", "factory_automation", "survival_crafting", "sim_management", "rpg", "metroidvania" -> Suggestion("autosave_continue", "Long-lived worlds need robust autosave and versioned saves.")
+                    "city_builder", "colony_sim", "fantasy_city_builder", "management_sim", "factory_automation", "survival_crafting", "sim_management", "rpg", "metroidvania" -> Suggestion("autosave_continue", "Long-lived worlds need robust autosave and versioned saves.")
                     else -> Suggestion("autosave_continue", "Safest default.")
                 }
             }),

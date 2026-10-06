@@ -97,7 +97,7 @@ object GenreKnowledge {
         ),
         Genre(
             "city_builder", "City builder",
-            listOf("city builder", "city-builder", "cities skylines", "simcity", "town builder", "colony", "settlement", "banished"),
+            listOf("city builder", "city-builder", "cities skylines", "simcity", "town builder", "settlement"),
             4, setOf(Tag.ECONOMY, Tag.BUILDING, Tag.SIMULATION, Tag.LEVELS),
             listOf(
                 SystemReq("grid_placement", "Placement and zoning", "Grid/roads/zones with validity rules and demolish/undo."),
@@ -252,7 +252,7 @@ object GenreKnowledge {
         ),
         Genre(
             "sim_management", "Simulation / management / idle",
-            listOf("idle", "incremental", "clicker", "tycoon", "management sim", "farming sim", "simulator"),
+            listOf("idle", "incremental", "clicker", "farming sim", "simulator"),
             3, setOf(Tag.ECONOMY, Tag.SIMULATION, Tag.BUILDING),
             listOf(
                 SystemReq("economy_model", "Economy model", "Currencies, generators, costs formulas; balance spreadsheet."),
@@ -262,6 +262,53 @@ object GenreKnowledge {
             ),
             "Invest resources into growing systems, unlock new capabilities, and reach long-term milestones.",
             listOf("Headless economy simulation over N hours matches analytic bounds; save/load round trip."),
+        ),
+        Genre(
+            "colony_sim", "Colony simulator",
+            listOf("colony sim", "colony simulator", "colony simulation", "colony builder", "colony management", "colony", "colonist", "colonists", "rimworld", "dwarf fortress", "oxygen not included", "banished", "space colony", "frostpunk"),
+            5, setOf(Tag.ECONOMY, Tag.BUILDING, Tag.SIMULATION, Tag.CHARACTERS, Tag.CRAFTING, Tag.COMBAT, Tag.PROCGEN),
+            listOf(
+                SystemReq("colonist_sim", "Colonist simulation", "Individual colonists with needs, moods, skills, traits and relationships that visibly drive behaviour."),
+                SystemReq("job_system", "Jobs and work priorities", "Task queue, per-colonist priorities and pathing; idle colonists explain why they are idle."),
+                SystemReq("base_building", "Base building and zones", "Placement with validity rules, rooms/zones, stockpiles, demolish/undo."),
+                SystemReq("resource_chain", "Resource and production chains", "Gather, haul, craft, consume; fully tabulated and balanced with no silent dead ends."),
+                SystemReq("events_storyteller", "Events and storyteller", "Raids, weather, illness, trade and random events paced by a difficulty/storyteller rule, with a defined colony-loss state."),
+                SystemReq("sim_speed_save", "Simulation speed and save/load", "Pause/1x/2x/3x with deterministic tick, versioned saves, autosave."),
+                SystemReq("colony_ui", "Colony management UI", "Colonist roster, work/priority grid, alerts, info overlays, build menu categories."),
+            ),
+            "Direct a small group of colonists to build, supply and defend a settlement, balance their needs and moods, and survive events toward a defined outcome.",
+            listOf("Headless sim runs 60 colony-days for a seed; assert determinism, no colonist starves with food available, no unreachable-job deadlock, save/load round trip."),
+        ),
+        Genre(
+            "management_sim", "Management / tycoon",
+            listOf("management sim", "management simulation", "management game", "management games", "tycoon", "business sim", "business simulation", "theme park", "restaurant management", "hospital management", "shop management", "store management", "two point", "prison architect", "game dev tycoon"),
+            3, setOf(Tag.ECONOMY, Tag.SIMULATION, Tag.BUILDING, Tag.CHARACTERS),
+            listOf(
+                SystemReq("business_economy", "Business economy", "Income, costs, pricing, demand and cash flow; tabulated and balanced with a loss state."),
+                SystemReq("staff_customers", "Staff and customers", "Hiring, skills, wages, morale; customers/visitors with needs and satisfaction."),
+                SystemReq("facility_layout", "Facility layout and upgrades", "Placement rules, capacity, upgrade paths."),
+                SystemReq("goals_progression", "Goals, ratings and progression", "Objectives, ratings, unlocks, win/loss."),
+                SystemReq("sim_speed_save", "Simulation speed and save/load", "Pause and speed controls, deterministic tick, versioned saves."),
+                SystemReq("management_ui", "Management UI", "Finance, staff and stats panels with clear tooltips and alerts."),
+            ),
+            "Run and expand an operation by managing staff, money and facilities, satisfy customers, and hit growth targets without going bankrupt.",
+            listOf("Headless economy sim over N in-game months matches analytic bounds; bankruptcy and win states reachable; save/load round trip."),
+        ),
+        Genre(
+            "fantasy_city_builder", "Fantasy city builder",
+            listOf("fantasy city builder", "fantasy city-builder", "fantasy city", "fantasy town", "fantasy kingdom", "fantasy settlement", "fantasy village", "kingdom builder", "elven city", "dwarven city", "dwarven stronghold", "wizard city", "wizard town", "medieval fantasy city"),
+            4, setOf(Tag.ECONOMY, Tag.BUILDING, Tag.SIMULATION, Tag.LEVELS, Tag.CHARACTERS),
+            listOf(
+                SystemReq("grid_placement", "Placement and districts", "Grid/roads/districts with validity rules, terrain and demolish/undo."),
+                SystemReq("resource_economy", "Mundane and magical economy", "Production, consumption, upkeep and trade including magical resources (for example mana, crystals); fully tabulated and balanced."),
+                SystemReq("races_population", "Races, citizens and guilds", "Fantasy peoples with distinct needs, preferences and buildings; guilds/professions; growth and immigration."),
+                SystemReq("fantasy_threats", "Threats, monsters and magic events", "Raids, monsters, curses or magical events with defences and a defined failure state."),
+                SystemReq("goals_events", "Goals, quests and win/loss", "Objectives, charters or quests, win/loss states."),
+                SystemReq("sim_speed_save", "Simulation speed and save/load", "Pause/1x/2x/3x, deterministic tick, versioned saves."),
+                SystemReq("overlay_ui", "Info overlays and management UI", "Data views, tooltips, build menu categories."),
+            ),
+            "Found and grow a fantasy settlement: place buildings, balance mundane and magical resources and the needs of its peoples, defend against threats, and fulfil the realm's goals.",
+            listOf("Headless sim runs 10 simulated years; assert determinism for a seed, no negative resources without cause, threat events resolve to a defined outcome, save/load round trip."),
         ),
         Genre(
             "fighting", "Fighting / brawler",
@@ -288,7 +335,13 @@ object GenreKnowledge {
     /** Finds every known genre whose keywords appear in [text]. */
     fun detect(text: String): List<Genre> {
         val t = text.lowercase()
-        return all.filter { g -> g.keywords.any { k -> containsWord(t, k) } }
+        val hits = all.filter { g -> g.keywords.any { k -> containsWord(t, k) } }
+        // "fantasy city builder" is one genre, not also a plain city builder; likewise a colony sim is not also a generic builder.
+        val specific = setOf("colony_sim", "management_sim", "fantasy_city_builder")
+        return hits.filter { g ->
+            !(g.id == "city_builder" && hits.any { it.id == "fantasy_city_builder" }) &&
+                !(g.id == "sim_management" && hits.any { it.id in specific })
+        }
     }
 
     internal fun containsWord(haystack: String, needle: String): Boolean {

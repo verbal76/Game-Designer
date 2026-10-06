@@ -147,7 +147,7 @@ object ConflictEngine {
             else null
         },
         { t ->
-            if (t.isMobile && t.usesTouch && t.genres.any { it.id in setOf("factory_automation", "strategy_rts", "city_builder") } && t.value(Keys.ORIENTATION) == "portrait")
+            if (t.isMobile && t.usesTouch && t.genres.any { it.id in setOf("factory_automation", "strategy_rts", "city_builder", "colony_sim", "fantasy_city_builder") } && t.value(Keys.ORIENTATION) == "portrait")
                 Conflict("dense_ui_portrait", Severity.WARNING, "Dense management UI in portrait is hard", "Builders and RTS games need a lot of on-screen information.",
                     "Use landscape or both.", listOf(Keys.ORIENTATION), listOf(Alternative("Landscape", mapOf(Keys.ORIENTATION to "landscape"))))
             else null
@@ -239,7 +239,7 @@ object ConflictEngine {
             else null
         },
         { t ->
-            val q = t.genres.firstOrNull { it.id == "factory_automation" || it.id == "city_builder" }
+            val q = t.genres.firstOrNull { it.id in setOf("factory_automation", "city_builder", "colony_sim", "fantasy_city_builder") }
             if (q != null && t.beginner && t.engine?.id in setOf("bevy"))
                 Conflict("beginner_bevy", Severity.WARNING, "Bevy is very hard for beginners to inspect or tweak", "Rust and a pre-1.0 engine make small hands-on changes difficult.",
                     "Godot or libGDX are friendlier.", listOf(Keys.ENGINE), listOf(Alternative("Use Godot", mapOf(Keys.ENGINE to "godot"))))
