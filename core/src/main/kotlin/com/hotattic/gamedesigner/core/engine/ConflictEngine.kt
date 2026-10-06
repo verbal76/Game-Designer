@@ -69,8 +69,10 @@ object ConflictEngine {
             else null
         },
         { t ->
-            val combat = t.value(Keys.COMBAT_MODEL)
-            val turnish = combat == "turn_based" || combat == "tactical_grid"
+            val combatIds = t.project.list(Keys.COMBAT_MODEL)
+            val combat = combatIds.firstOrNull { it == "turn_based" || it == "tactical_grid" }
+            // Only a purely turn-based selection contradicts a real-time design; a mix that includes a real-time style is a hybrid the owner chose.
+            val turnish = combat != null && combatIds.all { it == "turn_based" || it == "tactical_grid" }
             val realTime = Tag.TURN_BASED in t.rejectedTags || (t.genresKnown && !t.has(Tag.TURN_BASED) && t.perspectiveIsScroller())
             if (turnish && realTime)
                 Conflict("combat_turn_based_vs_real_time", Severity.BLOCKER, "Turn-based combat contradicts a real-time design",

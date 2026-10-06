@@ -40,6 +40,25 @@ class WebResearch(private val http: HttpTransport, private val clock: () -> Long
         catch (e: Exception) { ResearchOutcome.Unavailable(e.message ?: e.javaClass.simpleName) }
     }
 
+    override suspend fun researchTopic(term: String): ResearchOutcome<ResearchNote> {
+        return try {
+            var title: String? = null
+            for (q in listOf(term, "$term video game", "$term gameplay")) {
+                val r = http.get("https://en.wikipedia.org/w/api.php?action=opensearch&limit=1&format=json&search=${enc(q)}")
+                if (r.ok) title = parseOpenSearch(r.body)
+                if (title != null) break
+            }
+            title ?: return ResearchOutcome.NotFound(term)
+            val r = http.get("https://en.wikipedia.org/api/rest_v1/page/summary/${enc(title.replace(' ', '_')).replace("+", "%20")}", mapOf("Accept" to "application/json"))
+            if (!r.ok) return ResearchOutcome.Unavailable("Wikipedia answered ${r.code}")
+            val parsed = parseSummary(r.body) ?: return ResearchOutcome.NotFound(term)
+            val now = clock()
+            ResearchOutcome.Found(ResearchNote("topic_${term.lowercase().replace(Regex("[^a-z0-9]+"), "_")}_$now", term, shorten(parsed.extract),
+                listOf(SourceRef(parsed.title, parsed.url, now, "CC BY-SA 4.0 (Wikipedia)")), ResearchKind.GENERAL, now))
+        } catch (e: NetworkUnavailableException) { ResearchOutcome.Unavailable(e.message ?: "offline") }
+        catch (e: Exception) { ResearchOutcome.Unavailable(e.message ?: e.javaClass.simpleName) }
+    }
+
     private suspend fun findTitle(name: String): String? {
         for (q in listOf("$name (video game)", name)) {
             val r = http.get("https://en.wikipedia.org/w/api.php?action=opensearch&limit=1&format=json&search=${enc(q)}")

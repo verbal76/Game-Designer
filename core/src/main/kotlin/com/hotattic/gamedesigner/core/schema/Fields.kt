@@ -345,10 +345,10 @@ object Fields {
                 Suggestion(txt, "A safe default for ${primary(t).label.lowercase()}.")
             }),
 
-        Field(Keys.COMBAT_MODEL, Category.GAMEPLAY, FieldKind.SINGLE, "Combat style",
-            "How does combat work?",
+        Field(Keys.COMBAT_MODEL, Category.GAMEPLAY, FieldKind.MULTI, "Combat style",
+            "How does combat work? Pick every style that applies, or describe your own in a few words.",
             "Combat style decides controls, enemy AI and balance work.",
-            80, relevant = { it.has(Tag.COMBAT) },
+            80, relevant = { it.has(Tag.COMBAT) }, allowCustom = true,
             options = { t -> listOf(
                 o("auto_attack", "Auto-attack", "Weapons fire on their own; you position."),
                 o("aimed_real_time", "Aim and shoot in real time"),

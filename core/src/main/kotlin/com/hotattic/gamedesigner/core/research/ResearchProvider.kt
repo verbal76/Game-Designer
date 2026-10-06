@@ -14,4 +14,6 @@ sealed class ResearchOutcome<out T> {
 interface ResearchProvider {
     suspend fun researchReferenceGame(name: String): ResearchOutcome<ReferenceGame>
     suspend fun toolchainFacts(engineId: String): ResearchOutcome<List<ResearchNote>>
+    /** Looks up a design term the owner typed ("souls-like dodge combat"). Optional: providers without it report Unavailable. */
+    suspend fun researchTopic(term: String): ResearchOutcome<ResearchNote> = ResearchOutcome.Unavailable("topic research not supported")
 }

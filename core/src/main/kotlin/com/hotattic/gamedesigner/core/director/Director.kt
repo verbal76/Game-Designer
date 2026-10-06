@@ -511,6 +511,16 @@ class Director(private val deps: DirectorDeps) {
         }
         // Corrections volunteered alongside the answer ("no, it's not turn based") apply first, so the answer is judged in their light.
         var p = if (interp.hasCorrections || interp.affirmedTags.isNotEmpty() || (field.key != Keys.CONCEPT && interp.edits.isNotEmpty() && interp.intent == AnswerIntent.UNCLEAR)) applyStatement(p0, text, interp, field, now).project else p0
+        // Multi-select questions that allow custom entries (combat style): the owner may pick several, describe their own, or both.
+        if (field.allowCustom && field.kind == FieldKind.MULTI && field.key != Keys.GENRE && interp.intent !in setOf(AnswerIntent.QUESTION, AnswerIntent.DELEGATE, AnswerIntent.POSTPONE, AnswerIntent.SKIP, AnswerIntent.NONE)) {
+            val (ids, customs) = splitCustom(field, traits, text)
+            if (customs.isNotEmpty()) {
+                val value = Decision.joinList(ids + customs)
+                val r = commitValue(p, settings, field, value, text, now, interp)
+                val researched = researchCustom(r.project, settings, customs, now)
+                return r.copy(project = researched, kind = kind, modelNote = r.modelNote ?: model)
+            }
+        }
         return when (interp.intent) {
             AnswerIntent.SELECT, AnswerIntent.ALL, AnswerIntent.FREEFORM -> {
                 val value = when {
@@ -547,6 +557,42 @@ class Director(private val deps: DirectorDeps) {
                 else FieldResult(p, directReply = interp.reason.ifBlank { Messages.clarify(field, traits) }, kind = kind)
             }
         }
+    }
+
+    /** Splits an owner reply into recognised option ids and the leftover phrases they wrote themselves. */
+    internal fun splitCustom(field: Field, traits: Traits, text: String): Pair<List<String>, List<String>> {
+        val options = field.options(traits)
+        val whole = com.hotattic.gamedesigner.core.engine.OptionResolver.resolve(options, true, text)
+        val ids = linkedSetOf<String>()
+        val customs = mutableListOf<String>()
+        val parts = text.split(Regex("(?i)\\s*(?:[,;]|\\band\\b|\\bplus\\b|\\balso\\b|\\bas well as\\b)\\s*")).map { it.trim().trim('.', '!') }.filter { it.length >= 3 }
+        for (part in parts) {
+            val res = com.hotattic.gamedesigner.core.engine.OptionResolver.resolve(options, true, part)
+            if (res.mode == com.hotattic.gamedesigner.core.engine.OptionResolver.Mode.SELECT && res.ids.isNotEmpty()) ids += res.ids
+            else if (res.mode == com.hotattic.gamedesigner.core.engine.OptionResolver.Mode.UNCLEAR && !AnswerParser.isDelegate(part) && !AnswerParser.isAffirm(part)) customs += part.take(120).replace('|', '/')
+        }
+        if (parts.isEmpty() && whole.mode == com.hotattic.gamedesigner.core.engine.OptionResolver.Mode.SELECT) ids += whole.ids
+        return ids.toList() to customs.distinctBy { it.lowercase() }
+    }
+
+    /** Looks up each custom entry the owner typed. Their words always stay authoritative; research only adds context. */
+    private suspend fun researchCustom(p0: Project, settings: AppSettings, terms: List<String>, now: Long): Project {
+        var p = p0
+        val research = deps.research
+        for (term in terms.take(3)) {
+            if (!settings.internetResearchAllowed || research == null) {
+                p = ProjectOps.addMessage(p, Role.SYSTEM, "Noted \"$term\" exactly as you wrote it.", now); continue
+            }
+            when (val r = runCatching { research.researchTopic(term) }.getOrElse { ResearchOutcome.Unavailable(it.message ?: "error") }) {
+                is ResearchOutcome.Found -> {
+                    p = p.copy(research = p.research.filter { it.id != r.value.id } + r.value)
+                    p = ProjectOps.addMessage(p, Role.SYSTEM, "Researched \"$term\": ${r.value.summary.take(220)}", now)
+                }
+                is ResearchOutcome.NotFound -> p = ProjectOps.addMessage(p, Role.SYSTEM, "I couldn't find a standard definition of \"$term\", so I'll build it exactly as you describe it.", now)
+                is ResearchOutcome.Unavailable -> p = ProjectOps.addMessage(p, Role.SYSTEM, "I can't research \"$term\" right now (${r.reason}); I'll use your wording as written.", now)
+            }
+        }
+        return p
     }
 
     private suspend fun answerQuestion(p: Project, settings: AppSettings, field: Field, question: String): Pair<String, String?> {

@@ -77,7 +77,7 @@ object ConsistencyReview {
         val lines = scannable(markdown)
 
         // 1. Turn-based / squad / grid language in a design that is not turn based.
-        val turnActive = t.has(Tag.TURN_BASED) || p.value(Keys.COMBAT_MODEL) in setOf("turn_based", "tactical_grid")
+        val turnActive = t.has(Tag.TURN_BASED) || p.list(Keys.COMBAT_MODEL).any { it in setOf("turn_based", "tactical_grid") }
         if (!turnActive) {
             for (l in lines) {
                 val low = l.lowercase()
@@ -88,7 +88,7 @@ object ConsistencyReview {
         }
         // 2. Grid-tactical phrasing in a scroller/platformer.
         val scroller = t.hasGenre("platformer") || t.perspectiveIsScroller() || p.value(Keys.PERSPECTIVE) == "side_view"
-        if (scroller && p.value(Keys.COMBAT_MODEL) != "tactical_grid") {
+        if (scroller && "tactical_grid" !in p.list(Keys.COMBAT_MODEL)) {
             for (l in lines) {
                 val low = l.lowercase()
                 if (negationOnLine.containsMatchIn(low)) continue

@@ -130,3 +130,51 @@ class ReferenceAspectsTest {
         assertEquals(5, ok!!.size)
     }
 }
+
+class CombatMultiSelectTest {
+    private class TopicResearch : com.hotattic.gamedesigner.core.research.ResearchProvider {
+        val asked = mutableListOf<String>()
+        override suspend fun researchReferenceGame(name: String) = com.hotattic.gamedesigner.core.research.ResearchOutcome.NotFound(name)
+        override suspend fun toolchainFacts(engineId: String) = com.hotattic.gamedesigner.core.research.ResearchOutcome.Unavailable("test")
+        override suspend fun researchTopic(term: String): com.hotattic.gamedesigner.core.research.ResearchOutcome<com.hotattic.gamedesigner.core.model.ResearchNote> {
+            asked += term
+            return com.hotattic.gamedesigner.core.research.ResearchOutcome.Found(com.hotattic.gamedesigner.core.model.ResearchNote("t_$term", term, "Dodge-roll combat rewards timing and spacing.", emptyList(), createdAt = 1L))
+        }
+    }
+
+    private suspend fun atCombat(d: com.hotattic.gamedesigner.core.director.Director): com.hotattic.gamedesigner.core.model.Project {
+        var p = d.start(newProject(), settings)
+        p = d.handleUserMessage(p, settings, "A top-down action roguelike on my phone with fast fights.").project
+        return d.askAbout(p, Keys.COMBAT_MODEL)
+    }
+
+    @Test fun combatAcceptsSeveralOptions() = runBlocking {
+        val d = director()
+        var p = atCombat(d)
+        assertEquals("MULTI", p.messages.last().question!!.kind)
+        p = d.submitSelection(p, settings, Keys.COMBAT_MODEL, listOf("aimed_real_time", "ability_cooldown")).project
+        assertEquals(listOf("aimed_real_time", "ability_cooldown"), p.list(Keys.COMBAT_MODEL))
+    }
+
+    @Test fun typedCustomStylesAreKeptAndResearched() = runBlocking {
+        val research = TopicResearch()
+        val d = director(com.hotattic.gamedesigner.core.director.DirectorDeps(research = research, clock = FakeClock()))
+        val online = settings.copy(internetResearchAllowed = true)
+        var p = atCombat(d)
+        p = d.handleUserMessage(p, online, "aim and shoot in real time and also dodge roll combat").project
+        val v = p.list(Keys.COMBAT_MODEL)
+        assertTrue("aimed_real_time" in v, v.toString())
+        assertTrue(v.any { it.contains("dodge roll", true) }, v.toString())
+        assertTrue(research.asked.any { it.contains("dodge roll", true) })
+        assertTrue(p.messages.any { it.text.startsWith("Researched") })
+        assertTrue(p.research.isNotEmpty())
+    }
+
+    @Test fun customOnlyAndNoInternet() = runBlocking {
+        val d = director()
+        var p = atCombat(d)
+        p = d.handleUserMessage(p, settings, "parry-based duels").project
+        assertEquals(listOf("parry-based duels"), p.list(Keys.COMBAT_MODEL))
+        assertTrue(p.messages.any { it.text.contains("exactly as you wrote it") })
+    }
+}
