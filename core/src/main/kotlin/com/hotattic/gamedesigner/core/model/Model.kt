@@ -383,7 +383,13 @@ data class ReevalBaseline(
     val designApproval: DesignApproval? = null,
     val pendingFieldKey: String? = null,
     val announcedConflicts: List<String> = emptyList(),
+    /** The project's mode before a reevaluation switched it to design mode (null = unchanged). */
+    val mode: String? = null,
 )
+
+/** An independent AI's critique of a design, kept with the reevaluation it was requested for. */
+@Serializable
+data class SecondOpinion(val provider: String, val at: Long, val text: String)
 
 /** A reevaluation of this project by the current design intelligence. Old spec versions are never touched; approval appends a new one. */
 @Serializable
@@ -403,6 +409,7 @@ data class ReevalRecord(
     val completenessBefore: Int = 0,
     val completenessAfter: Int = 0,
     val baseline: ReevalBaseline = ReevalBaseline(),
+    val secondOpinion: SecondOpinion? = null,
 )
 
 @Serializable

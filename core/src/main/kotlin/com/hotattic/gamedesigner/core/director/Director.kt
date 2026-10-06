@@ -3,6 +3,8 @@ package com.hotattic.gamedesigner.core.director
 import com.hotattic.gamedesigner.core.engine.Alternative
 import com.hotattic.gamedesigner.core.engine.Answer
 import com.hotattic.gamedesigner.core.engine.AnswerIntent
+import com.hotattic.gamedesigner.core.engine.ConsistencyReview
+import com.hotattic.gamedesigner.core.engine.ReviewFinding
 import com.hotattic.gamedesigner.core.engine.Interpretation
 import com.hotattic.gamedesigner.core.engine.ReferenceAspects
 import com.hotattic.gamedesigner.core.engine.Reevaluation
@@ -91,6 +93,10 @@ private const val PENDING_READY = "__ready__"
 private const val PENDING_REVIEW = "__review__"
 private const val PENDING_MORE_REFS = "__more_refs__"
 private const val PENDING_REF_ASPECTS = "__ref_aspects__"
+private const val PENDING_ISSUE_PREFIX = "__issue:"
+private val FIELD_ISSUES = setOf("owner_answer_mismatch", "menus_truncated", "rejected_option_present", "upload_without_file")
+/** Settled automatically by the owner-precedence pass at generation, so never raised as a question. */
+private val AUTO_SETTLED_ISSUES = setOf("multi_select_truncated")
 private const val MODEL_TIMEOUT_MS = 60_000L
 
 /**
@@ -352,6 +358,15 @@ class Director(private val deps: DirectorDeps) {
                         if (ReviewGate.fingerprint(p) == before) return DirectorTurn(reply(p, "I didn't catch a change in that. $reviewChangePrompt", PENDING_REVIEW, reviewQuick(), reviewSpec()))
                     }
                 }
+            }
+            pending.startsWith(PENDING_ISSUE_PREFIX) -> {
+                val parts = pending.removePrefix(PENDING_ISSUE_PREFIX).removeSuffix("__").split(":", limit = 2)
+                val code = parts[0]; val key = parts.getOrNull(1).orEmpty()
+                if (code == "uploaded_asset_ignored" && key.isNotEmpty()) {
+                    val refuse = Regex("(?i)\\b(don'?t|do not|ignore|skip|no|not|without|discard)\\b").containsMatchIn(text)
+                    p = if (!refuse || AnswerParser.isDelegate(text)) ProjectOps.setDecision(p, key, "upload", Provenance.OWNER_EXPLICIT, now, raw = text.trim()) else withoutUploadedFile(p, key, now)
+                    p = ProjectOps.setPending(p, null)
+                } else { p = ProjectOps.setPending(p, null); absorbInto(null) }
             }
             pending == PENDING_REF_ASPECTS -> {
                 val options = p.messages.lastOrNull { it.question?.fieldKey == PENDING_REF_ASPECTS }?.question?.options.orEmpty()
@@ -1065,6 +1080,9 @@ class Director(private val deps: DirectorDeps) {
             p = ProjectOps.addMessage(p, Role.DIRECTOR, "Note: ${note.title}. ${note.message}", now)
         }
 
+        // Blocking contradictions in the design are raised one at a time, like any other intake question, before moving on.
+        nextIssue(p)?.let { return askIssue(p, it, now) }
+
         return when (val step = InterviewPlanner.next(p)) {
             is NextStep.Ask -> askField(p, step.field, now)
             is NextStep.Confirm -> {
@@ -1089,6 +1107,34 @@ class Director(private val deps: DirectorDeps) {
             NextStep.Review -> reviewMessage(p, now)
             NextStep.Ready -> readyMessage(p, now)
         }
+    }
+
+    /** The next structural contradiction not yet raised with the owner. Each one is raised once, so a stubborn one cannot loop. */
+    private fun nextIssue(p: Project): ReviewFinding? =
+        ConsistencyReview.review(p, "").errors.firstOrNull { it.line.isEmpty() && it.code !in AUTO_SETTLED_ISSUES && "issue:${it.code}:${it.key.orEmpty()}" !in p.announcedConflicts }
+
+    private fun issuePending(f: ReviewFinding) = "$PENDING_ISSUE_PREFIX${f.code}:${f.key.orEmpty()}__"
+
+    private fun askIssue(p0: Project, f: ReviewFinding, now: Long): Project {
+        val p = p0.copy(announcedConflicts = p0.announcedConflicts + "issue:${f.code}:${f.key.orEmpty()}")
+        val field = f.key?.let { Fields.get(it) }
+        val intro = "Something in your design doesn't add up: ${f.message}"
+        return when {
+            // A mismatch on a question: take the old answer back and ask that question again, with its choices.
+            f.code in FIELD_ISSUES && field != null ->
+                replyField(ProjectOps.clearDecision(p, field.key, now), "$intro\n\nLet's settle it. ${field.prompt}", field)
+            f.code == "uploaded_asset_ignored" && f.key != null ->
+                reply(p, "$intro\n\nWhich should win?", issuePending(f), listOf(QuickReply("Use my uploaded file", "use my uploaded file"), QuickReply("Don't use it", "don't use it")))
+            else -> reply(p, "$intro\n\nTell me in your own words which way it should go.", issuePending(f))
+        }
+    }
+
+    /** The owner's answer to a raised contradiction. */
+    private fun withoutUploadedFile(p: Project, key: String, now: Long): Project {
+        val slot = Keys.brandingKeyForSlot.entries.firstOrNull { it.value == key }?.key ?: return p
+        val b = p.branding[slot] ?: return p
+        val mode = when (p.value(key)) { "generic_temporary" -> BrandingMode.GENERIC_TEMPORARY; "skip" -> BrandingMode.SKIP; else -> BrandingMode.GENERATE_ORIGINAL }
+        return p.copy(branding = p.branding + (slot to b.copy(mode = mode)), updatedAt = now)
     }
 
     private fun readyMessage(p: Project, now: Long): Project {

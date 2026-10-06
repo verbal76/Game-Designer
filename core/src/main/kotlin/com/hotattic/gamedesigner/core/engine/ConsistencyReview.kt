@@ -12,7 +12,7 @@ import com.hotattic.gamedesigner.core.schema.Traits
 
 enum class ReviewLevel { ERROR, WARNING }
 
-data class ReviewFinding(val level: ReviewLevel, val code: String, val message: String, val line: String = "")
+data class ReviewFinding(val level: ReviewLevel, val code: String, val message: String, val line: String = "", /** The design field (decision key) the finding is about, when there is one, so it can be asked about directly. */ val key: String? = null)
 
 data class ReviewReport(val findings: List<ReviewFinding>) {
     val errors get() = findings.filter { it.level == ReviewLevel.ERROR }
@@ -60,7 +60,8 @@ object ConsistencyReview {
         return p to notes
     }
 
-    fun saysAll(raw: String): Boolean = Regex("(?i)\\b(all|everything|every one|the lot)\\b").containsMatchIn(raw)
+    /** "all of them" / "everything", but not the idioms "after all", "above all", "at all", "all right". */
+    fun saysAll(raw: String): Boolean = Regex("(?i)(?<!after |above |at |of |in )\\b(all|everything|every one|the lot)\\b(?! right| good| set| ok| okay| done| in all| along)").containsMatchIn(raw)
     fun hasExceptionCue(raw: String): Boolean = Regex("(?i)\\b(except|but not|other than|excluding|apart from|without|minus)\\b").containsMatchIn(raw)
 
     /** Reviews the structured state against every generated document; findings name the document they came from. */
@@ -102,13 +103,13 @@ object ConsistencyReview {
             if (f.kind != FieldKind.MULTI || !d.ownerAuthored) continue
             val opts = f.options(t).map { it.id }
             if (saysAll(d.rawAnswer) && !hasExceptionCue(d.rawAnswer) && opts.any { it !in d.list() && !p.isRejected(key, it) })
-                out += ReviewFinding(ReviewLevel.ERROR, "multi_select_truncated", "${f.title}: the owner said \"${d.rawAnswer.take(40)}\" but only ${d.list().size} of ${opts.size} options are recorded.")
+                out += ReviewFinding(ReviewLevel.ERROR, "multi_select_truncated", "${f.title}: the owner said \"${d.rawAnswer.take(40)}\" but only ${d.list().size} of ${opts.size} options are recorded.", key = key)
         }
         // 4. Rejected genres/tags still present in the structured design.
         for (g in p.list(Keys.GENRE)) if (p.isRejected(Keys.GENRE, g)) out += ReviewFinding(ReviewLevel.ERROR, "rejected_genre_present", "Genre ${GenreKnowledge.resolve(g).label} was rejected by the owner but is still selected.")
         for ((k, d) in p.decisions) {
             val rej = p.rejected[k].orEmpty()
-            if (rej.isNotEmpty() && d.list().any { it in rej }) out += ReviewFinding(ReviewLevel.ERROR, "rejected_option_present", "${Fields.get(k)?.title ?: k} still holds an option the owner rejected.")
+            if (rej.isNotEmpty() && d.list().any { it in rej }) out += ReviewFinding(ReviewLevel.ERROR, "rejected_option_present", "${Fields.get(k)?.title ?: k} still holds an option the owner rejected.", key = k)
         }
         // 5. Rejected genres named in the text as requirements.
         for (g in p.rejected[Keys.GENRE].orEmpty()) {
@@ -122,7 +123,7 @@ object ConsistencyReview {
         // 6. Menus: several requested but one recorded.
         p.decision(Keys.MENUS_SETTINGS)?.let { d ->
             if (d.ownerAuthored && d.list().size == 1 && Regex("(?i)\\b(and|,|all|both)\\b").containsMatchIn(d.rawAnswer) && d.rawAnswer.split(Regex("(?i)\\band\\b|,")).count { it.isNotBlank() } >= 2 && !hasExceptionCue(d.rawAnswer))
-                out += ReviewFinding(ReviewLevel.ERROR, "menus_truncated", "Several menus were requested (\"${d.rawAnswer.take(60)}\") but only one is recorded.")
+                out += ReviewFinding(ReviewLevel.ERROR, "menus_truncated", "Several menus were requested (\"${d.rawAnswer.take(60)}\") but only one is recorded.", key = Keys.MENUS_SETTINGS)
         }
         // 7. Owner-stated answer disagrees with what was stored (e.g. "CC0 only" recorded as "original only").
         for ((key, d) in p.decisions) {
@@ -130,7 +131,7 @@ object ConsistencyReview {
             if (f.kind != FieldKind.SINGLE || !d.ownerAuthored || d.rawAnswer.isBlank() || d.rawAnswer.length > 48) continue
             val r = OptionResolver.resolve(f.options(t), false, d.rawAnswer)
             if (r.mode == OptionResolver.Mode.SELECT && r.confident && r.ids.size == 1 && r.ids.first() != d.value && d.value != "upload")
-                out += ReviewFinding(ReviewLevel.ERROR, "owner_answer_mismatch", "${f.title}: the owner said \"${d.rawAnswer}\" but \"${d.value}\" is recorded.")
+                out += ReviewFinding(ReviewLevel.ERROR, "owner_answer_mismatch", "${f.title}: the owner said \"${d.rawAnswer}\" but \"${d.value}\" is recorded.", key = key)
         }
         // 8. Asset policy text must match the recorded policy.
         val policy = p.value(Keys.ASSET_POLICY)
@@ -148,9 +149,9 @@ object ConsistencyReview {
             val b = p.branding[slot]
             val choice = p.value(key)
             if (b?.mode == com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED && choice != "upload")
-                out += ReviewFinding(ReviewLevel.ERROR, "uploaded_asset_ignored", "An owner-supplied $slot exists but the recorded choice is \"$choice\".")
+                out += ReviewFinding(ReviewLevel.ERROR, "uploaded_asset_ignored", "An owner-supplied $slot exists but the recorded choice is \"$choice\".", key = key)
             if (choice == "upload" && b?.mode != com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED)
-                out += ReviewFinding(ReviewLevel.ERROR, "upload_without_file", "The owner chose to upload a $slot but no file was received.")
+                out += ReviewFinding(ReviewLevel.ERROR, "upload_without_file", "The owner chose to upload a $slot but no file was received.", key = key)
         }
         // 11. Meta-conversation must not be a requirement.
         for (f in p.activeFacts()) if (MetaConversation.isMeta(f.text)) out += ReviewFinding(ReviewLevel.ERROR, "meta_conversation", "A remark about using the app is recorded as a requirement.", f.text.take(120))

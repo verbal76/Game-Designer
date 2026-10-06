@@ -198,3 +198,73 @@ class ReevaluationTest {
         if (f.isRelevant(com.hotattic.gamedesigner.core.schema.Traits(p)) && p.decision(Keys.OTA_UPDATES) == null) assertTrue(p.reeval!!.items.any { it.key == Keys.OTA_UPDATES && it.kind == "NEEDS_DECISION" })
     }
 }
+
+class ReevaluationIssuesTest {
+    private val concept = "A top-down action roguelike for my Android phone about surviving a dangerous city. I fight with a pistol and flares."
+
+    private suspend fun brokenOldProject(d: Director): Project {
+        val (p0, ready) = driveToReady(d, newProject(), concept)
+        assertTrue(ready)
+        var p = SpecVersioning.createVersion(p0, VersionKind.INITIAL, 1L, "2026-10-01")
+        // the physical-test state: the owner said "cc0 only" but "original only" is recorded, an uploaded splash is ignored, and the project sits in playtest mode
+        p = p.copy(decisions = p.decisions + (Keys.ASSET_POLICY to Decision("original_only", DecisionSource.USER, provenance = Provenance.OWNER_EXPLICIT, rawAnswer = "cc0 only", updatedAt = 5L))
+            + (Keys.BRAND_STUDIO to Decision("skip", DecisionSource.USER, provenance = Provenance.OWNER_EXPLICIT, updatedAt = 5L)),
+            branding = p.branding + ("studio_splash" to com.hotattic.gamedesigner.core.model.BrandingAsset("studio_splash", com.hotattic.gamedesigner.core.model.BrandingMode.UPLOADED, "branding/s.png", "s.png", "abc", 10, 10, 1L)),
+            mode = com.hotattic.gamedesigner.core.model.ProjectMode.PLAYTEST_CONTINUE)
+        return p
+    }
+
+    @Test fun reevaluatingAPlaytestModeProjectRunsInDesignModeAndNeverAsksWhatYouWantToDoWithTheGame() = runBlocking {
+        val d = director(); val old = brokenOldProject(d)
+        val p = d.reevaluate(old, settings).project
+        assertEquals(com.hotattic.gamedesigner.core.model.ProjectMode.NEW_GAME, p.mode)
+        assertTrue(p.pendingFieldKey != Keys.CONTINUATION_GOAL)
+        val back = d.discardReevaluation(p)
+        assertEquals(com.hotattic.gamedesigner.core.model.ProjectMode.PLAYTEST_CONTINUE, back.mode)
+    }
+
+    @Test fun blockingContradictionsAreAskedOneAtATimeLikeIntakeQuestions() = runBlocking {
+        val d = director(); val old = brokenOldProject(d)
+        var p = d.reevaluate(old, settings).project
+        // 1st issue: the asset policy is asked again, with its real choices
+        assertEquals(Keys.ASSET_POLICY, p.pendingFieldKey)
+        assertEquals(Keys.ASSET_POLICY, p.messages.last().question?.fieldKey)
+        assertTrue(p.messages.any { it.text.contains("doesn't add up") })
+        p = d.handleUserMessage(p, settings, "cc0 only").project
+        assertEquals("cc0_default", p.value(Keys.ASSET_POLICY))
+        // 2nd issue: the ignored upload, as its own question
+        assertTrue(p.pendingFieldKey!!.startsWith("__issue:uploaded_asset_ignored"), p.pendingFieldKey)
+        assertTrue(p.messages.last().quickReplies.any { it.label == "Use my uploaded file" })
+        p = d.handleUserMessage(p, settings, "use my uploaded file").project
+        assertEquals("upload", p.value(Keys.BRAND_STUDIO))
+        // nothing contradictory is left, and the flow continues to the normal review/ready steps instead of blocking
+        assertTrue(com.hotattic.gamedesigner.core.engine.ConsistencyReview.review(p, "").errors.isEmpty(), com.hotattic.gamedesigner.core.engine.ConsistencyReview.review(p, "").errors.joinToString { it.code })
+        assertTrue(p.pendingFieldKey?.startsWith("__issue") != true)
+    }
+
+    @Test fun declineTheUploadedFileAndTheContradictionIsSettledToo() = runBlocking {
+        val d = director(); val old = brokenOldProject(d)
+        var p = d.reevaluate(old, settings).project
+        p = d.handleUserMessage(p, settings, "cc0 only").project
+        p = d.handleUserMessage(p, settings, "don't use it").project
+        assertEquals("skip", p.value(Keys.BRAND_STUDIO))
+        assertTrue(com.hotattic.gamedesigner.core.engine.ConsistencyReview.review(p, "").errors.isEmpty())
+    }
+
+    @Test fun secondOpinionBriefMarksWhoStandsBehindEachDecisionAndPointsAreParsed() = runBlocking {
+        val d = director(); val old = brokenOldProject(d)
+        val p = d.reevaluate(old, settings).project
+        val brief = com.hotattic.gamedesigner.core.engine.SecondOpinion.brief(p)
+        assertTrue("OWNER'S ORIGINAL IDEA" in brief && "[OWNER]" in brief)
+        assertTrue(brief.length <= 8000)
+        val pts = com.hotattic.gamedesigner.core.engine.SecondOpinion.points("Intro\n- The game never says how the player heals.\n- Performance on phones is a guess.\n* Short\n3. Combat feedback is undefined for the creature.")
+        assertEquals(3, pts.size)
+    }
+}
+
+class SaysAllIdiomTest {
+    @Test fun idiomsContainingAllAreNotAQuantifier() {
+        for (s in listOf("It is a turn-based tactics game after all", "above all it must be fast", "not at all", "all right then")) assertTrue(!com.hotattic.gamedesigner.core.engine.ConsistencyReview.saysAll(s), s)
+        for (s in listOf("all of them", "everything", "I want all the menus", "all")) assertTrue(com.hotattic.gamedesigner.core.engine.ConsistencyReview.saysAll(s), s)
+    }
+}

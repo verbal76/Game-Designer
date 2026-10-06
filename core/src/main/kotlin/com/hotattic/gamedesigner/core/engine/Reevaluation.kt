@@ -53,7 +53,7 @@ object Reevaluation {
         )
     }
 
-    private fun baselineOf(p: Project) = ReevalBaseline(p.decisions, p.facts, p.rejected, p.references, p.originalConcept, p.designApproval, p.pendingFieldKey, p.announcedConflicts)
+    private fun baselineOf(p: Project) = ReevalBaseline(p.decisions, p.facts, p.rejected, p.references, p.originalConcept, p.designApproval, p.pendingFieldKey, p.announcedConflicts, p.mode.name)
 
     /** Puts the project back exactly as it was before the reevaluation began. Spec versions were never touched. */
     fun discard(p: Project, now: Long): Project {
@@ -61,7 +61,9 @@ object Reevaluation {
         if (r.status != "OPEN") return p
         val b = r.baseline
         return p.copy(decisions = b.decisions, facts = b.facts, rejected = b.rejected, references = b.references, originalConcept = b.originalConcept,
-            designApproval = b.designApproval, pendingFieldKey = b.pendingFieldKey, announcedConflicts = b.announcedConflicts, reeval = r.copy(status = "DISCARDED"), updatedAt = now)
+            designApproval = b.designApproval, pendingFieldKey = b.pendingFieldKey, announcedConflicts = b.announcedConflicts,
+            mode = b.mode?.let { m -> runCatching { com.hotattic.gamedesigner.core.model.ProjectMode.valueOf(m) }.getOrNull() } ?: p.mode,
+            reeval = r.copy(status = "DISCARDED"), updatedAt = now)
     }
 
     /**
@@ -75,7 +77,7 @@ object Reevaluation {
         val old = original.decisions
 
         // 1. Only what old Bob inferred or defaulted is reconsidered. Owner words, corrections, deferrals and accepted recommendations stay.
-        var p = reread.copy(decisions = reread.decisions.filterValues { d -> d.ownerAuthored || d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION || d.status == DecisionStatus.DEFERRED })
+        var p = reread.copy(mode = if (reread.mode == com.hotattic.gamedesigner.core.model.ProjectMode.PLAYTEST_CONTINUE) com.hotattic.gamedesigner.core.model.ProjectMode.NEW_GAME else reread.mode, decisions = reread.decisions.filterValues { d -> d.ownerAuthored || d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION || d.status == DecisionStatus.DEFERRED })
         // 2. Recompute with the current logic.
         p = DerivedDefaults.apply(DesignSeeder.seed(p, now).first, now)
         p = Reconciler.revalidate(p, now).project
@@ -118,7 +120,9 @@ object Reevaluation {
             baseline = baselineOf(original),
         )
         // The design changed under the owner's feet: it must be reviewed and approved again before a new spec is generated.
-        return p.copy(designApproval = null, announcedConflicts = emptyList(), pendingFieldKey = null, reeval = record, updatedAt = now)
+        // A design reevaluation always runs in design mode: playtest-feedback mode would ask what you noticed in a build that does not exist yet.
+        val mode = if (p.mode == com.hotattic.gamedesigner.core.model.ProjectMode.PLAYTEST_CONTINUE) com.hotattic.gamedesigner.core.model.ProjectMode.NEW_GAME else p.mode
+        return p.copy(mode = mode, designApproval = null, announcedConflicts = emptyList(), pendingFieldKey = null, reeval = record, updatedAt = now)
     }
 
     /** The plain-English summary shown in chat and on the reevaluation screen header. */
