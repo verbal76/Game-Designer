@@ -49,7 +49,8 @@ object ProjectOps {
         var effective = prov
         val existing = p.decision(key)
         if (existing != null && existing.value.isNotBlank() && existing.status == DecisionStatus.CONFIRMED) {
-            if (prov.rank < existing.prov.rank) return p
+            // The owner's latest word always wins over their own earlier word; only a weaker source (a guess, a default) is blocked.
+            if (prov.rank < existing.prov.rank && !(prov.ownerAuthored && existing.ownerAuthored)) return p
             if (prov == Provenance.OWNER_EXPLICIT && existing.ownerAuthored && existing.value != v) effective = Provenance.OWNER_CORRECTION
         }
         var rejected = p.rejected

@@ -193,3 +193,54 @@ class GameTitleTest {
         }
     }
 }
+
+class RepeatedChangeTest {
+    @Test fun theOwnerCanChangeTheSameDecisionAsOftenAsTheyLike() {
+        var p = newProject()
+        for (v in listOf("cc0_default", "original_only", "cc0_default", "cc0_or_cc_by", "cc0_default")) {
+            p = com.hotattic.gamedesigner.core.engine.ProjectOps.setDecision(p, Keys.ASSET_POLICY, v, com.hotattic.gamedesigner.core.model.Provenance.OWNER_EXPLICIT, 1L)
+            assertEquals(v, p.value(Keys.ASSET_POLICY))
+        }
+        // a system guess still cannot override the owner
+        val g = com.hotattic.gamedesigner.core.engine.ProjectOps.setDecision(p, Keys.ASSET_POLICY, "original_only", com.hotattic.gamedesigner.core.model.Provenance.SYSTEM_INFERENCE, 2L)
+        assertEquals("cc0_default", g.value(Keys.ASSET_POLICY))
+    }
+}
+
+class AssetPlanLoopTest {
+    @Test fun changingThePolicyAfterAnEarlierCorrectionTakesEffectAndTheQuestionIsNotRepeated() = runBlocking {
+        val d = director()
+        var (p, _) = driveToReadyUntilAssetPlan(d)
+        // the owner already changed the policy once (so it is an OWNER_CORRECTION), as in the physical test
+        val ops = com.hotattic.gamedesigner.core.engine.ProjectOps
+        val prov = com.hotattic.gamedesigner.core.model.Provenance.OWNER_EXPLICIT
+        p = ops.setDecision(p, Keys.ASSET_POLICY, "original_only", prov, 1L)
+        p = ops.setDecision(p, Keys.ASSET_POLICY, "cc0_or_cc_by", prov, 2L)
+        assertEquals(com.hotattic.gamedesigner.core.model.Provenance.OWNER_CORRECTION, p.decision(Keys.ASSET_POLICY)!!.prov)
+        val planShown = p.messages.count { it.text.startsWith("Asset plan") }
+        p = d.handleUserMessage(p, settings, "cc0 only").project
+        assertEquals("cc0_default", p.value(Keys.ASSET_POLICY))
+        assertTrue(p.pendingFieldKey != "__asset_plan__", "moved on, was ${p.pendingFieldKey}")
+        assertTrue(p.messages.count { it.text.startsWith("Asset plan") } <= planShown + 1)
+    }
+
+    private suspend fun driveToReadyUntilAssetPlan(d: com.hotattic.gamedesigner.core.director.Director): Pair<com.hotattic.gamedesigner.core.model.Project, Boolean> {
+        var p = d.start(newProject(), settings)
+        p = d.handleUserMessage(p, settings, "A top-down action roguelike on my phone about surviving a dangerous city.").project
+        var n = 0
+        while (p.pendingFieldKey != "__asset_plan__" && n++ < 200) {
+            val pending = p.pendingFieldKey
+            val reply = when {
+                pending == "__proposals__" -> "yes"
+                pending?.startsWith("__conflict:") == true -> "use alternative 1"
+                pending == "__review__" -> "looks right"
+                pending == "__ready__" -> "generate"
+                pending == "__more_refs__" -> "done"
+                pending == "__ref_aspects__" -> "choose for me"
+                else -> "choose for me"
+            }
+            p = d.handleUserMessage(p, settings, reply).project
+        }
+        return p to (p.pendingFieldKey == "__asset_plan__")
+    }
+}
