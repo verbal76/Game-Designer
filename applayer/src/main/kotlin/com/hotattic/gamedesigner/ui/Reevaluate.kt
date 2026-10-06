@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.hotattic.gamedesigner.AppViewModel
+import com.hotattic.gamedesigner.core.engine.ReevalCompare
 import com.hotattic.gamedesigner.core.engine.Reevaluation
 import java.text.DateFormat
 import java.util.Date
@@ -77,11 +78,11 @@ fun ReevalPickerScreen(vm: AppViewModel, nav: NavController) {
     }
 }
 
-private val kinds = listOf("ALL" to "All", "NEW" to "New", "CHANGED" to "Changed", "KEPT_REC" to "Kept recommendation", "REMOVED" to "Removed", "PRESERVED" to "Your decisions", "NEEDS_DECISION" to "Needs your decision", "CONTRADICTION" to "Contradictions")
+private fun kindLabel(k: String) = when (k) {
+    "NEEDS_DECISION" -> "NEEDS YOUR DECISION"; "CONTRADICTION" -> "CONTRADICTION"; "KEPT_REC" -> "NEWER RECOMMENDATION (yours kept)"; else -> k
+}
 
-private fun kindLabel(k: String) = kinds.firstOrNull { it.first == k }?.second?.uppercase() ?: k
-
-/** Reevaluate, step 2: what changed. Nothing is replaced until the design is approved in the normal review; Spec v1 stays recoverable. */
+/** Reevaluate, step 2: the saved design and the reevaluated one side by side. Nothing is replaced until the design is approved; the old spec stays recoverable. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReevalScreen(vm: AppViewModel, nav: NavController, id: String) {
@@ -89,7 +90,8 @@ fun ReevalScreen(vm: AppViewModel, nav: NavController, id: String) {
     LaunchedEffect(id) { if (vm.current.value?.id != id) vm.open(id) }
     val p = project?.takeIf { it.id == id }
     val r = p?.reeval
-    var filter by remember { mutableStateOf("ALL") }
+    var tab by remember { mutableStateOf(0) }
+    var show by remember { mutableStateOf("CHANGES") }
     Scaffold(topBar = {
         TopAppBar(title = { Text("Reevaluation") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } })
     }) { pad ->
@@ -97,37 +99,56 @@ fun ReevalScreen(vm: AppViewModel, nav: NavController, id: String) {
             Column(Modifier.padding(pad).padding(16.dp)) { Text("No reevaluation yet for this design.") }
             return@Scaffold
         }
-        Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        val rows = remember(p) { ReevalCompare.rows(p) }
+        val counts = remember(rows) { ReevalCompare.counts(rows) }
+        val attention = r.items.filter { it.kind in setOf("NEEDS_DECISION", "CONTRADICTION", "KEPT_REC") }
+        Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(p.name.ifBlank { "Untitled game" }, style = MaterialTheme.typography.titleMedium)
-            Text(Reevaluation.summary(r), fontFamily = FontFamily.Monospace, fontSize = 13.sp)
+            Text("${counts["NEW"] ?: 0} new  -  ${counts["CHANGED"] ?: 0} changed  -  ${counts["REMOVED"] ?: 0} removed  -  ${r.preservedOwner} of your decisions kept exactly  -  completeness ${r.completenessBefore}% -> ${r.completenessAfter}%", style = MaterialTheme.typography.bodySmall)
             Text(
                 when (r.status) {
-                    "APPROVED" -> "Approved: Spec v${r.approvedSpec} was created. Spec v${r.fromSpec ?: "-"} is still available on the Spec screen."
+                    "APPROVED" -> "Approved: Spec v${r.approvedSpec} was created. Spec v${r.fromSpec ?: "-"} is still available."
                     "DISCARDED" -> "Discarded: your design is back to exactly what it was."
-                    else -> "Not applied yet. Continue with Bob to answer anything new and approve the design; that creates the next spec version and keeps Spec v${r.fromSpec ?: "-"}."
+                    else -> "Not applied yet. Answer anything new and approve in the chat; that creates the next spec version and keeps Spec v${r.fromSpec ?: "-"}."
                 }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
-            Text("What was stored: ${r.source.note}", style = MaterialTheme.typography.bodySmall)
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(kinds.filter { (k, _) -> k == "ALL" || r.items.any { it.kind == k } }) { (k, label) ->
-                    FilterChip(filter == k, { filter = k }, { Text(if (k == "ALL") label else "$label ${r.items.count { it.kind == k }}") })
-                }
+            androidx.compose.material3.TabRow(tab) {
+                androidx.compose.material3.Tab(tab == 0, { tab = 0 }, text = { Text("Side by side") })
+                androidx.compose.material3.Tab(tab == 1, { tab = 1 }, text = { Text(if (attention.isEmpty()) "Needs attention" else "Needs attention (${attention.size})") })
+                androidx.compose.material3.Tab(tab == 2, { tab = 2 }, text = { Text("What was stored") })
             }
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                items(r.items.filter { filter == "ALL" || it.kind == filter }.filter { filter != "ALL" || it.kind != "PRESERVED" }) { it ->
-                    Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.padding(10.dp)) {
-                            Text("${kindLabel(it.kind)}  ${it.title}", style = MaterialTheme.typography.labelLarge)
-                            if (it.before != null && it.after != null) Text("${it.before}  ->  ${it.after}", style = MaterialTheme.typography.bodySmall)
-                            else (it.after ?: it.before)?.let { v -> Text(v, style = MaterialTheme.typography.bodySmall) }
-                            if (it.note.isNotBlank()) Text(it.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.weight(1f).fillMaxWidth()) {
+                when (tab) {
+                    0 -> {
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(listOf("CHANGES" to "Changes only", "ALL" to "Everything", "YOURS" to "Your decisions")) { (k, l) -> FilterChip(show == k, { show = k }, { Text(l) }) }
+                        }
+                        CompareTable(rows.filter { row -> when (show) { "CHANGES" -> row.status != "SAME"; "YOURS" -> row.beforeBy.startsWith("You"); else -> true } }, leftLabel = "SAVED DESIGN", rightLabel = "REEVALUATED",
+                            empty = if (show == "CHANGES") "Nothing differs. The newer design logic agrees with the saved design." else "Nothing to show.")
+                    }
+                    1 -> LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (attention.isEmpty()) item { Text("Nothing needs your attention.", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(8.dp)) }
+                        items(attention) { it ->
+                            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+                                Column(Modifier.padding(10.dp)) {
+                                    Text("${kindLabel(it.kind)}: ${it.title}", style = MaterialTheme.typography.labelLarge)
+                                    if (it.before != null && it.after != null) Text("${it.before}  ->  ${it.after}", style = MaterialTheme.typography.bodySmall)
+                                    if (it.note.isNotBlank()) Text(it.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                         }
                     }
+                    else -> Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        val s = r.source
+                        Text(s.note, style = MaterialTheme.typography.bodyMedium)
+                        Text("Your messages: ${s.ownerMessages}   Bob's messages: ${s.directorMessages}\nYour original idea stored word for word: ${if (s.verbatimConcept) "yes" else if (s.conceptRecovered) "recovered from your first message" else "no"}\nDecisions: ${s.decisionsTotal} (${s.ownerExplicit} yours, ${s.ownerCorrection} corrections, ${s.acceptedRecommendations} accepted from Bob, ${s.inferred} inferred by Bob, ${s.defaults} defaults)\nDecisions that carry your own words: ${s.withRawAnswer}\nOlder decisions without authority records: ${s.legacyProvenance}\nThings you ruled out: ${s.rejections}\nSpec versions: ${s.specVersions}   Uploaded images: ${s.uploadedAssets}", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
-                if (filter == "ALL" && r.preservedOwner > 0) item { Text("${r.preservedOwner} of your decisions were kept exactly (tap \"Your decisions\" to list them).", style = MaterialTheme.typography.bodySmall) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
-                if (r.status == "APPROVED") Button({ nav.navigate("spec/$id") }, Modifier.weight(1f)) { Text("Open the spec") }
-                else if (r.status == "OPEN") {
+                if (r.status == "APPROVED") {
+                    Button({ nav.navigate("spec/$id") }, Modifier.weight(1f)) { Text("Open the spec") }
+                    if (r.fromSpec != null && r.approvedSpec != null) OutlinedButton({ nav.navigate("compare/$id/${r.fromSpec}/${r.approvedSpec}") }) { Text("Compare specs") }
+                } else if (r.status == "OPEN") {
                     Button({ nav.navigate("chat/$id") { popUpTo("reeval/$id") { inclusive = true } } }, Modifier.weight(1f)) { Text(if (r.newQuestions > 0) "Continue with Bob" else "Review and approve") }
                     OutlinedButton({ vm.discardReevaluation() }) { Text("Discard") }
                 } else Button({ nav.navigate("chat/$id") }, Modifier.weight(1f)) { Text("Back to the design") }

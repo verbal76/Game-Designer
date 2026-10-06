@@ -60,3 +60,7 @@ A fourth primary workflow (home screen and the project menu share one implementa
 - **Questions:** only genuinely missing build-important decisions are asked, through the normal conversation. Design approval is reset, so the plain-English review must be approved again.
 - **Versioning:** starting a reevaluation changes no spec version. Approving generates the next version labelled "Reevaluation"; earlier versions stay byte-identical and can be compared in Spec -> Changes. Discard restores the saved design exactly.
 - **Schema:** purely additive (`Project.reeval`); no migration step and no schema version bump.
+
+### Reevaluate: side-by-side comparison
+- `ReevalCompare.rows` builds a Before | After table from the stored baseline and the working design: every decision (and the owner's statements) with SAME / CHANGED / NEW / REMOVED and who stands behind each side (You, You (correction), Accepted from Bob, Bob). The Reevaluation screen shows it (Changes only / Everything / Your decisions), with a separate "Needs attention" tab (new questions, contradictions, newer recommendations beside kept ones) and a "What was stored" tab.
+- `SpecCompare` compares any two spec versions section by section (matched by heading) with aligned lines, so only real edits light up; Spec screen -> "Compare with the previous version" and Reevaluation -> "Compare specs" open it. Versions are read-only history.

@@ -116,6 +116,7 @@ fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
                     OutlinedButton({ share(ctx, text) }) { Text("Share") }
                     OutlinedButton({ pendingSave = text; naming = false to (if (tab == 1) "MASTER_PROMPT.md" else "CLAUDE.md") }) { Text("Save") }
                 }
+                if (p.versions.size >= 2) OutlinedButton({ nav.navigate("compare/${p.id}/${(p.versions.lastOrNull { it.number < v.number } ?: p.versions.first()).number}/${v.number}") }, Modifier.fillMaxWidth()) { Text("Compare with the previous version (side by side)") }
                 OutlinedButton({ exportVersion = v.number; naming = true to "${(p.value("display_name") ?: "game").replace(' ', '_')}_spec_v${v.number}.zip" }, Modifier.fillMaxWidth()) { Text("Export full package (.zip)") }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {

@@ -99,6 +99,7 @@ fun AppNav(vm: AppViewModel, shell: ShellServices) {
                 composable("settings") { SettingsScreen(vm, nav, shell) }
                 composable("repos") { ReposScreen(vm, nav) }
                 composable("models") { ModelsScreen(vm, nav) }
+                composable("compare/{id}/{a}/{b}") { SpecCompareScreen(vm, nav, it.arguments?.getString("id").orEmpty(), it.arguments?.getString("a")?.toIntOrNull() ?: 1, it.arguments?.getString("b")?.toIntOrNull() ?: 1) }
                 composable("reeval-pick") { ReevalPickerScreen(vm, nav) }
                 composable("reeval/{id}") { ReevalScreen(vm, nav, it.arguments?.getString("id").orEmpty()) }
             }
