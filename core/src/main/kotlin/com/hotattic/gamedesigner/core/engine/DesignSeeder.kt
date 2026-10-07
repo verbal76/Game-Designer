@@ -48,6 +48,14 @@ object DesignSeeder {
             p = ProjectOps.setDecision(p, key, id, Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
             seeded += key
         }
+        // Systems the owner ruled out in their own words ("no combat", "no crafting") close their gate, so none of their questions are asked.
+        val said = (listOf(p.originalConcept) + p.activeFacts().map { it.text }).joinToString(". ")
+        for (g in com.hotattic.gamedesigner.core.schema.Gates.deniedIn(said)) {
+            if (p.decision(g.key) != null || !Fields.get(g.key)!!.isRelevant(Traits(p))) continue
+            p = ProjectOps.setDecision(p, g.key, "no", Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
+            p = com.hotattic.gamedesigner.core.schema.Gates.dropDependents(p, g, now)
+            seeded += g.key
+        }
         // The owner's own first-build scope, and what finishes it, when they already said so.
         val sliceFact = p.activeFacts().map { it.text }.firstOrNull { it.length >= 25 && Regex("(?i)\\b(prototype|first (build|version|playable)|vertical slice|slice|demo)\\b").containsMatchIn(it) }
         if (sliceFact != null && p.decision(Keys.FIRST_SLICE) == null && Fields.get(Keys.FIRST_SLICE)?.isRelevant(Traits(p)) == true) {

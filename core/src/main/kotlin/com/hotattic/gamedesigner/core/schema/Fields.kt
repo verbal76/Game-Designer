@@ -20,6 +20,9 @@ object Keys {
     const val MOVEMENT_CAMERA = "movement_camera"
     const val COMBAT_MODEL = "combat_model"
     const val ENEMIES_BOSSES = "enemies_bosses"
+    const val HAS_COMBAT = "has_combat"
+    const val HAS_ECONOMY = "has_economy"
+    const val HAS_CRAFTING = "has_crafting"
     const val CHARACTERS = "characters_classes"
     const val PROGRESSION = "progression"
     const val ECONOMY = "economy_systems"
@@ -428,6 +431,28 @@ object Fields {
             "Simulation games live or die on their rules and performance budget.",
             92, relevant = { it.has(Tag.BUILDING) || it.has(Tag.SIMULATION) },
             suggest = { Suggestion("Grid-based placement with validity rules, fixed-timestep deterministic simulation, pause/1x/2x/3x speeds, undo for placement, and an explicit per-tick entity budget.", "Deterministic and testable.") }),
+
+        // Gate questions: when a genre only sometimes has a system, ask one short yes/no before any of that system's detail questions.
+        Field(Keys.HAS_COMBAT, Category.GAMEPLAY, FieldKind.SINGLE, "Combat",
+            "Does this game have combat - fighting enemies? Yes or no.",
+            "A yes opens the combat, enemy and boss questions; a no skips them all.",
+            79, relevant = { Gates.needed(it, Tag.COMBAT) },
+            options = { listOf(o("yes", "Yes"), o("no", "No")) },
+            suggest = { t -> Gates.suggest(t, Tag.COMBAT) }),
+
+        Field(Keys.HAS_ECONOMY, Category.GAMEPLAY, FieldKind.SINGLE, "Economy",
+            "Does this game have an economy - currency, shops, trading or resource costs? Yes or no.",
+            "A yes opens the economy questions; a no skips them.",
+            88, relevant = { Gates.needed(it, Tag.ECONOMY) },
+            options = { listOf(o("yes", "Yes"), o("no", "No")) },
+            suggest = { t -> Gates.suggest(t, Tag.ECONOMY) }),
+
+        Field(Keys.HAS_CRAFTING, Category.GAMEPLAY, FieldKind.SINGLE, "Crafting",
+            "Does this game have crafting or gathering resources to make things? Yes or no.",
+            "A yes opens the crafting and survival questions; a no skips them.",
+            89, relevant = { Gates.needed(it, Tag.CRAFTING) },
+            options = { listOf(o("yes", "Yes"), o("no", "No")) },
+            suggest = { t -> Gates.suggest(t, Tag.CRAFTING) }),
 
         Field(Keys.STORY, Category.CONTENT, FieldKind.SINGLE, "Story",
             "How much story does it have?",

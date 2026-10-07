@@ -16,7 +16,11 @@ class Traits(val project: Project) {
     val rejectedTags: Set<Tag> = project.rejected[Dependencies.TAG].orEmpty().mapNotNull { n -> runCatching { Tag.valueOf(n) }.getOrNull() }.toSet()
     val genres: List<Genre> = project.list(Keys.GENRE).filter { !project.isRejected("genre", it) }.map { GenreKnowledge.resolve(it) }.filter { g -> g.tags.none { it in rejectedTags } }
     val genresKnown: Boolean get() = genres.isNotEmpty()
-    val tags: Set<Tag> = genres.flatMap { it.tags }.toSet() - rejectedTags
+    /** Tags the chosen genres usually carry, before the owner says whether this game really has them. */
+    val rawTags: Set<Tag> = genres.flatMap { it.tags }.toSet() - rejectedTags
+    /** The owner's yes/no on a gated system (combat, economy, crafting): null until they have answered. */
+    fun gate(tag: Tag): Boolean? = Gates.byTag[tag]?.let { project.decision(it.key)?.value?.let { v -> v == "yes" } }
+    val tags: Set<Tag> = (rawTags.filter { gate(it) != false } + Tag.entries.filter { gate(it) == true }).toSet()
     fun has(tag: Tag) = tag in tags
     fun perspectiveIsScroller(): Boolean = project.value(Keys.PERSPECTIVE) in setOf("vertical_scroll", "side_view")
     /**

@@ -59,6 +59,7 @@ import com.hotattic.gamedesigner.core.schema.EngineRecommender
 import com.hotattic.gamedesigner.core.schema.Field
 import com.hotattic.gamedesigner.core.schema.FieldKind
 import com.hotattic.gamedesigner.core.schema.Fields
+import com.hotattic.gamedesigner.core.schema.Gates
 import com.hotattic.gamedesigner.core.schema.Keys
 import com.hotattic.gamedesigner.core.schema.Traits
 
@@ -94,6 +95,8 @@ private const val PENDING_REVIEW = "__review__"
 private const val PENDING_MORE_REFS = "__more_refs__"
 private const val PENDING_REF_ASPECTS = "__ref_aspects__"
 private const val PENDING_ISSUE_PREFIX = "__issue:"
+private const val PENDING_FOLLOWUP = "__followup__"
+private const val MAX_FOLLOWUPS = 3
 private val FIELD_ISSUES = setOf("owner_answer_mismatch", "menus_truncated", "rejected_option_present", "upload_without_file")
 /** Settled automatically by the owner-precedence pass at generation, so never raised as a question. */
 private val AUTO_SETTLED_ISSUES = setOf("multi_select_truncated")
@@ -401,6 +404,7 @@ class Director(private val deps: DirectorDeps) {
                     }
                 }
             }
+            pending == PENDING_FOLLOWUP -> { p = ProjectOps.setPending(p, null); absorbInto(null) }
             pending == PENDING_READY -> {
                 if (AnswerParser.isAffirm(text) || "generate" in lower) return generateRequest(p, settings)
                 absorbInto(null)
@@ -426,7 +430,60 @@ class Director(private val deps: DirectorDeps) {
                 }
             }
         }
-        return DirectorTurn(askNext(p, settings), action, note, kind)
+        return DirectorTurn(advance(p, settings), action, note, kind)
+    }
+
+    // ---- Look-ahead ---------------------------------------------------------------------------------------------
+
+    /**
+     * Moves the interview on after an answer. With a model ready, it first reads what the owner has said so far against the questions
+     * about to be asked: a system the design clearly does or does not have is settled up front (shown for correction in the
+     * "here's what I understood" batch), and at most a few short follow-ups are asked when a detail the answers imply is missing.
+     */
+    private suspend fun advance(p0: Project, settings: AppSettings): Project {
+        val (p, followUp) = lookAhead(p0, settings)
+        if (followUp != null) return reply(p, followUp, PENDING_FOLLOWUP)
+        return askNext(p, settings)
+    }
+
+    private suspend fun lookAhead(p0: Project, settings: AppSettings): Pair<Project, String?> {
+        val (provider, _) = readyProvider() ?: return p0 to null
+        val now = deps.clock()
+        val seeded = DesignSeeder.seed(p0, now).first
+        val t = Traits(seeded)
+        val open = Gates.all.filter { g -> seeded.decision(g.key) == null && "look:${g.key}" !in seeded.announcedConflicts && Fields.get(g.key)?.isRelevant(t) == true }
+        val asked = seeded.announcedConflicts.count { it.startsWith("followup:") }
+        val said = (listOf(seeded.originalConcept) + seeded.activeFacts().map { it.text } + seeded.decisions.values.filter { it.provenance?.ownerAuthored == true && it.value.length > 12 }.map { it.value }).filter { it.isNotBlank() }.joinToString("\n")
+        val lastWords = seeded.messages.lastOrNull { it.role == Role.USER }?.text.orEmpty().split(Regex("\\s+")).size
+        val wantFollowUp = asked < MAX_FOLLOWUPS && lastWords >= 6 && InterviewPlanner.next(seeded) is NextStep.Ask
+        if (open.isEmpty() && !wantFollowUp) return p0 to null
+        val upcoming = (CompletenessEngine.compute(seeded).missingRequired.filter { it.key !in seeded.postponed }.sortedBy { it.priority }.take(6)).joinToString("; ") { it.title }
+        val prompt = buildString {
+            append("Owner's design so far:\n").append(said.take(1600)).append("\n\nUpcoming questions: ").append(upcoming.ifBlank { "(none)" }).append("\n\n")
+            if (open.isNotEmpty()) {
+                append("For each system below say whether this design NEEDS it: yes (clearly has it), no (clearly does not), or unsure. Give a short quote from the owner's words as evidence for yes/no.\n")
+                open.forEach { append("- ").append(it.tag.name.lowercase()).append(": ").append(it.noun).append('\n') }
+            }
+            if (wantFollowUp) append("If an important detail is clearly implied by the owner's words but none of the upcoming questions will ask it, give ONE short follow-up question (max 20 words). Otherwise omit it.\n")
+            append("Punctuation and capitalisation never change meaning.\nOutput ONE JSON object only: {\"systems\":{\"combat\":{\"need\":\"yes|no|unsure\",\"evidence\":\"...\"}},\"follow_up\":\"...\"}")
+        }
+        val r = timed { provider.complete(LlmRequest("You check a game design against the questions about to be asked. Never invent facts the owner did not say.", listOf(LlmMessage("user", prompt)), maxTokens = 300, temperature = 0f)) }
+        var p = seeded.copy(announcedConflicts = seeded.announcedConflicts + open.map { "look:${it.key}" })
+        val obj = (r as? LlmResult.Ok)?.text?.let { LlmInterpreter.extractJson(it) } ?: return p to null
+        val systems = obj["systems"] as? kotlinx.serialization.json.JsonObject
+        for (g in open) {
+            val v = systems?.get(g.tag.name.lowercase()) as? kotlinx.serialization.json.JsonObject ?: continue
+            val need = (v["need"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.lowercase()?.trim()
+            val evidence = (v["evidence"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
+            if (need != "yes" && need != "no") continue
+            // An inference must be traceable to the owner's own words.
+            if (evidence.isBlank() || !grounded(evidence, said)) continue
+            p = ProjectOps.setDecision(p, g.key, need, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, "Read from your words: \"${evidence.take(80)}\"")
+        }
+        val fu = (obj["follow_up"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim().orEmpty()
+        val ok = wantFollowUp && fu.length in 8..160 && fu.endsWith("?") && p.messages.none { it.role == Role.DIRECTOR && it.text.trim().equals(fu, true) }
+        if (!ok) return p to null
+        return p.copy(announcedConflicts = p.announcedConflicts + "followup:${asked + 1}") to fu
     }
 
     /** Structured answer from the question card (chips / toggles). No language interpretation is involved. */
@@ -460,13 +517,13 @@ class Director(private val deps: DirectorDeps) {
         var p = ProjectOps.addMessage(project, Role.USER, if (labels.isEmpty()) "None of these" else labels.joinToString(", "), now)
         if (valid.isEmpty()) {
             val r = if (!field.required) ProjectOps.setPending(ProjectOps.defer(p, field.key, now), null) else ProjectOps.postpone(ProjectOps.addMessage(p, Role.DIRECTOR, "No problem, we'll come back to that.", now), field.key, now)
-            return DirectorTurn(askNext(r, settings))
+            return DirectorTurn(advance(r, settings))
         }
         val value = Decision.joinList(if (field.kind == FieldKind.SINGLE) valid.take(1) else valid)
         val res = commitValue(p, settings, field, value, labels.joinToString(", "), now)
         if (res.directReply != null) return DirectorTurn(replyField(res.project, res.directReply, field), res.action, res.modelNote)
         if (res.action != null) return DirectorTurn(uploadPrompt(res.project, "Pick an image from your phone and I'll keep it as the untouched master. Or say \"create one for me\" if you'd rather I generate it.", field), res.action, res.modelNote)
-        return DirectorTurn(askNext(res.project, settings), res.action, res.modelNote)
+        return DirectorTurn(advance(res.project, settings), res.action, res.modelNote)
     }
 
     private val reviewChangePrompt = "Tell me what to change in your own words, or name a part to edit (world, loop, failure, progression, first build, look, sound, completion, must-not-change)."
@@ -554,6 +611,7 @@ class Director(private val deps: DirectorDeps) {
         var note: String? = null
         var kind: InterpreterKind? = null
         if (field.key == Keys.CONCEPT) p = ProjectOps.setOriginalConcept(p, raw)
+        if (value == "no") Gates.byKey[field.key]?.let { p = Gates.dropDependents(p, it, now) }
         if (field.key == Keys.CONCEPT || field.key == Keys.CORE_FANTASY || field.key == Keys.FIVE_MINUTES) {
             val r = absorb(p, settings, raw, null, field, interp)
             p = r.project; note = r.note; kind = r.kind
@@ -636,6 +694,12 @@ class Director(private val deps: DirectorDeps) {
                 FieldResult(p, directReply = answer, modelNote = qnote, kind = kind)
             }
             AnswerIntent.AFFIRM, AnswerIntent.NEGATE, AnswerIntent.UNCLEAR -> {
+                // An open-text question takes whatever the owner wrote: a model's doubt about its intent never throws a clear answer away.
+                val direct = (AnswerParser.parse(field, traits, text) as? Answer.Value)?.takeIf { field.kind == FieldKind.TEXT && text.trim().split(Regex("\\s+")).size >= 2 }
+                if (direct != null) {
+                    val applied = applyStatement(p, text, interp.copy(edits = emptyMap()), field, now).project
+                    return commitValue(applied, settings, field, direct.value, text, now, interp).let { r -> r.copy(modelNote = r.modelNote ?: model, kind = kind) }
+                }
                 // Maybe the message answers other fields implicitly (voice users often volunteer extra detail).
                 val r = absorb(p, settings, text, null)
                 val changed = r.project.decisions != p0.decisions || r.project.rejected != p0.rejected || r.project.facts != p0.facts

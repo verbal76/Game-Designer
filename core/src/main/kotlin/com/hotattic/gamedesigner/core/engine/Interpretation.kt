@@ -136,6 +136,7 @@ object LlmInterpreter {
 
     fun systemPrompt(directorName: String): String = """
 You are the language layer of $directorName, a game-design director. Convert the owner's LATEST message into ONE JSON object. Output the JSON only: no prose, no markdown, no reasoning text.
+Punctuation, capitalisation and exclamation marks never change the meaning of a reply: "Lucky!" means the same as "lucky". If the reply is short or odd but plausibly answers the current question, treat it as an answer (freeform), not unclear.
 Keys (omit any that do not apply):
 "intent": what the owner does with the CURRENT QUESTION: select|delegate|postpone|skip|affirm|negate|question|freeform|unclear
 "selected": option ids chosen from the CURRENT QUESTION (a single-choice question allows at most one)
