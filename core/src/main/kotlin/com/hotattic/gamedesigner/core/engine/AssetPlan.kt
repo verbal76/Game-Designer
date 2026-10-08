@@ -62,12 +62,14 @@ object AssetPlan {
         val out = mutableListOf<AssetNeed>()
         val visualKind = if (is3D) AssetKind.MODELS else AssetKind.SPRITES
         out += AssetNeed("characters", if (is3D) "Character and creature models" else "Character and creature sprites", visualKind,
-            "Player characters/heroes and all enemies and bosses in the content scope, with the animation states the gameplay needs (idle/move/attack/hit/death as relevant).")
+            if (t.has(com.hotattic.gamedesigner.core.schema.Tag.COMBAT)) "Player characters/heroes and all enemies and bosses in the content scope, with the animation states the gameplay needs (idle/move/attack/hit/death as relevant)."
+            else "The player character(s) and any non-combat creatures or props the design names, with the animation states the gameplay needs (idle, move, jump, land, catch, climb as relevant).")
         out += AssetNeed("environment", if (is3D) "Environment models and props" else "Environment tiles, backgrounds and props", if (is3D) AssetKind.MODELS else AssetKind.TILESETS,
             "Everything needed to render the world structure chosen for this game.")
         if (is3D) out += AssetNeed("materials", "Materials and textures", AssetKind.TEXTURES, "Surface materials consistent with the chosen art direction.")
         out += AssetNeed("ui_kit", "UI kit (panels, buttons, bars, icons)", AssetKind.UI_KIT, "All menus, HUD elements, settings, and icon sets referenced by the spec.")
-        out += AssetNeed("vfx", "Visual effects", AssetKind.VFX, "Hit effects, pickups, level-up, death, ambient particles.")
+        out += AssetNeed("vfx", "Visual effects", AssetKind.VFX,
+            if (t.has(com.hotattic.gamedesigner.core.schema.Tag.COMBAT)) "Hit effects, pickups, death, ambient particles." else "Feedback effects for the game's key actions (landing, catching, bouncing, failing and recovering as relevant) and ambient particles.")
         out += AssetNeed("font", "Fonts", AssetKind.FONT, "At least one readable UI font and one display font; must satisfy the license policy.")
         when (t.value(Keys.AUDIO)) {
             "silent" -> Unit

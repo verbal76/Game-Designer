@@ -43,7 +43,8 @@ object SpecVersioning {
         if (requireApproval && project.mode == ProjectMode.NEW_GAME && !ReviewGate.approved(project))
             return Generation(project, ReviewReport(listOf(ReviewFinding(ReviewLevel.ERROR, "review_not_approved", "The owner has not approved the plain-English design review yet."))), notes)
         val rec = Reconciler.revalidate(DerivedDefaults.apply(project, nowMillis), nowMillis); notes += rec.notices
-        val (resolved0, fixes) = ConsistencyReview.resolve(rec.project, nowMillis); notes += fixes
+        val (settled, stale) = com.hotattic.gamedesigner.core.engine.DesignCoherence.reconcile(rec.project, nowMillis); notes += stale
+        val (resolved0, fixes) = ConsistencyReview.resolve(settled, nowMillis); notes += fixes
         // Corrective clean-ups do not make the owner's approval stale.
         val resolved = if (approval != null) resolved0.copy(designApproval = approval.copy(fingerprint = ReviewGate.fingerprint(resolved0))) else resolved0
         val withAssets = resolved.copy(assets = resolved.assets + AssetPlan.resolveMissing(resolved, nowMillis))
@@ -59,7 +60,8 @@ object SpecVersioning {
         // Contradictory conflicts that remain are also blocking.
         val conflictFindings = ConflictEngine.all(withAssets).filter { it.id == "combat_turn_based_vs_real_time" }
             .map { ReviewFinding(ReviewLevel.ERROR, it.id, it.message) }
-        val report = ReviewReport(review.findings + conflictFindings)
+        val coherence = com.hotattic.gamedesigner.core.engine.DesignCoherence.check(withAssets, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to prompt, "ASSETS.md" to assetsMd))
+        val report = ReviewReport(review.findings + conflictFindings + coherence)
         if (!report.clean) return Generation(project, report, notes)
         val readiness = CompletenessEngine.compute(withAssets).percent
         val v = SpecVersion(number, kind, lbl, nowMillis, md, prompt, withAssets.decisions, readiness, audit.summary())

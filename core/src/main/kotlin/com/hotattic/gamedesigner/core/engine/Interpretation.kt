@@ -205,6 +205,7 @@ Example: CURRENT QUESTION options "1. bite_sized=1-5 minutes; 2. short_runs=10-2
         if (gates.isNotEmpty()) appendLine("GATES (does this design have the system? answer yes/no in inferences only if their words make it clear): " + gates.joinToString("; ") { "${it.key}=${it.noun}" })
         val recent = project.messages.filter { it.role != Role.SYSTEM }.takeLast(4)
         if (recent.isNotEmpty()) appendLine("RECENT: " + recent.joinToString(" / ") { "${it.role.name.lowercase()}: ${it.text.take(140).replace('\n', ' ')}" })
+        appendLine("DESIGN LENSES: " + com.hotattic.gamedesigner.core.schema.DesignLenses.guidance(com.hotattic.gamedesigner.core.schema.LensContext(project, field)).replace("\n", " | "))
         appendLine("OWNER'S LATEST MESSAGE: $text")
     }
 

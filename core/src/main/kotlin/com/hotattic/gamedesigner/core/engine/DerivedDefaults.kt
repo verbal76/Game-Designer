@@ -25,6 +25,11 @@ object DerivedDefaults {
                     val s = f.suggest(Traits(next)) ?: continue
                     next = ProjectOps.setDecision(next, f.key, s.value, Provenance.DEFAULT, now, DecisionStatus.CONFIRMED, NOTE)
                 }
+                // A default always tracks the design as it is NOW: if what the owner ruled in or out since changed Bob's own suggestion, re-derive it.
+                existing.prov == Provenance.DEFAULT && existing.status == DecisionStatus.CONFIRMED -> {
+                    val s = f.suggest(Traits(next))
+                    if (s != null && s.value != existing.value) next = ProjectOps.setDecision(next, f.key, s.value, Provenance.DEFAULT, now, DecisionStatus.CONFIRMED, NOTE)
+                }
                 // An inferred-but-unconfirmed value on a derived field is simply accepted as an implementation choice.
                 existing.status == DecisionStatus.PROPOSED && existing.value.isNotBlank() && !existing.ownerAuthored ->
                     next = next.copy(decisions = next.decisions + (f.key to existing.copy(status = DecisionStatus.CONFIRMED, note = existing.note.ifBlank { NOTE })))

@@ -69,7 +69,9 @@ object MasterPromptGenerator {
                 v(Keys.CORE_FANTASY)?.let { "Core fantasy: $it" },
                 if (t.genresKnown) "Genre: ${t.genres.joinToString(" + ") { it.label }}. ${v(Keys.DIMENSION) ?: ""} ${labOwn(Keys.PERSPECTIVE)?.let { "View: $it." } ?: ""}".trim() else null))
 
-            section("PLAYER EXPERIENCE", listOfNotNull(v(Keys.PLAYER_FEELING)?.let { "How it should feel (the owner's words): $it" }, labOwn(Keys.SESSION_STRUCTURE)?.let { "Typical session: $it" }))
+            val dm = com.hotattic.gamedesigner.core.engine.DesignModel.of(project)
+            section("PLAYER EXPERIENCE", listOfNotNull(v(Keys.PLAYER_FEELING)?.let { "How it should feel (the owner's words): $it" },
+                dm.experience.takeIf { it.dynamics.isNotEmpty() }?.let { "Design reading: ${it.dynamics.joinToString("; ")}." }, labOwn(Keys.SESSION_STRUCTURE)?.let { "Typical session: $it" }))
 
             section("PLAYABLE FIRST-BUILD SCOPE", listOfNotNull(
                 (v(Keys.FIRST_SLICE)?.let { it + rec(Keys.FIRST_SLICE) } ?: "Build the smallest polished slice that fully demonstrates the concept."),
@@ -93,13 +95,13 @@ object MasterPromptGenerator {
                     "open_map" -> "One large connected map, traversed continuously."
                     "single_arena" -> "A single arena."
                     "authored_levels" -> "A set of hand-authored levels."
-                    "procedural_stages" -> "Procedurally generated stages."
+                    "procedural_stages" -> "Procedurally generated stages, built inside authored constraints (full list in `CLAUDE.md`, 'Procedural generation constraints'): " + com.hotattic.gamedesigner.core.engine.ProceduralInvariants.derive(project).first.take(4).joinToString(" ") { it.trimEnd('.') + "." }
                     "hub_missions" -> "A hub with missions."
                     else -> lab(Keys.WORLD_STRUCTURE)
                 }))
 
             section("PROGRESSION / FAILURE / COMPLETION", listOfNotNull(
-                if (project.value(Keys.HAS_PROGRESSION) == "no") "Progression: NONE by design. The player never gets stronger: no XP, levels, upgrades, unlocks or power-ups of any kind. The player's own skill and physical progress through the game are the only progression. Do not add any."
+                if (project.value(Keys.HAS_PROGRESSION) == "no") "Progression: NONE by design. The player never gets stronger: no XP, levels, upgrades, unlocks or power-ups of any kind. The player's own skill and physical progress through the game are the only progression. Do not add any. ${dm.masteryNote}"
                 else lab(Keys.PROGRESSION)?.let { "Progression: $it" }, lab(Keys.DIFFICULTY_FAILURE)?.let { "Failure and recovery: $it" },
                 v(Keys.WIN_LOSS)?.let { "Win and loss: $it${rec(Keys.WIN_LOSS)}" }, v(Keys.DONE)?.let { "The first build is complete when: $it${rec(Keys.DONE)}" }))
 

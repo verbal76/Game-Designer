@@ -53,3 +53,7 @@ You are the lead engineer for **Climb up**. Read the repository `CLAUDE.md` firs
 | Asset policy "CC0 / public domain, else original/procedural"; assets as 2D "sprites" | Lost "use the asset packs that I give it"; the packs are 3D |
 | "Implementing only one of the described characters or modes ..." | Triggered by "Either you're able to ... or you're not" |
 | libGDX as engine | A 2D-biased default for a game whose assets are 3D voxel models |
+
+## What the design model must say about this game (asserted by `ClimbUpRegressionTest`)
+
+Combat `ABSENT`; character power progression `ABSENT` (so player mastery is the progression); procedural generation, supplied assets and OTA `PRESENT`; experience = skilled near-miss (not randomness); no unresolved material decision; the export contains "Procedural generation constraints" with the owner's traversal grammar (jumps, ropes, trampolines, moving/swinging/crumbling platforms, ledge catch) and no combat, XP, upgrade or unlock requirement. See `docs/DESIGN_INTELLIGENCE.md`.

@@ -60,12 +60,12 @@ object GenreKnowledge {
             2, setOf(Tag.MOVEMENT, Tag.LEVELS, Tag.FAST_TWITCH, Tag.COMBAT),
             listOf(
                 SystemReq("movement_model", "Movement model", "Run/jump/coyote time/jump buffer constants documented and tunable."),
-                SystemReq("level_set", "Hand-built level set", "Ordered levels with checkpoints, hazards, collectibles and a final goal."),
+                SystemReq("level_set", "Hand-built level set", "Ordered levels with checkpoints, hazards and a final goal."),
                 SystemReq("checkpoint_respawn", "Checkpoints and respawn", "Instant respawn, state restoration rules."),
                 SystemReq("hazards_enemies", "Hazards and enemies", "Catalogue with behavior and damage rules."),
-                SystemReq("level_select_progress", "Level select and progress save", "Unlock order, best times/collectibles persisted."),
+                SystemReq("level_select_progress", "Level select and progress save", "Progress, checkpoints and best results persisted."),
             ),
-            "Traverse hand-designed levels using tight movement, avoid hazards and enemies, collect objectives, and reach the goal to unlock the next level.",
+            "Traverse hand-designed levels using tight movement, overcome the hazards in the way and reach the goal to move on to the next level.",
             listOf("Scripted playthrough of level 1 reaches the goal; every level has reachable start-to-goal path (automated path check)."),
         ),
         Genre(

@@ -474,7 +474,15 @@ object Fields {
             "Story adds writing, UI and content work.",
             95, relevant = { it.has(Tag.STORY) },
             options = { listOf(o("none", "None"), o("light_flavor", "Light flavor text"), o("full_story", "Full story with dialogue")) },
-            suggest = { t -> Suggestion(if (t.hasGenre("narrative_adventure") || t.hasGenre("rpg")) "full_story" else "light_flavor", "Matches the genre's expectations.") }),
+            suggest = { t ->
+                val said = (listOf(t.project.originalConcept) + t.project.activeFacts().map { it.text }).joinToString(". ")
+                val storyWords = Regex("(?i)\\b(story|narrative|plot|dialogue|characters? arc|cutscenes?|lore|quests?)\\b").containsMatchIn(said)
+                when {
+                    t.hasGenre("narrative_adventure") || t.hasGenre("rpg") -> Suggestion("full_story", "Matches what this kind of game needs.")
+                    storyWords -> Suggestion("light_flavor", "You mentioned story elements.")
+                    else -> Suggestion("none", "Nothing you described needs a story, and adding one would dilute the focus.")
+                }
+            }),
 
         Field(Keys.WIN_LOSS, Category.GAMEPLAY, FieldKind.TEXT, "Win and loss",
             "How does the player win, and how do they lose or fail?",
@@ -483,7 +491,7 @@ object Fields {
             suggest = { t ->
                 if (t.continuousWorld && t.twoSides) return@Field Suggestion("Win by completing your side's traversal of the world to its far end; failure respawns at the last checkpoint.", "Fits a continuous world played from either end.")
                 when (primary(t).id) {
-                    "survivors_like" -> Suggestion("Win by surviving until the run timer ends or defeating the final boss; lose when health reaches zero. Results screen banks meta currency.", "Genre standard.")
+                    "survivors_like" -> Suggestion("Win by surviving until the run timer ends or defeating the final boss; lose when health reaches zero. A results screen summarises the run.", "Genre standard.")
                     "action_roguelite" -> Suggestion("Win by defeating the final boss; lose when health reaches zero (run ends, rewards banked).", "Genre standard.")
                     "platformer", "metroidvania" -> Suggestion("Win by reaching the final goal; failure respawns at the last checkpoint.", "Genre standard.")
                     "puzzle" -> Suggestion("Win a level by satisfying its goal condition; there is no hard fail, only restart/undo.", "Genre standard.")
@@ -616,7 +624,7 @@ object Fields {
             "What should the on-screen interface show and how should it look?",
             "UI is the surface the player touches the most.",
             135, relevant = { it.genresKnown },
-            suggest = { t -> Suggestion("Clean readable HUD showing only essential state (${if (t.has(Tag.COMBAT)) "health, XP/progress, active abilities" else "key resources and goals"}), large touch-friendly targets, consistent iconography, and a pause menu reachable at all times.", "Readable and minimal.") }),
+            suggest = { t -> Suggestion("Clean readable HUD showing only essential state (${if (t.has(Tag.COMBAT)) (if (t.project.value(Keys.HAS_PROGRESSION) == "no") "health, active abilities" else "health, XP/progress, active abilities") else "key resources and goals"}), large touch-friendly targets, consistent iconography, and a pause menu reachable at all times.", "Readable and minimal.") }),
 
         Field(Keys.MENUS_SETTINGS, Category.TECHNICAL, FieldKind.MULTI, "Menus and settings",
             "Which menus and settings should exist?",

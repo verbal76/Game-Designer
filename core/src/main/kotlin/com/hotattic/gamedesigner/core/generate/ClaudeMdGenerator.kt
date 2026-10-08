@@ -161,6 +161,7 @@ object ClaudeMdGenerator {
         p("The owner's concept is quoted verbatim in section A1.")
         v(Keys.CORE_FANTASY)?.let { p("**Core fantasy:** $it") }
         v(Keys.PLAYER_FEELING)?.let { p("**Intended player feeling:** $it") }
+        com.hotattic.gamedesigner.core.engine.DesignModel.of(project).experience.takeIf { it.dynamics.isNotEmpty() }?.let { e -> p("**Design reading of that feeling:** ${e.dynamics.joinToString("; ")}. Derive the mechanics from this experience; do not turn the word \"${e.ownerWords.take(40).trim()}\" into a feature.") }
         if (t.genresKnown) p("**Genre:** ${t.genres.joinToString(" + ") { it.label }}. **Dimension:** ${v(Keys.DIMENSION) ?: "n/a"}. ${nd(Keys.PERSPECTIVE)?.let { " **Perspective:** ${label(Keys.PERSPECTIVE, it)}." } ?: ""}")
         if (project.references.isNotEmpty()) {
             h3("Reference games")
@@ -217,6 +218,18 @@ object ClaudeMdGenerator {
         if (systems.isNotEmpty()) {
             h3("Required systems (genre completeness checklist - adapt each item to this game's real design)")
             bullets(systems.map { (g, s) -> "**${s.name}** (${g.label.substringBefore(" (").substringBefore(" /")}): ${s.detail}" })
+        }
+        val dm = com.hotattic.gamedesigner.core.engine.DesignModel.of(project)
+        if (dm.procedural) {
+            val (must, vary) = com.hotattic.gamedesigner.core.engine.ProceduralInvariants.derive(project)
+            h3("Procedural generation constraints (what every generated result must preserve)")
+            p("Procedural does not mean random placement. Derived by Game Designer from the owner's design; the owner can change any of it. Generation happens inside these bounds, and a generator is not successful merely because its outputs differ.")
+            bullets(must)
+            p("What may vary: ${vary.joinToString("; ")}. Validate functionally (automated solver/validator over many seeds) AND by playtest, because a stage can be valid without being good.")
+        }
+        if (dm.playerMasteryIsProgression) {
+            h3("Progression is player mastery")
+            p(dm.masteryNote)
         }
         h3("Cross-cutting systems that must exist")
         bullets(listOfNotNull(

@@ -116,6 +116,24 @@ class ClimbUpRegressionTest {
         assertEquals("Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png", p.branding["studio_splash"]?.originalName)
     }
 
+    @Test fun theDesignModelReadsTheClimbUpInterviewTheWayTheGroundTruthDoes() = runBlocking {
+        val p = replay(director()).project
+        val m = com.hotattic.gamedesigner.core.engine.DesignModel.of(p)
+        assertEquals(com.hotattic.gamedesigner.core.engine.SystemState.ABSENT, m.state(com.hotattic.gamedesigner.core.engine.SystemId.COMBAT))
+        assertEquals(com.hotattic.gamedesigner.core.engine.SystemState.ABSENT, m.state(com.hotattic.gamedesigner.core.engine.SystemId.CHARACTER_POWER))
+        assertTrue(m.playerMasteryIsProgression, "mastery, not power, is the progression")
+        assertEquals(com.hotattic.gamedesigner.core.engine.SystemState.PRESENT, m.state(com.hotattic.gamedesigner.core.engine.SystemId.PROCEDURAL_GENERATION))
+        assertEquals(com.hotattic.gamedesigner.core.engine.SystemState.PRESENT, m.state(com.hotattic.gamedesigner.core.engine.SystemId.SUPPLIED_ASSETS))
+        assertEquals(com.hotattic.gamedesigner.core.engine.SystemState.PRESENT, m.state(com.hotattic.gamedesigner.core.engine.SystemId.OTA_UPDATES))
+        assertTrue(m.experience.skilledNearMiss, "'lucky' + 'skill based' is a skilled near-miss, not randomness")
+        assertTrue(Keys.PROGRESSION !in m.unresolvedMaterialDecisions && m.unresolvedMaterialDecisions.isEmpty(), m.unresolvedMaterialDecisions.toString())
+        val md = spec(p); val mp = prompt(p)
+        assertTrue("Design reading of that feeling" in md && "skilled execution" in md && "success is decided by the player's skill" in md)
+        assertTrue("Procedural generation constraints" in md && "Traversal grammar" in md && "trampoline" in md && "rope" in md)
+        assertTrue("Progression is player mastery" in md && "Design reading" in mp)
+        assertTrue(com.hotattic.gamedesigner.core.engine.DesignCoherence.check(p, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to mp, "ASSETS.md" to ExportPackage.assetsMarkdown(p))).none { it.level == com.hotattic.gamedesigner.core.engine.ReviewLevel.ERROR })
+    }
+
     @Test fun theExportedPackageContainsNoContradictoryOrInventedRequirements() = runBlocking {
         val p = replay(director()).project
         val md = spec(p); val mp = prompt(p); val assets = ExportPackage.assetsMarkdown(p)

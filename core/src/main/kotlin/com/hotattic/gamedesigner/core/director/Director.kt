@@ -429,7 +429,20 @@ class Director(private val deps: DirectorDeps) {
                     }
                 }
             }
-            pending == PENDING_FOLLOWUP -> { p = ProjectOps.setPending(p, null); absorbInto(null) }
+            pending == PENDING_FOLLOWUP -> {
+                p = ProjectOps.setPending(p, null)
+                // The answer to the luck question refines the feeling in the owner's own terms instead of being left as a loose fact.
+                if ("followup:luck" in p.announcedConflicts && "luck:resolved" !in p.announcedConflicts && p.decision(Keys.PLAYER_FEELING) != null) {
+                    val skill = Regex("(?i)\\b(skill|barely|near|pull|pulling|made it|execution|timing|precision)\\b").containsMatchIn(text)
+                    val random = Regex("(?i)\\b(random|randomness|chance|rng|dice|loot|drops?)\\b").containsMatchIn(text)
+                    val meaning = when { skill && !random -> "the feeling of barely pulling something off through skill, not random luck"; random && !skill -> "real randomness that can help the player"; else -> null }
+                    if (meaning != null) {
+                        val base = p.value(Keys.PLAYER_FEELING).orEmpty().trimEnd('!', '.', ' ')
+                        p = ProjectOps.setDecision(p, Keys.PLAYER_FEELING, "$base - meaning: $meaning", Provenance.OWNER_EXPLICIT, now, raw = text.take(200)).copy(announcedConflicts = p.announcedConflicts + "luck:resolved")
+                    }
+                }
+                absorbInto(null)
+            }
             pending == PENDING_READY -> {
                 if (AnswerParser.isAffirm(text) || "generate" in lower) return generateRequest(p, settings)
                 absorbInto(null)
@@ -445,6 +458,11 @@ class Director(private val deps: DirectorDeps) {
                     ahead = r.interp
                     action = r.action
                     if (r.directReply != null) return DirectorTurn(replyField(p, r.directReply, field), action, note, kind)
+                    // An emotion word whose meaning would change the mechanics gets ONE clarification ("lucky": real randomness, or a skilled near-miss?).
+                    if (field.key == Keys.PLAYER_FEELING && "followup:luck" !in p.announcedConflicts && p.announcedConflicts.count { it.startsWith("followup:") } < MAX_FOLLOWUPS &&
+                        com.hotattic.gamedesigner.core.engine.DesignModel.of(p).experience.luck == com.hotattic.gamedesigner.core.engine.LuckMeaning.AMBIGUOUS)
+                        return DirectorTurn(reply(p.copy(announcedConflicts = p.announcedConflicts + "followup:luck" + "followup:${p.announcedConflicts.count { it.startsWith("followup:") } + 1}"),
+                            "When you say lucky, do you mean real randomness helping the player, or the feeling of barely pulling something off through skill?", PENDING_FOLLOWUP, listOf(QuickReply("Barely pulling it off", "the feeling of barely pulling something off through skill"), QuickReply("Real randomness", "real randomness that can help the player"))), null, note, kind)
                     // Several inspirations are normal: offer to add more instead of silently moving on after one.
                     if (field.key == Keys.REFERENCES && p.references.isNotEmpty() && p.value(Keys.REFERENCES) != "none" && action == null)
                         return DirectorTurn(moreRefsPrompt(p), null, note, kind)
@@ -754,11 +772,18 @@ class Director(private val deps: DirectorDeps) {
         val design = (listOf(p.originalConcept) + p.activeFacts().map { it.text }).filter { it.isNotBlank() }.joinToString(" | ").take(1200)
         val prompt = "Game design so far: $design\nDecided: " + p.decisions.filterValues { it.value.isNotBlank() }.entries.take(25).joinToString("; ") { "${it.key}=${it.value.value.take(30)}" } +
             "\nQuestion: ${field.prompt}" + (if (opts.isNotEmpty()) "\nOptions: " + opts.joinToString("; ") { "${it.id}=${it.label}" } else "") +
+            "\nDesign lenses: " + com.hotattic.gamedesigner.core.schema.DesignLenses.guidance(com.hotattic.gamedesigner.core.schema.LensContext(p, field, com.hotattic.gamedesigner.core.schema.LensPurpose.CHOOSE)).replace("\n", " | ") +
+            "\nIf this game does not need what the question asks about, the best answer is \"none\"." +
             "\nChoose what best fits THIS game and say why in one short sentence. Output JSON only: {\"value\":\"${if (opts.isNotEmpty()) "option id" else "one or two sentences"}\",\"why\":\"...\"}"
         val r = timed { provider.complete(LlmRequest("You are a game designer choosing for the owner. Fit the whole design; never contradict what they said.", listOf(LlmMessage("user", prompt)), maxTokens = 260, temperature = 0f)) }
         val obj = (r as? LlmResult.Ok)?.text?.let { LlmInterpreter.extractJson(it) } ?: return null
         var value = (obj["value"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim().orEmpty()
         val why = (obj["why"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim().orEmpty().ifBlank { "It fits the design so far." }
+        if (value.equals("none", true) && opts.none { it.id == "none" }) {
+            // Omission is a valid designer choice: the system is intentionally absent from this game.
+            if (field.required) return null
+            return ProjectOps.defer(p, field.key, now, why) to com.hotattic.gamedesigner.core.schema.Suggestion("none", why)
+        }
         if (field.kind.isSelect) {
             val ids = opts.map { it.id }.toSet()
             val kept = value.split('|', ',').map { it.trim() }.filter { it in ids }.distinct().let { if (field.kind == FieldKind.SINGLE) it.take(1) else it }
