@@ -8,6 +8,10 @@ These are curated working notes derived from source papers supplied by the owner
 3. `03-rules-of-play-design-lenses.md`
 4. `04-procedural-content-constraint-design.md`
 5. `05-ai-human-collaborative-design.md`
+6. `06-mda-experience-driven-design.md`
+7. `07-player-motivation-and-skill-development.md`
+8. `08-genre-taxonomy-and-benchmarking.md`
+9. `09-pattern-based-procedural-generation.md`
 
 ## How Bob should use these
 - Treat the owner's stated experience and intent as ground truth.
