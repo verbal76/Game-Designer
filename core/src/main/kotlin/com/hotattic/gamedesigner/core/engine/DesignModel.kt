@@ -115,7 +115,7 @@ class DesignModel private constructor(val project: Project) {
             SystemId.NARRATIVE to when (dec(Keys.STORY)?.value) { null -> if (t.has(Tag.STORY)) SystemState.UNKNOWN else SystemState.NOT_APPLICABLE; "none" -> SystemState.ABSENT; else -> SystemState.PRESENT },
             SystemId.MULTIPLAYER to if (dec(Keys.NETWORK_POLICY)?.value == "fully_offline" || dec(Keys.NETWORK_POLICY) == null) SystemState.ABSENT else SystemState.UNKNOWN,
             SystemId.PROCEDURAL_GENERATION to when (dec(Keys.WORLD_STRUCTURE)?.value) { null -> SystemState.UNKNOWN; "procedural_stages" -> SystemState.PRESENT; else -> SystemState.ABSENT },
-            SystemId.OTA_UPDATES to when (dec(Keys.OTA_UPDATES)?.value) { null -> SystemState.UNKNOWN; "none" -> SystemState.ABSENT; else -> SystemState.PRESENT },
+            SystemId.OTA_UPDATES to when (dec(Keys.OTA_UPDATES)?.value) { null -> if (!t.platformsKnown || !t.genresKnown || Fields.get(Keys.OTA_UPDATES)?.isRelevant(t) == true) SystemState.UNKNOWN else SystemState.NOT_APPLICABLE; "none" -> SystemState.ABSENT; else -> SystemState.PRESENT },
             SystemId.SUPPLIED_ASSETS to if (dec(Keys.ASSET_POLICY)?.value?.let { AssetStrategy.of(it).usesSupplied } == true) SystemState.PRESENT else if (dec(Keys.ASSET_POLICY) == null) SystemState.UNKNOWN else SystemState.ABSENT,
         )
     }

@@ -34,8 +34,14 @@ object DesignCoherence {
                 }
             }
         }
+        if (!PlatformPolicy.androidSelected(p) && p.decision(Keys.ANDROID_TARGET_API) != null) {
+            p = p.copy(decisions = p.decisions - Keys.ANDROID_TARGET_API, updatedAt = now)
+            notes += "Dropped the Android target policy: Android is no longer a target platform."
+        }
         return p to notes
     }
+
+    private val foreignOta = Regex("(?i)\\b(?:expo )?eas update\\b|\\bcodepush\\b|\\bcode push\\b")
 
     private val negation = Regex("(?i)\\b(no|never|none|not|without|nothing|isn'?t|doesn'?t|don'?t|do not|absent|ruled out|rules out|neither|nor)\\b")
 
@@ -78,6 +84,21 @@ object DesignCoherence {
             if (name != "ASSETS.md" && name != "CLAUDE.md" && name != "MASTER_PROMPT.md") continue
             if (!Regex("(?i)asset packs").containsMatchIn(text)) out += ReviewFinding(ReviewLevel.ERROR, "supplied_assets_lost", "[$name] The owner supplies asset packs but this document does not tell the builder to use them first.", name)
         }
+
+        // Hot Attic Games platform policy: Android Target API 36, and the OTA decision with Mote as its reference.
+        val android = PlatformPolicy.androidSelected(p)
+        val ota = PlatformPolicy.otaState(p)
+        for (name in listOf("CLAUDE.md", "MASTER_PROMPT.md")) {
+            val text = docs[name] ?: continue
+            if (android && "API ${PlatformPolicy.ANDROID_TARGET_API}" !in text) out += ReviewFinding(ReviewLevel.ERROR, "android_api_policy_missing", "[$name] Android is a target but the document does not require Target API ${PlatformPolicy.ANDROID_TARGET_API}.", name)
+            if (ota == SystemState.PRESENT && PlatformPolicy.MOTE !in text) out += ReviewFinding(ReviewLevel.ERROR, "mote_ota_missing", "[$name] OTA is wanted but the document does not name the ${PlatformPolicy.MOTE} reference architecture.", name)
+        }
+        for ((name, text) in docs) {
+            if (!android) text.lines().firstOrNull { "API ${PlatformPolicy.ANDROID_TARGET_API}" in it }?.let { out += ReviewFinding(ReviewLevel.ERROR, "android_policy_leak", "[$name] Android requirements appear but Android is not a target platform.", it.trim().take(160)) }
+            if (ota != SystemState.PRESENT) text.lines().firstOrNull { Regex("(?i)\\bmote\\b").containsMatchIn(it) && !negation.containsMatchIn(it) }?.let { out += ReviewFinding(ReviewLevel.ERROR, "ota_infrastructure_imposed", "[$name] OTA infrastructure is required but the OTA decision is ${ota.name.lowercase()}.", it.trim().take(160)) }
+            text.lines().firstOrNull { foreignOta.containsMatchIn(it) && !negation.containsMatchIn(it) }?.let { out += ReviewFinding(ReviewLevel.ERROR, "foreign_ota_default", "[$name] names a hosted OTA product as a default; Hot Attic Games OTA is ${PlatformPolicy.MOTE}.", it.trim().take(160)) }
+        }
+        if (PlatformPolicy.otaUnresolved(p)) out += ReviewFinding(ReviewLevel.ERROR, "ota_unresolved", "Whether this project needs an over-the-air update path has not been decided.")
 
         // Asset strategy: the exports must carry the strategy the design state holds, not a generic paragraph that reorders it.
         val strategy = AssetStrategy.of(p.value(Keys.ASSET_POLICY))

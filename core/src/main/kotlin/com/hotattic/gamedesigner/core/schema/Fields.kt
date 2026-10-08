@@ -25,6 +25,7 @@ object Keys {
     const val HAS_CRAFTING = "has_crafting"
     const val HAS_PROGRESSION = "has_progression"
     const val OTA_SCOPE = "ota_scope"
+    const val ANDROID_TARGET_API = "android_target_api"
     const val CHARACTERS = "characters_classes"
     const val PROGRESSION = "progression"
     const val ECONOMY = "economy_systems"
@@ -104,7 +105,7 @@ object Tiers {
         Keys.PERSPECTIVE, Keys.REFERENCE_ASPECTS, Keys.SESSION_STRUCTURE, Keys.SAVE_SYSTEM, Keys.TUTORIAL, Keys.INPUT_METHODS, Keys.TOUCH_SCHEME,
         Keys.INPUT_REMAP, Keys.VFX, Keys.AUDIO, Keys.HUD_UI, Keys.MENUS_SETTINGS, Keys.ACCESSIBILITY, Keys.PERFORMANCE, Keys.ENGINE,
         Keys.CORE_FANTASY, Keys.ORIENTATION, Keys.NETWORK_POLICY, Keys.CI_BUILD, Keys.TESTING, Keys.SCOPE_CHOICE, Keys.PACKAGE_ID, Keys.VERSION_STRATEGY, Keys.STORE_PLAN,
-        Keys.MONETIZATION, Keys.PRIVACY, Keys.SIGNING, Keys.ENEMIES_BOSSES,
+        Keys.MONETIZATION, Keys.PRIVACY, Keys.SIGNING, Keys.ENEMIES_BOSSES, Keys.ANDROID_TARGET_API,
     )
     val forceAsk = setOf(Keys.PLAYER_FEELING, Keys.FIRST_SLICE, Keys.MUST_NOT_CHANGE)
     val forceOptional = setOf(Keys.REFERENCES, Keys.FIVE_MINUTES)
@@ -708,24 +709,27 @@ object Fields {
                 o("online_required", "Requires internet")) },
             suggest = { Suggestion("fully_offline", "No servers, no recurring cost, no privacy overhead.") }),
 
+        // Hot Attic Games platform policy: Android projects always target API 36 (derived, never asked, rendered as a requirement, not a default).
+        Field(Keys.ANDROID_TARGET_API, Category.TECHNICAL, FieldKind.TEXT, "Android target API",
+            "Android Target API (Hot Attic Games policy).",
+            "Every Hot Attic Games Android project targets API 36.",
+            149, relevant = { Platforms.ANDROID in it.platforms },
+            suggest = { Suggestion("36", "Hot Attic Games platform policy: Android Target API 36.") }),
+
         Field(Keys.OTA_UPDATES, Category.TECHNICAL, FieldKind.SINGLE, "Over-the-air updates",
-            "Do you want your game to be able to update itself over the air, without people reinstalling? If yes, I'll use the least intrusive way: quiet background checks, applied the next time the game starts.",
-            "An update pipeline lets you fix balance, content and bugs after release. The least intrusive version only downloads data (levels, tuning, text, art), never code, so it needs no extra permissions, accounts or prompts and cannot break store rules.",
+            "Does this project need an over-the-air update path - a way to update the game on players' devices without a new install? If yes, I'll use Hot Attic Games' Mote OTA architecture.",
+            "An update path lets you fix balance, content and bugs after release without a reinstall. Mote delivers signed, verified, staged updates with rollback, and only for changes that can safely ship that way; native or runtime changes still need a new build.",
             156, relevant = { it.genresKnown && it.platformsKnown && it.platforms.any { p -> p != "web" } },
             options = { listOf(
-                o("none", "No - updates come as a normal new install", "Simplest. Nothing extra to build or host."),
-                o("content_ota", "Yes - over-the-air updates (least intrusive)", "Signed content and tuning updates, checked quietly, applied on next launch, automatic rollback.")) },
+                o("none", "No - updates ship as a normal new install", "Simplest. Nothing extra to build or host."),
+                o("content_ota", "Yes - over-the-air updates (Mote architecture)", "Hot Attic Games' reference OTA: signed, staged, compatibility-checked, with rollback; native changes still need a new build.")) },
             suggest = { Suggestion("none", "Skip it unless you plan to update the game often after release; it can be added later.") }),
 
-        // The one owner-level decision left once updates are wanted: what may change. How, when and rollback are engineering defaults.
+        // Superseded by the Mote architecture, which decides what can be delivered over the air. Kept so older projects still load.
         Field(Keys.OTA_SCOPE, Category.TECHNICAL, FieldKind.SINGLE, "What updates may change",
-            "Since you want over-the-air updates: should they only change content and tuning (levels, generator settings, text, art, audio), or game logic too?",
-            "Content-only updates are safe and store-friendly. Updating game logic means shipping scripts the game runs, which is only worth it if you expect to change how the game plays after release.",
-            157, relevant = { it.genresKnown && it.value(Keys.OTA_UPDATES) == "content_ota" },
-            options = { listOf(
-                o("content_only", "Content and tuning only", "Recommended: data updates only, never code."),
-                o("content_and_logic", "Content, tuning and game logic", "Sandboxed scripted rules can change too; more to build and test.")) },
-            suggest = { Suggestion("content_only", "Safest and enough for balance, levels and polish; logic updates can be added later.") }),
+            "What may updates change?", "Superseded: Mote classifies OTA-safe versus native changes.",
+            157, relevant = { false },
+            options = { listOf(o("content_only", "Content and tuning only"), o("content_and_logic", "Content, tuning and game logic")) }),
 
         Field(Keys.CI_BUILD, Category.TECHNICAL, FieldKind.SINGLE, "Build pipeline",
             "How should the installable build get produced?",

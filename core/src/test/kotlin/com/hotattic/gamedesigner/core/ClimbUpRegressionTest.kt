@@ -42,8 +42,7 @@ class ClimbUpRegressionTest {
         "difficulty_failure" to "Checkpoints and quick retry",
         "first_slice" to "About 20 minutes of climbing gameplay with multiple obstacles of various kinds in combinations. It's a climbing game that's vaguely in a spiral where the camera is anchored on the player and the tower rotates to meet the camera angle and it should use the asset packs that I give it along with the master prompt. And if it has to create animations for the player than it does. It should also have a part where the gap for the jump is just a little bit too big and it can grab on with its fingerprints and pull itself up and it should have on-screen controls and it's a 2.5d so all the asset packs are going to be 3D",
         "art_direction" to "Voxel-look 2.5D",
-        "ota_updates" to "Yes - over-the-air updates (least intrusive)",
-        "ota_scope" to "Content and tuning only",
+        "ota_updates" to "Yes - over-the-air updates (Mote architecture)",
         "asset_policy" to "CC0 / public domain, else original/procedural",
         "branding_icon" to "Create an original one for me",
         "branding_studio_splash" to "Upload my own",
@@ -113,7 +112,7 @@ class ClimbUpRegressionTest {
         val st = com.hotattic.gamedesigner.core.engine.AssetStrategy.of(p.value(Keys.ASSET_POLICY))
         assertEquals(com.hotattic.gamedesigner.core.engine.AssetSourceKind.SUPPLIED, st.order.first()); assertTrue(st.usesSupplied)
         assertFalse(Keys.ASSET_POLICY in run.asked, "already answered by the owner's own words")
-        assertEquals("content_ota", p.value(Keys.OTA_UPDATES)); assertEquals("content_only", p.value(Keys.OTA_SCOPE))
+        assertEquals("content_ota", p.value(Keys.OTA_UPDATES)); assertFalse(Keys.OTA_SCOPE in run.asked, "Mote decides what is OTA-safe; no scope question")
         // studio logo kept
         assertEquals("Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png", p.branding["studio_splash"]?.originalName)
     }
@@ -158,7 +157,7 @@ class ClimbUpRegressionTest {
         for (stale in listOf("Permanent unlocks", "meta_unlocks", "Enemy types", "Bosses:", "Power-ups / abilities", "Hand-built level set", "Level select", "Earn at least one progression", "Fight every enemy",
             "Typical session: 1-5", "View: Side view", "Perspective:** Side view", "Implementing only one of the described characters", "Meta unlocks", "Hazards and enemies", "sprites"))
             assertFalse(stale.lowercase() in all.lowercase(), "export must not contain \"$stale\": " + all.lines().filter { stale.lowercase() in it.lowercase() }.joinToString(" // ") { it.take(200) })
-        for (needed in listOf("NONE by design", "asset packs", "Procedural stage generator", "camera", "Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png", "skill based", "pull itself up", "Content and tuning"))
+        for (needed in listOf("NONE by design", "asset packs", "Procedural stage generator", "camera", "Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png", "skill based", "pull itself up", "Mote", "API 36"))
             assertTrue(needed.lowercase() in all.lowercase(), "export must contain \"$needed\"")
         assertTrue("Owner-supplied asset packs" in assets)
         assertTrue("3D" in mp, "supplied packs are described as 3D assets in the prompt")
@@ -189,7 +188,7 @@ class ClimbUpRegressionTest {
         assertEquals("none", run.project.value(Keys.OTA_UPDATES))
         assertFalse(Keys.OTA_SCOPE in run.asked)
         assertNull(run.project.decision(Keys.OTA_SCOPE))
-        assertFalse("over-the-air" in prompt(run.project).lowercase())
+        assertFalse("over-the-air" in prompt(run.project).lowercase() || "Mote" in prompt(run.project))
     }
 
     @Test fun changingYourMindAboutPowerProgressionUpdatesTheDesignAndTheExport() = runBlocking {

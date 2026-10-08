@@ -32,7 +32,9 @@ You are the lead engineer for **Climb up**. Read the repository `CLAUDE.md` firs
 
 **Branding.** Preserve the owner's `Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png` untouched as the studio splash master (derive sizes from it). Create an original game icon and an original game splash. Title: **Climb up**; package id `com.hotatticgames.climbup` is a Bob default, not an owner requirement.
 
-**Over-the-air updates.** Required, least intrusive: quiet background check, applied on the next launch only, signed, automatic rollback to bundled content. The owner-level decision is what updates may change: content and tuning only (the recommended answer) unless they choose to include sandboxed game logic. How, when and rollback are engineering defaults.
+**Over-the-air updates.** Required (owner decision: yes). Under the Hot Attic Games platform policy this selects the Mote OTA architecture as the reference (see `docs/PLATFORM_POLICY.md`); the builder follows the actual Mote implementation where reachable, native/runtime changes still need a new native build, and nothing is published without the owner's authorization.
+
+**Android.** Android is a target, so Target API 36 is required with a compatible toolchain set (standing policy; never an interview question).
 
 **Must not change.** Do not reinterpret where the camera focus is; how the terrain rotates to match the camera focus; and that this is purely a climbing game with environmental obstacles.
 

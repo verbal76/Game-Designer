@@ -64,6 +64,8 @@ object MasterPromptGenerator {
                 "FIRST ACTION: read the repository-root `CLAUDE.md` in full. It is the authoritative specification and Part A (the owner's requirements, corrections and must-not-change constraints) overrides everything else. If it is missing, tell the owner it must be added at the repository root before you proceed.",
                 "Deliverable: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "the target platform" }} build, source, assets, README with exact install/launch steps and controls, and `docs/VERIFICATION.md` (what you actually exercised, what you could not, known issues)."))
 
+            section("PLATFORM POLICY (Hot Attic Games standing rules; binding for this project)", com.hotattic.gamedesigner.core.engine.PlatformPolicy.promptLines(project))
+
             val conceptLines = MetaConversation.designSentences(project.originalConcept.ifBlank { project.value(Keys.CONCEPT).orEmpty() }, 8).take(6)
             section("CREATIVE TARGET", listOfNotNull(
                 conceptLines.takeIf { it.isNotEmpty() }?.let { "The owner's concept, in their words: \"${it.joinToString(" ")}\"" },
@@ -118,7 +120,7 @@ object MasterPromptGenerator {
                 "Platforms: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not set" }}.",
                 lab(Keys.INPUT_METHODS)?.let { "Input: $it. Map the game's semantic actions to these inputs yourself; the owner did not specify every button." },
                 lab(Keys.ORIENTATION)?.let { "Orientation: $it" },
-                if (v(Keys.OTA_UPDATES) == "content_ota") "Over-the-air updates were requested: implement the least intrusive design in `CLAUDE.md` (signed updates, quiet check, applied on next launch, automatic rollback). Updates may change: ${if (v(Keys.OTA_SCOPE) == "content_and_logic") "content, tuning and sandboxed game-logic scripts (the owner chose this; never download native code)" else "content and tuning data only - do not download code"}." else null))
+            ))
 
             val ups = project.branding.values.filter { it.mode == BrandingMode.UPLOADED }
             section("SUPPLIED ASSETS / ASSET POLICY", listOfNotNull(

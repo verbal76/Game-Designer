@@ -253,23 +253,23 @@ class OtaQuestionTest {
         return if (choice == null) p else d.submitSelection(p, settings, Keys.OTA_UPDATES, listOf(choice)).project
     }
 
-    @Test fun bobAsksAndOffersTheLeastIntrusiveOption() = runBlocking {
+    @Test fun bobAsksAndOffersTheMoteOption() = runBlocking {
         val p = designed(director(), null)
         val q = p.messages.last().question!!
         assertEquals(Keys.OTA_UPDATES, q.fieldKey)
         assertTrue(q.options.map { it.id }.containsAll(listOf("none", "content_ota")))
-        assertTrue(p.messages.last().text.contains("least intrusive", true))
+        assertTrue(p.messages.last().text.contains("Mote OTA architecture", true))
     }
 
-    @Test fun yesProducesTheLeastIntrusiveSpecAndNoDoesNot() = runBlocking {
+    @Test fun yesProducesTheMoteSpecAndNoDoesNot() = runBlocking {
         val d = director()
         val yes = designed(d, "content_ota")
         val md = com.hotattic.gamedesigner.core.generate.ClaudeMdGenerator.generate(yes, 1, "Initial", "2026-10-06T00:00:00Z")
-        assertTrue("Over-the-air updates" in md && "next cold start" in md && "Never download or execute code" in md)
-        assertTrue(com.hotattic.gamedesigner.core.generate.VerificationPlan.steps(yes).any { it.contains("update pipeline") })
+        assertTrue("Over-the-air updates" in md && "Hot Attic Games Mote OTA implementation" in md && "native shell/runtime boundary" in md)
+        assertTrue(com.hotattic.gamedesigner.core.generate.VerificationPlan.steps(yes).any { it.contains("update pipeline") && it.contains("Mote") })
         val no = designed(d, "none")
         val md2 = com.hotattic.gamedesigner.core.generate.ClaudeMdGenerator.generate(no, 1, "Initial", "2026-10-06T00:00:00Z")
-        assertTrue("next cold start" !in md2)
+        assertTrue("Mote" !in md2 && "native shell/runtime boundary" !in md2)
     }
 
     @Test fun notAskedForWebOnlyGames() = runBlocking {

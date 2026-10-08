@@ -1,5 +1,7 @@
 package com.hotattic.gamedesigner.core.generate
 
+import com.hotattic.gamedesigner.core.engine.PlatformPolicy
+import com.hotattic.gamedesigner.core.engine.SystemState
 import com.hotattic.gamedesigner.core.model.Project
 import com.hotattic.gamedesigner.core.schema.Keys
 import com.hotattic.gamedesigner.core.schema.Platforms
@@ -37,7 +39,8 @@ object VerificationPlan {
         if (p.value(Keys.DIFFICULTY_FAILURE) != "no_fail") out += "Fail on purpose: confirm the failure-and-recovery behaviour (${com.hotattic.gamedesigner.core.generate.PlainLabels.of(p, Keys.DIFFICULTY_FAILURE) ?: "defined recovery"}) works, restores a correct state and cannot soft-lock."
         if (p.value(Keys.PROGRESSION) != null && p.value(Keys.HAS_PROGRESSION) != "no") out += "Earn at least one progression step and confirm its effect is felt in play."
         if (p.value(Keys.SAVE_SYSTEM).let { it != null && it != "none" } || t.isMobile) out += "Pause and resume (and on a phone, background and return); if saving exists, save, kill the app, relaunch and load."
-        if (p.value(Keys.OTA_UPDATES) == "content_ota") out += "Exercise the update pipeline: serve a valid update and confirm it applies on the NEXT launch only; serve a tampered and a corrupt one and confirm both are rejected with the game still starting on bundled content; confirm the game starts and plays with no network."
+        if (PlatformPolicy.androidSelected(p)) out += "Confirm the built Android artifact targets API ${PlatformPolicy.ANDROID_TARGET_API} (compileSdk and targetSdk ${PlatformPolicy.ANDROID_TARGET_API}) and record the compatible toolchain set you chose."
+        if (PlatformPolicy.otaState(p) == SystemState.PRESENT) out += "Exercise the Mote-style update pipeline: a valid update is verified, staged and applied only after a safe restart; an incompatible-fingerprint, tampered or corrupt update is rejected with the app still starting on its current build; rollback works; a broken update cannot loop; the app starts and plays offline."
         if (p.value(Keys.HAS_PROGRESSION) == "no") out += "Confirm there is no player power progression anywhere: nothing the player earns makes later climbs mechanically easier."
         if (p.value(Keys.ASSET_POLICY)?.let { com.hotattic.gamedesigner.core.engine.AssetStrategy.of(it).usesSupplied } == true) out += "Confirm the owner-supplied asset packs are actually used in the build (list which pack feeds which asset need in ASSETS.md) and nothing supplied was silently replaced."
         out += "Reach the completion state defined for the first build, then restart cleanly."

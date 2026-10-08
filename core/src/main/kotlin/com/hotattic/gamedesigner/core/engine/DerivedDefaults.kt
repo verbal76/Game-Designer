@@ -41,6 +41,6 @@ object DerivedDefaults {
     /** Derived fields still at their default: the ones "refine" can offer. */
     fun refinable(p: Project): List<com.hotattic.gamedesigner.core.schema.Field> {
         val t = Traits(p)
-        return Fields.all.filter { it.derived && it.isRelevant(t) && p.decision(it.key)?.let { d -> !d.ownerAuthored && d.status != DecisionStatus.DEFERRED } != false }.sortedBy { it.priority }
+        return Fields.all.filter { it.derived && it.key != com.hotattic.gamedesigner.core.schema.Keys.ANDROID_TARGET_API && it.isRelevant(t) && p.decision(it.key)?.let { d -> !d.ownerAuthored && d.status != DecisionStatus.DEFERRED } != false }.sortedBy { it.priority }
     }
 }

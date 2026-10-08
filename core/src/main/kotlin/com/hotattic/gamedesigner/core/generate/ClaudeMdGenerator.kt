@@ -6,6 +6,8 @@ import com.hotattic.gamedesigner.core.engine.AuditReport
 import com.hotattic.gamedesigner.core.engine.ConflictEngine
 import com.hotattic.gamedesigner.core.engine.AssetStrategy
 import com.hotattic.gamedesigner.core.engine.BuildObjective
+import com.hotattic.gamedesigner.core.engine.PlatformPolicy
+import com.hotattic.gamedesigner.core.engine.SystemState
 import com.hotattic.gamedesigner.core.engine.ConsistencyReview
 import com.hotattic.gamedesigner.core.engine.MetaConversation
 import com.hotattic.gamedesigner.core.engine.ProjectObjective
@@ -72,6 +74,11 @@ object ClaudeMdGenerator {
 
         // PART A / B: who said what.
         sb.append("# PART A - OWNER REQUIREMENTS (authoritative: implement exactly; nothing in Part B or C may contradict this)\n\n")
+        val platformPolicy = platformPolicyBlock(project)
+        if (platformPolicy.isNotEmpty()) {
+            h2("A0. Hot Attic Games platform policy (standing rules for every project; they apply here without further discussion)")
+            platformPolicy.forEach { (title, lines) -> if (title.isNotBlank()) p(title); bullets(lines) }
+        }
         h2("A1. Owner vision - the original concept, in their own words")
         val concept = project.originalConcept.ifBlank { project.value(Keys.CONCEPT).orEmpty() }
         sb.append(ConsistencyReview.VERBATIM_OPEN).append('\n')
@@ -148,7 +155,7 @@ object ClaudeMdGenerator {
         val ownerCamera = project.decision(Keys.MOVEMENT_CAMERA)?.ownerAuthored == true
         val ownerSlice = project.decision(Keys.FIRST_SLICE)?.ownerAuthored == true
         val derivedDefaults = project.decisions.filter { (k, d) -> d.prov == Provenance.DEFAULT && d.value.isNotBlank() && active(k) != null &&
-            !(k == Keys.PERSPECTIVE && ownerCamera) && !(k == Keys.SESSION_STRUCTURE && ownerSlice) }
+            !(k == Keys.PERSPECTIVE && ownerCamera) && !(k == Keys.SESSION_STRUCTURE && ownerSlice) && k != Keys.ANDROID_TARGET_API }
         if (derivedDefaults.isNotEmpty()) {
             h3("Engineering decisions Bob made so the owner did not have to (change any of them for a good reason)")
             bullets(derivedDefaults.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" })
@@ -333,22 +340,12 @@ object ClaudeMdGenerator {
             "Target platforms: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not specified" }}",
             v(Keys.PERFORMANCE)?.let { "Performance target: ${label(Keys.PERFORMANCE, it)}" },
             v(Keys.MIN_HARDWARE)?.let { "Minimum hardware: $it" },
-            v(Keys.NETWORK_POLICY)?.let { "Network policy: ${label(Keys.NETWORK_POLICY, it)}. ${if (it == "fully_offline" && v(Keys.OTA_UPDATES) == "content_ota") "Apart from the signed update check described below, the game makes no network calls and works fully offline." else if (it == "fully_offline") "The build must request no INTERNET permission and make no network calls." else "Network features degrade gracefully when offline."}" },
+            v(Keys.NETWORK_POLICY)?.let { "Network policy: ${label(Keys.NETWORK_POLICY, it)}. ${if (it == "fully_offline" && PlatformPolicy.otaState(project) == SystemState.PRESENT) "Apart from the signed update check described below, the game makes no network calls and works fully offline." else if (it == "fully_offline") "The build must request no INTERNET permission and make no network calls." else "Network features degrade gracefully when offline."}" },
             v(Keys.TOOLCHAIN_PREFS)?.let { "Owner toolchain preferences: $it" },
         ))
-        if (v(Keys.OTA_UPDATES) == "content_ota") {
-            h3("Over-the-air updates (owner chose this; implement the LEAST INTRUSIVE design)")
-            bullets(listOf(
-                if (v(Keys.OTA_SCOPE) == "content_and_logic") "**Scope (owner decision):** content, tuning AND game logic expressed as sandboxed data/scripts the game interprets (no native code, no arbitrary code execution; the script runtime is part of the bundled build and versioned by the schema gate). Everything else ships as a normal build."
-                else "**Scope:** data only - levels, tuning tables, text and localisation, art/audio assets and config. Never download or execute code; code changes ship as normal builds. This keeps the game inside store policy and needs no embedded runtime.",
-                "**Checking:** silent and non-blocking, at most once every 24 hours and at app start, only on an unmetered connection, with a short timeout. Failure is silent. Nothing interrupts play, nothing is shown unless the player opens Settings.",
-                "**Applying:** only on the next cold start, never mid-session. No restart prompts, no popups, no forced updates.",
-                "**Safety:** a signed manifest (public key pinned in the app), a SHA-256 for every file, a minimum-app-version and schema gate, atomic staging, an anti-rollback counter, and automatic fallback to the bundled content if anything fails to verify or load.",
-                "**Hosting and privacy:** static files on free hosting (for example GitHub Releases or Pages); no server of your own, no accounts, no analytics, and no device identifiers or personal data in the request.",
-                "**Permissions:** INTERNET only. No foreground service, no notifications, no background-fetch permission beyond what the platform grants by default.",
-                "**Controls:** a Settings switch (default on) and a visible content version in an About/diagnostics line; a manual 'check now' lives only in Settings.",
-                "**Tests:** bad signature rejected, corrupt file rejected, interrupted download resumes or discards cleanly, rollback works, offline start works, version gate holds. Record the result in `docs/VERIFICATION.md`.",
-            ))
+        if (PlatformPolicy.otaState(project) == SystemState.PRESENT) {
+            h3("Over-the-air updates (owner decision; the Hot Attic Games Mote OTA architecture, see A0)")
+            p("The authoritative OTA requirements are in section A0. Hosting and cost: static files on free hosting such as GitHub Releases or Pages; no server of your own, no accounts, no analytics, and no device identifiers or personal data in update requests. Permissions: INTERNET only. Record the update-pipeline tests (bad signature rejected, corrupt artifact rejected, incompatible fingerprint rejected, interrupted download handled, rollback works, offline start works, no repeated update loop) in `docs/VERIFICATION.md`.")
         }
         h3("Repository layout and rules")
         bullets(listOf(
@@ -501,6 +498,16 @@ object ClaudeMdGenerator {
             bullets(audit.findings.filter { it.level != com.hotattic.gamedesigner.core.engine.AuditLevel.INFO }.map { "[${it.level.name}] ${it.message}" })
         }
         return sb.toString().trimEnd() + "\n"
+    }
+
+    /** (heading line, bullets) for each policy that applies to this project; empty when none does. */
+    private fun platformPolicyBlock(project: Project): List<Pair<String, List<String>>> = buildList {
+        if (PlatformPolicy.androidSelected(project)) add("**${PlatformPolicy.androidHeadline}**" to PlatformPolicy.androidRequirements)
+        when (PlatformPolicy.otaState(project)) {
+            SystemState.PRESENT -> add("**${PlatformPolicy.moteHeadline}**" to PlatformPolicy.moteRequirements)
+            SystemState.ABSENT -> add("" to listOf(PlatformPolicy.otaAbsent))
+            else -> Unit
+        }
     }
 
     private fun resolutionText(r: AssetResolution) = when (r) {
