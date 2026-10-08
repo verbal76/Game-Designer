@@ -13,7 +13,8 @@ enum class DimState(val resolved: Boolean) {
     DECIDED(true), DELEGATED(true), DISCRETION(true), UNRESOLVED(false), NOT_APPLICABLE(true)
 }
 
-data class DimStatus(val dim: DimId, val state: DimState, val fields: List<String>)
+/** [share] is the part of the dimension's relevant fields that is settled, so one inferred fact inside a larger dimension still counts. */
+data class DimStatus(val dim: DimId, val state: DimState, val fields: List<String>, val share: Double = if (state.resolved) 1.0 else 0.0)
 
 /**
  * Design completeness is the weighted share of BUILD-CRITICAL dimensions that are decided by the owner, knowingly delegated, or
@@ -27,7 +28,7 @@ object DesignDimensions {
         DimId.FEELING -> listOf(Keys.PLAYER_FEELING)
         DimId.LOOP -> listOf(Keys.CORE_LOOP)
         DimId.MOVEMENT -> listOf(Keys.MOVEMENT_CAMERA)
-        DimId.INTERACTION -> listOf(Keys.COMBAT_MODEL, Keys.ENEMIES_BOSSES, Keys.ECONOMY, Keys.SURVIVAL_CRAFTING, Keys.AUTOMATION_SIM, Keys.CHARACTERS)
+        DimId.INTERACTION -> listOf(Keys.HAS_COMBAT, Keys.HAS_ECONOMY, Keys.HAS_CRAFTING, Keys.COMBAT_MODEL, Keys.ENEMIES_BOSSES, Keys.ECONOMY, Keys.SURVIVAL_CRAFTING, Keys.AUTOMATION_SIM, Keys.CHARACTERS)
         DimId.WORLD -> listOf(Keys.WORLD_STRUCTURE)
         DimId.FAILURE -> listOf(Keys.DIFFICULTY_FAILURE)
         DimId.PROGRESSION -> listOf(Keys.PROGRESSION)
@@ -72,7 +73,7 @@ object DesignDimensions {
                 states.any { it == DimState.DECIDED } -> DimState.DECIDED
                 else -> DimState.DISCRETION
             }
-            DimStatus(dim, state, keys)
+            DimStatus(dim, state, keys, if (state.resolved) 1.0 else states.count { it.resolved }.toDouble() / states.size)
         }
     }
 
@@ -84,8 +85,8 @@ object DesignDimensions {
         val st = status(project).filter { it.state != DimState.NOT_APPLICABLE }
         val total = st.sumOf { it.dim.weight }
         if (total == 0) return 0
-        val done = st.filter { it.state.resolved }.sumOf { it.dim.weight }
-        val raw = done * 100 / total
+        val done = st.sumOf { it.dim.weight * it.share }
+        val raw = (done * 100 / total).toInt()
         if (raw < 100) return raw.coerceAtMost(99)
         val blocked = ConflictEngine.open(project).any { it.severity == Severity.BLOCKER }
         return if (!blocked && ReviewGate.approved(project)) 100 else 99

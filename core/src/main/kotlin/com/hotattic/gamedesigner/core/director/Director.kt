@@ -60,6 +60,7 @@ import com.hotattic.gamedesigner.core.schema.Field
 import com.hotattic.gamedesigner.core.schema.FieldKind
 import com.hotattic.gamedesigner.core.schema.Fields
 import com.hotattic.gamedesigner.core.schema.Gates
+import com.hotattic.gamedesigner.core.engine.Confidence
 import com.hotattic.gamedesigner.core.schema.Keys
 import com.hotattic.gamedesigner.core.schema.Traits
 
@@ -97,6 +98,7 @@ private const val PENDING_REF_ASPECTS = "__ref_aspects__"
 private const val PENDING_ISSUE_PREFIX = "__issue:"
 private const val PENDING_FOLLOWUP = "__followup__"
 private const val MAX_FOLLOWUPS = 3
+private const val INFERRED_PREFIX = "Inferred ("
 private val FIELD_ISSUES = setOf("owner_answer_mismatch", "menus_truncated", "rejected_option_present", "upload_without_file")
 /** Settled automatically by the owner-precedence pass at generation, so never raised as a question. */
 private val AUTO_SETTLED_ISSUES = setOf("multi_select_truncated")
@@ -145,7 +147,10 @@ class Director(private val deps: DirectorDeps) {
         val now = deps.clock()
         val key = project.answerTrail.lastOrNull() ?: return null
         val field = Fields.get(key) ?: return project.copy(answerTrail = project.answerTrail - key)
-        val cleared = ProjectOps.clearDecision(project, key, now).copy(answerTrail = project.answerTrail - key, lastAnsweredKey = null, pendingTurn = null)
+        var cleared = ProjectOps.clearDecision(project, key, now).copy(answerTrail = project.answerTrail - key, lastAnsweredKey = null, pendingTurn = null)
+        // What Bob inferred from that answer goes with it (owner decisions are never touched).
+        val tag = "$INFERRED_PREFIX$key)"
+        cleared = cleared.copy(decisions = cleared.decisions.filterValues { d -> d.ownerAuthored || !d.note.startsWith(tag) })
         val settled = reconciled(project, cleared, now)
         return askField(ProjectOps.setPending(ProjectOps.addMessage(settled, Role.DIRECTOR, "Okay, going back. I've cleared your answer to \"${field.title}\".", now), null), field, now)
     }
@@ -268,6 +273,9 @@ class Director(private val deps: DirectorDeps) {
         var p = ProjectOps.addMessage(project, Role.USER, text.trim(), now)
         val lower = text.trim().lowercase()
 
+        // The owner ruling a system in or out in passing ("no combat", "actually add enemies") settles its gate whenever they say it.
+        if (p.pendingFieldKey !in Gates.byKey.keys) p = Gates.applyOwnerText(p, text, now)
+
         if (p.mode == ProjectMode.PLAYTEST_CONTINUE) {
             if (lower in setOf("back to designing", "back to design", "design mode")) return DirectorTurn(enterMode(p, settings, ProjectMode.NEW_GAME))
             return playtestTurn(p, settings, text.trim())
@@ -309,9 +317,10 @@ class Director(private val deps: DirectorDeps) {
             }
         }
 
+        var ahead: Interpretation? = null
         suspend fun absorbInto(field: Field?) {
             val r = absorb(p, settings, text.trim(), field)
-            p = r.project; note = r.note; kind = r.kind
+            p = r.project; note = r.note; kind = r.kind; ahead = r.interp
         }
 
         when {
@@ -417,6 +426,7 @@ class Director(private val deps: DirectorDeps) {
                     p = r.project
                     note = r.modelNote
                     kind = r.kind
+                    ahead = r.interp
                     action = r.action
                     if (r.directReply != null) return DirectorTurn(replyField(p, r.directReply, field), action, note, kind)
                     // Several inspirations are normal: offer to add more instead of silently moving on after one.
@@ -430,60 +440,46 @@ class Director(private val deps: DirectorDeps) {
                 }
             }
         }
-        return DirectorTurn(advance(p, settings), action, note, kind)
+        return DirectorTurn(advance(p, settings, ahead), action, note, kind)
     }
 
-    // ---- Look-ahead ---------------------------------------------------------------------------------------------
+    // ---- Adaptive interview ---------------------------------------------------------------------------------------
 
     /**
-     * Moves the interview on after an answer. With a model ready, it first reads what the owner has said so far against the questions
-     * about to be asked: a system the design clearly does or does not have is settled up front (shown for correction in the
-     * "here's what I understood" batch), and at most a few short follow-ups are asked when a detail the answers imply is missing.
+     * Moves the interview on after an answer. The single model pass that read the owner's message has already said what it implies
+     * (applied by [applyInferences]) and may have proposed one follow-up; otherwise the planner picks the highest-value open
+     * question for THIS design (irrelevant branches are gated out, inferred ones are already answered).
      */
-    private suspend fun advance(p0: Project, settings: AppSettings): Project {
-        val (p, followUp) = lookAhead(p0, settings)
-        if (followUp != null) return reply(p, followUp, PENDING_FOLLOWUP)
-        return askNext(p, settings)
+    private fun advance(p: Project, settings: AppSettings, ahead: Interpretation? = null): Project {
+        val asked = p.announcedConflicts.count { it.startsWith("followup:") }
+        val fu = ahead?.followUp?.trim().orEmpty()
+        val worthAsking = asked < MAX_FOLLOWUPS && fu.length in 8..160 && fu.endsWith("?") &&
+            p.messages.none { it.role == Role.DIRECTOR && it.text.trim().equals(fu, true) } &&
+            InterviewPlanner.next(p) is NextStep.Ask
+        if (!worthAsking) return askNext(p, settings)
+        return reply(p.copy(announcedConflicts = p.announcedConflicts + "followup:${asked + 1}"), fu, PENDING_FOLLOWUP)
     }
 
-    private suspend fun lookAhead(p0: Project, settings: AppSettings): Pair<Project, String?> {
-        val (provider, _) = readyProvider() ?: return p0 to null
-        val now = deps.clock()
-        val seeded = DesignSeeder.seed(p0, now).first
-        val t = Traits(seeded)
-        val open = Gates.all.filter { g -> seeded.decision(g.key) == null && "look:${g.key}" !in seeded.announcedConflicts && Fields.get(g.key)?.isRelevant(t) == true }
-        val asked = seeded.announcedConflicts.count { it.startsWith("followup:") }
-        val said = (listOf(seeded.originalConcept) + seeded.activeFacts().map { it.text } + seeded.decisions.values.filter { it.provenance?.ownerAuthored == true && it.value.length > 12 }.map { it.value }).filter { it.isNotBlank() }.joinToString("\n")
-        val lastWords = seeded.messages.lastOrNull { it.role == Role.USER }?.text.orEmpty().split(Regex("\\s+")).size
-        val wantFollowUp = asked < MAX_FOLLOWUPS && lastWords >= 6 && InterviewPlanner.next(seeded) is NextStep.Ask
-        if (open.isEmpty() && !wantFollowUp) return p0 to null
-        val upcoming = (CompletenessEngine.compute(seeded).missingRequired.filter { it.key !in seeded.postponed }.sortedBy { it.priority }.take(6)).joinToString("; ") { it.title }
-        val prompt = buildString {
-            append("Owner's design so far:\n").append(said.take(1600)).append("\n\nUpcoming questions: ").append(upcoming.ifBlank { "(none)" }).append("\n\n")
-            if (open.isNotEmpty()) {
-                append("For each system below say whether this design NEEDS it: yes (clearly has it), no (clearly does not), or unsure. Give a short quote from the owner's words as evidence for yes/no.\n")
-                open.forEach { append("- ").append(it.tag.name.lowercase()).append(": ").append(it.noun).append('\n') }
-            }
-            if (wantFollowUp) append("If an important detail is clearly implied by the owner's words but none of the upcoming questions will ask it, give ONE short follow-up question (max 20 words). Otherwise omit it.\n")
-            append("Punctuation and capitalisation never change meaning.\nOutput ONE JSON object only: {\"systems\":{\"combat\":{\"need\":\"yes|no|unsure\",\"evidence\":\"...\"}},\"follow_up\":\"...\"}")
+    /**
+     * Applies what a message implies but does not state. HIGH confidence is recorded (and never asked again), MEDIUM is held as a
+     * proposal Bob confirms, LOW is dropped. Every inference needs a quote from the owner's words, never overrides an owner
+     * decision, and is tagged with the question it came from so Back can take it back with that answer.
+     */
+    private fun applyInferences(p0: Project, interp: Interpretation, text: String, sourceKey: String?, now: Long): Project {
+        var p = p0
+        val said = (listOf(p.originalConcept, text) + p.activeFacts().map { it.text }).joinToString("\n")
+        for (inf in interp.inferences) {
+            if (inf.confidence == Confidence.LOW) continue
+            val f = Fields.get(inf.key) ?: continue
+            if (!f.isRelevant(Traits(p)) && Gates.byKey[inf.key] == null) continue
+            val have = p.decision(inf.key)
+            if (have != null && have.value.isNotBlank() && (have.ownerAuthored || have.status == DecisionStatus.CONFIRMED)) continue
+            if (inf.evidence.isBlank() || !grounded(inf.evidence, said)) continue
+            val status = if (inf.confidence == Confidence.HIGH) DecisionStatus.CONFIRMED else DecisionStatus.PROPOSED
+            p = ProjectOps.setDecision(p, inf.key, inf.value, Provenance.SYSTEM_INFERENCE, now, status, "$INFERRED_PREFIX${sourceKey.orEmpty()}) \"${inf.evidence.take(80)}\"")
+            if (inf.value == "no") Gates.byKey[inf.key]?.let { p = Gates.dropDependents(p, it, now) }
         }
-        val r = timed { provider.complete(LlmRequest("You check a game design against the questions about to be asked. Never invent facts the owner did not say.", listOf(LlmMessage("user", prompt)), maxTokens = 300, temperature = 0f)) }
-        var p = seeded.copy(announcedConflicts = seeded.announcedConflicts + open.map { "look:${it.key}" })
-        val obj = (r as? LlmResult.Ok)?.text?.let { LlmInterpreter.extractJson(it) } ?: return p to null
-        val systems = obj["systems"] as? kotlinx.serialization.json.JsonObject
-        for (g in open) {
-            val v = systems?.get(g.tag.name.lowercase()) as? kotlinx.serialization.json.JsonObject ?: continue
-            val need = (v["need"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.lowercase()?.trim()
-            val evidence = (v["evidence"] as? kotlinx.serialization.json.JsonPrimitive)?.content.orEmpty()
-            if (need != "yes" && need != "no") continue
-            // An inference must be traceable to the owner's own words.
-            if (evidence.isBlank() || !grounded(evidence, said)) continue
-            p = ProjectOps.setDecision(p, g.key, need, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, "Read from your words: \"${evidence.take(80)}\"")
-        }
-        val fu = (obj["follow_up"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim().orEmpty()
-        val ok = wantFollowUp && fu.length in 8..160 && fu.endsWith("?") && p.messages.none { it.role == Role.DIRECTOR && it.text.trim().equals(fu, true) }
-        if (!ok) return p to null
-        return p.copy(announcedConflicts = p.announcedConflicts + "followup:${asked + 1}") to fu
+        return p
     }
 
     /** Structured answer from the question card (chips / toggles). No language interpretation is involved. */
@@ -589,7 +585,7 @@ class Director(private val deps: DirectorDeps) {
 
     // ---- Answering a specific field ----------------------------------------------------------------------------
 
-    private data class FieldResult(val project: Project, val directReply: String? = null, val action: DirectorAction? = null, val modelNote: String? = null, val kind: InterpreterKind? = null)
+    private data class FieldResult(val project: Project, val directReply: String? = null, val action: DirectorAction? = null, val modelNote: String? = null, val kind: InterpreterKind? = null, val interp: Interpretation? = null)
 
     private fun reconciled(before: Project, after: Project, now: Long): Project {
         val r = Reconciler.reconcile(before, after, now)
@@ -630,8 +626,14 @@ class Director(private val deps: DirectorDeps) {
     }
 
     private suspend fun answerField(p0: Project, settings: AppSettings, field: Field, text: String, now: Long): FieldResult {
-        val traits = Traits(p0)
         val interp0 = interpret(p0, settings, field, text)
+        val r = answerFieldWith(p0, settings, field, text, now, interp0)
+        // What the message implies beyond its literal answer is applied once the answer itself is safely recorded.
+        return if (r.directReply != null) r.copy(interp = interp0) else r.copy(project = applyInferences(r.project, interp0, text, field.key, now), interp = interp0)
+    }
+
+    private suspend fun answerFieldWith(p0: Project, settings: AppSettings, field: Field, text: String, now: Long, interp0: Interpretation): FieldResult {
+        val traits = Traits(p0)
         // A title or an identifier is a name, not a statement about the design: never mine it for reference games, rejections or facts.
         val interp = if (field.key == Keys.DISPLAY_NAME || field.key == Keys.PACKAGE_ID)
             interp0.copy(references = emptyList(), rejectedTags = emptyList(), rejectedGenres = emptyList(), affirmedTags = emptyList(), retract = emptyList(), facts = emptyList(), edits = emptyMap())
@@ -669,6 +671,9 @@ class Director(private val deps: DirectorDeps) {
             AnswerIntent.SELECT, AnswerIntent.ALL, AnswerIntent.FREEFORM -> {
                 val value = when {
                     field.kind.isSelect -> Decision.joinList(interp.selected.ifEmpty { interp.value?.split(Decision.LIST_SEPARATOR).orEmpty() }.let { if (field.kind == FieldKind.SINGLE) it.take(1) else it })
+                    // A short or colourful answer keeps the owner's words and adds the model's reading of what they mean by it.
+                    field.kind == FieldKind.TEXT && !interp.gloss.isNullOrBlank() && (interp.value ?: text).trim().length < 60 ->
+                        "${(interp.value ?: text).trim().trimEnd('!', '.')} - meaning: ${interp.gloss.trim().trimEnd('.')}."
                     else -> interp.value ?: text
                 }
                 val err = if (value.isBlank()) "I need an answer for that one." else field.validate(Traits(p), value)
@@ -676,7 +681,7 @@ class Director(private val deps: DirectorDeps) {
                 else commitValue(p, settings, field, value, text, now, interp).let { r -> r.copy(modelNote = r.modelNote ?: model, kind = kind) }
             }
             AnswerIntent.DELEGATE -> {
-                val d = ProjectOps.delegate(p, field.key, now)
+                val d = contextualChoice(p, settings, field, now) ?: ProjectOps.delegate(p, field.key, now)
                 if (d == null && !field.required) FieldResult(ProjectOps.setPending(ProjectOps.addMessage(ProjectOps.defer(p, field.key, now), Role.DIRECTOR, "Okay, I'll leave ${field.title.lowercase()} out.", now), null), kind = kind)
                 else if (d == null) FieldResult(p, directReply = "I can't pick that one for you - it's your idea. ${field.prompt}", kind = kind)
                 else {
@@ -704,9 +709,46 @@ class Director(private val deps: DirectorDeps) {
                 val r = absorb(p, settings, text, null)
                 val changed = r.project.decisions != p0.decisions || r.project.rejected != p0.rejected || r.project.facts != p0.facts
                 if (changed) FieldResult(ProjectOps.setPending(r.project, null), modelNote = r.note, kind = r.kind)
-                else FieldResult(p, directReply = interp.reason.ifBlank { Messages.clarify(field, traits) }, kind = kind)
+                else {
+                    // The second miss on the same question never repeats itself: Bob takes the owner's words as a note and decides.
+                    val marker = "unclear:${field.key}"
+                    val repeated = marker in p.announcedConflicts && field.required && field.suggest(traits) != null && interp.reason.isBlank()
+                    if (repeated) {
+                        val d = ProjectOps.delegate(p, field.key, now)!!
+                        val msg = "I'm not matching that to this question, so I'll go with my recommendation: ${Messages.display(d.first, field.key, d.second.value).trimEnd('.', ' ')}. ${d.second.rationale} Tell me if you want it different."
+                        FieldResult(ProjectOps.setPending(ProjectOps.addMessage(reconciled(p, d.first, now).withTrail(field.key), Role.DIRECTOR, msg, now, field.key), null), kind = kind)
+                    } else FieldResult(p.copy(announcedConflicts = p.announcedConflicts + marker), directReply = interp.reason.ifBlank { Messages.clarify(field, traits) }, kind = kind)
+                }
             }
         }
+    }
+
+    /**
+     * "Choose for me" judged on the whole design so far, not a canned per-question default. With a model ready it recommends from the
+     * accumulated design (validated against the question's real options); otherwise the trait-aware suggestion applies.
+     */
+    private suspend fun contextualChoice(p: Project, settings: AppSettings, field: Field, now: Long): Pair<Project, com.hotattic.gamedesigner.core.schema.Suggestion>? {
+        val (provider, _) = readyProvider() ?: return null
+        if (field.kind == FieldKind.TEXT && field.key == Keys.CONCEPT) return null
+        val t = Traits(p)
+        if (p.decision(field.key)?.status == DecisionStatus.PROPOSED) return null
+        val opts = field.options(t)
+        val design = (listOf(p.originalConcept) + p.activeFacts().map { it.text }).filter { it.isNotBlank() }.joinToString(" | ").take(1200)
+        val prompt = "Game design so far: $design\nDecided: " + p.decisions.filterValues { it.value.isNotBlank() }.entries.take(25).joinToString("; ") { "${it.key}=${it.value.value.take(30)}" } +
+            "\nQuestion: ${field.prompt}" + (if (opts.isNotEmpty()) "\nOptions: " + opts.joinToString("; ") { "${it.id}=${it.label}" } else "") +
+            "\nChoose what best fits THIS game and say why in one short sentence. Output JSON only: {\"value\":\"${if (opts.isNotEmpty()) "option id" else "one or two sentences"}\",\"why\":\"...\"}"
+        val r = timed { provider.complete(LlmRequest("You are a game designer choosing for the owner. Fit the whole design; never contradict what they said.", listOf(LlmMessage("user", prompt)), maxTokens = 260, temperature = 0f)) }
+        val obj = (r as? LlmResult.Ok)?.text?.let { LlmInterpreter.extractJson(it) } ?: return null
+        var value = (obj["value"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim().orEmpty()
+        val why = (obj["why"] as? kotlinx.serialization.json.JsonPrimitive)?.content?.trim().orEmpty().ifBlank { "It fits the design so far." }
+        if (field.kind.isSelect) {
+            val ids = opts.map { it.id }.toSet()
+            val kept = value.split('|', ',').map { it.trim() }.filter { it in ids }.distinct().let { if (field.kind == FieldKind.SINGLE) it.take(1) else it }
+            if (kept.isEmpty()) return null
+            value = Decision.joinList(kept)
+        } else if (value.length < 8 || field.validate(t, value) != null) return null
+        val s = com.hotattic.gamedesigner.core.schema.Suggestion(value, why)
+        return ProjectOps.setDecision(p, field.key, value, Provenance.OWNER_ACCEPTED_RECOMMENDATION, now, DecisionStatus.CONFIRMED, note = why) to s
     }
 
     /** Splits an owner reply into recognised option ids and the leftover phrases they wrote themselves. */
@@ -771,7 +813,9 @@ class Director(private val deps: DirectorDeps) {
     internal suspend fun interpret(p: Project, settings: AppSettings, field: Field?, text: String): Interpretation {
         val rules = LocalInterpreter.interpret(p, field, text)
         // Trivial replies need no model: a bare yes/no or an unambiguous option reply.
-        val trivial = rules.intent in setOf(AnswerIntent.AFFIRM, AnswerIntent.NEGATE, AnswerIntent.DELEGATE, AnswerIntent.POSTPONE) && text.length < 30 && !rules.hasCorrections
+        val trivial = (rules.intent in setOf(AnswerIntent.AFFIRM, AnswerIntent.NEGATE, AnswerIntent.DELEGATE, AnswerIntent.POSTPONE) && text.length < 30 && !rules.hasCorrections) ||
+            // A short exact pick ("no", "landscape", "2") carries nothing for a model to add.
+            (rules.intent == AnswerIntent.SELECT && text.trim().length < 20 && !rules.hasCorrections && rules.edits.isEmpty() && field?.kind?.isSelect == true)
         if (trivial) return rules
         val (provider, kind) = readyProvider() ?: return rules
         val llm = LlmInterpreter.interpret(provider, kind, name(settings), p, field, text) ?: return rules
@@ -791,10 +835,11 @@ class Director(private val deps: DirectorDeps) {
             preferences = llm.preferences, constraints = llm.constraints, ambiguities = llm.ambiguities,
             delegated = llm.delegated, scope = llm.scope, stale = llm.stale,
             acceptsRecommendation = llm.acceptsRecommendation, misunderstood = rules.misunderstood || llm.misunderstood,
+            inferences = llm.inferences, followUp = llm.followUp, gloss = llm.gloss,
         )
     }
 
-    class Absorbed(val project: Project, val note: String?, val kind: InterpreterKind?)
+    class Absorbed(val project: Project, val note: String?, val kind: InterpreterKind?, val interp: Interpretation? = null)
 
     /** Understands a free message that is not (only) the answer to the open question, and applies it with owner authority. */
     private suspend fun absorb(p0: Project, settings: AppSettings, text: String, field: Field?, concept: Field? = null, precomputed: Interpretation? = null): Absorbed {
@@ -804,10 +849,10 @@ class Director(private val deps: DirectorDeps) {
         val ask = interp0.ambiguities.firstOrNull()?.trim()?.trimEnd('.', '?')
         val interp = if (ask != null) interp0.copy(ambiguities = emptyList(), edits = emptyMap()) else interp0
         val applied = applyStatement(p0, text, interp, concept ?: field, now)
-        var p = researchNewReferences(applied.project, settings)
+        var p = researchNewReferences(applyInferences(applied.project, interp, text, field?.key, now), settings)
         if (applied.announcement.isNotBlank()) p = ProjectOps.addMessage(p, Role.DIRECTOR, applied.announcement, now)
         if (ask != null) p = ProjectOps.addMessage(p, Role.DIRECTOR, "Before I record that, one thing could go two ways: $ask? Tell me which you mean.", now)
-        return Absorbed(p, interp.by.takeIf { it != InterpreterKind.RULES }?.label, interp.by)
+        return Absorbed(p, interp.by.takeIf { it != InterpreterKind.RULES }?.label, interp.by, interp)
     }
 
     class Applied(val project: Project, val announcement: String)
@@ -1224,7 +1269,7 @@ class Director(private val deps: DirectorDeps) {
         val t = Traits(p)
         val sb = StringBuilder()
         Messages.preface(p, field)?.let { sb.append(it).append("\n\n") }
-        sb.append(field.prompt)
+        sb.append(Messages.promptFor(field, t))
         val opts = field.options(t)
         if (field.kind == FieldKind.MULTI) sb.append("\n(Pick every one that applies, then tap Continue. Or say \"all\" / \"all except ...\".)")
         if (field.kind != FieldKind.TEXT && opts.isNotEmpty() && p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) {

@@ -33,6 +33,19 @@ object Messages {
         }.ifEmpty { value }
     }
 
+    /** The question worded for THIS game: the same information need, phrased the way a designer who knows the game would ask it. */
+    fun promptFor(field: Field, t: Traits): String = when (field.key) {
+        Keys.HAS_COMBAT -> if (t.genres.size == 1) "Does your ${t.genres.first().label.substringBefore(" (").substringBefore(" /").lowercase()} have combat - fighting enemies? Yes or no." else field.prompt
+        Keys.COMBAT_MODEL -> when {
+            t.hasGenre("shooter") -> "How should aiming and shooting feel? Pick every style that applies, or describe your own."
+            t.hasGenre("fighting") -> "How should the fighting work - spacing, combos, grabs? Pick every style that applies, or describe your own."
+            t.hasGenre("survivors_like") || t.hasGenre("action_roguelite") -> "How does your character fight? Pick every style that applies, or describe your own."
+            t.gate(com.hotattic.gamedesigner.core.schema.Tag.COMBAT) == true -> "You want combat in this - how should it work? Pick every style that applies, or describe your own."
+            else -> field.prompt
+        }
+        else -> field.prompt
+    }
+
     fun clarify(field: Field, t: Traits): String {
         val opts = field.options(t)
         return if (opts.isEmpty()) "I didn't quite catch that. ${field.prompt}"

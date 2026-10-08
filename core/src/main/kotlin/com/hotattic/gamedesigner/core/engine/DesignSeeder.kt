@@ -56,6 +56,21 @@ object DesignSeeder {
             p = com.hotattic.gamedesigner.core.schema.Gates.dropDependents(p, g, now)
             seeded += g.key
         }
+        for (g in com.hotattic.gamedesigner.core.schema.Gates.affirmedIn(said)) {
+            if (p.decision(g.key) != null || !Fields.get(g.key)!!.isRelevant(Traits(p))) continue
+            p = ProjectOps.setDecision(p, g.key, "yes", Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
+            seeded += g.key
+        }
+        // A hypothesis from the owner's words, held for confirmation: "try to reach the top" implies the win condition.
+        if (p.decision(Keys.WIN_LOSS) == null && Fields.get(Keys.WIN_LOSS)?.isRelevant(Traits(p)) == true) {
+            val win = Regex("(?i)\\b(?:reach|get to|make it to|climb to|get up to|arrive at)\\s+(?:the\\s+)?(top|summit|peak|end|exit|goal|finish)\\b").find(said)
+            if (win != null) {
+                val fall = Regex("(?i)\\b(fall(?:s|ing)?|slip(?:s|ping)?)\\b").containsMatchIn(said)
+                val v = "Win by reaching the ${win.groupValues[1].lowercase()}." + if (fall) " Failure is falling, which sends the player back to the last checkpoint." else ""
+                p = ProjectOps.setDecision(p, Keys.WIN_LOSS, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, "Read from your words: \"${win.value}\"")
+                seeded += Keys.WIN_LOSS
+            }
+        }
         // The owner's own first-build scope, and what finishes it, when they already said so.
         val sliceFact = p.activeFacts().map { it.text }.firstOrNull { it.length >= 25 && Regex("(?i)\\b(prototype|first (build|version|playable)|vertical slice|slice|demo)\\b").containsMatchIn(it) }
         if (sliceFact != null && p.decision(Keys.FIRST_SLICE) == null && Fields.get(Keys.FIRST_SLICE)?.isRelevant(Traits(p)) == true) {

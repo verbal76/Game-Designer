@@ -187,7 +187,13 @@ object Fields {
         Field(Keys.GENRE, Category.GAMEPLAY, FieldKind.MULTI, "Genre",
             "What kind of game is this? Pick one or mix several.",
             "Genre decides which questions matter and which systems the game must contain.",
-            20, modes = Field.ALL_MODES, options = { genreOptions }, allowCustom = true),
+            20, modes = Field.ALL_MODES, options = { genreOptions }, allowCustom = true,
+            // "Choose for me" reads the owner's own description; a design that fits no known genre is treated as a custom one built from their words.
+            suggest = { t ->
+                val said = (listOf(t.project.originalConcept) + t.project.activeFacts().map { it.text }).joinToString(". ")
+                GenreKnowledge.detect(said).firstOrNull()?.let { Suggestion(it.id, "That is what your description sounds like.") }
+                    ?: Suggestion("other", "Nothing standard fits, so I'll build it as a custom design from your description.")
+            }),
 
         Field(Keys.DIMENSION, Category.GAMEPLAY, FieldKind.SINGLE, "2D or 3D",
             "Should it be 2D, top-down, isometric, 2.5D (3D look, 2D play) or full 3D?",
@@ -252,7 +258,7 @@ object Fields {
             validate = { _, v -> if (v.trim().length < 12) "A bit more detail please - one full sentence." else null }),
 
         Field(Keys.PLAYER_FEELING, Category.GAMEPLAY, FieldKind.TEXT, "Intended feeling",
-            "What feeling should the player have - tense, cozy, powerful, clever, relaxed?",
+            "What should the player feel while playing? Tense, cozy, powerful, clever or relaxed are only examples - any word or sentence works, even just one word.",
             "Tone guides pacing, audio, color and difficulty.",
             52, required = false, relevant = { it.genresKnown },
             suggest = { t ->

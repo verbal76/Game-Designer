@@ -38,7 +38,7 @@ class BoundaryTest {
         val d = director(DirectorDeps(local = llm, clock = FakeClock()))
         var p = d.start(newProject(), settings)
         p = d.handleUserMessage(p, settings, "I'd like a 2D tower defense game with cute robots on my android phone").project
-        assertEquals(2, llm.calls, "one call reads the message, one looks ahead at the questions about to be asked")
+        assertEquals(1, llm.calls, "one model call both reads the message and settles what comes next")
         assertEquals("2D", p.value(Keys.DIMENSION), "deterministic reading must win over model guess")
         assertEquals("voxel", p.value(Keys.ART_DIRECTION))
         assertTrue(p.list(Keys.GENRE).contains("tower_defense") && !p.list(Keys.GENRE).contains("bogus"))

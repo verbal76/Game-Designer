@@ -56,7 +56,7 @@ object GenreKnowledge {
         ),
         Genre(
             "platformer", "Platformer / vertical scroller",
-            listOf("platformer", "platform game", "action platformer", "action/platform", "mario", "celeste", "jump", "side-scroller", "side scroller", "vertical scroller", "vertical-scrolling", "vertical scrolling", "scroller"),
+            listOf("platformer", "climb", "platform game", "action platformer", "action/platform", "mario", "celeste", "jump", "side-scroller", "side scroller", "vertical scroller", "vertical-scrolling", "vertical scrolling", "scroller"),
             2, setOf(Tag.MOVEMENT, Tag.LEVELS, Tag.FAST_TWITCH, Tag.COMBAT),
             listOf(
                 SystemReq("movement_model", "Movement model", "Run/jump/coyote time/jump buffer constants documented and tunable."),

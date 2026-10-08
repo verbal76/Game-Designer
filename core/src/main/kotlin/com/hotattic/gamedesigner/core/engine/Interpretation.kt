@@ -64,6 +64,12 @@ data class Interpretation(
     val acceptsRecommendation: Boolean = false,
     /** "That's not what I meant": undo the last interpretation and re-ask. */
     val misunderstood: Boolean = false,
+    /** What the message implies about decisions the owner has not stated, each with a confidence and a quote from the owner's words. */
+    val inferences: List<Inference> = emptyList(),
+    /** One short follow-up the model thinks would materially improve the design, if any. */
+    val followUp: String? = null,
+    /** The model's reading of a short or colourful answer as design intent ("Lucky!" -> improbable-success moments). */
+    val gloss: String? = null,
 ) {
     val hasCorrections get() = rejectedGenres.isNotEmpty() || rejectedTags.isNotEmpty() || retract.isNotEmpty()
 
@@ -81,6 +87,11 @@ data class Interpretation(
         edits.forEach { (k, v) -> add(Proposal(if (hasCorrections) ProposalKind.OWNER_CORRECTION else ProposalKind.OWNER_FACT, k, v)) }
     }
 }
+
+enum class Confidence { HIGH, MEDIUM, LOW }
+
+/** A decision the owner implied but did not state. HIGH is recorded, MEDIUM is held for a quick confirmation, LOW is only a reason to ask. */
+data class Inference(val key: String, val value: String, val confidence: Confidence, val evidence: String)
 
 enum class ProposalKind { OWNER_FACT, OWNER_CORRECTION, OWNER_PREFERENCE, OWNER_REJECTION, OWNER_DELEGATION, ACCEPTED_RECOMMENDATION, UNRESOLVED_AMBIGUITY, NEW_CONSTRAINT, SCOPE_CHANGE }
 
@@ -151,10 +162,13 @@ Keys (omit any that do not apply):
 "scope": what the owner now wants the first build to be, in their words
 "ambiguous": short clarifying questions, only when the message could mean two different games
 "accept_recommendation": true when the owner accepts what you just recommended
+"inferences": [{"key":"field_key","value":"option id or text","confidence":"high|medium|low","evidence":"short quote of the owner's words"}] - what the owner's words IMPLY for decisions they did not state, including the GATES listed under GATES (use value "yes"/"no"). High = nearly certain from their words (a peaceful climbing game has no combat). Medium = likely. Never invent major creative choices.
+"follow_up": ONE short question (max 20 words) about an interesting detail the owner just said that would materially change the design and that no listed field covers; omit it unless it is clearly valuable
+"gloss": for a short or colourful answer to a freeform question, one sentence of the design intent it expresses, as the owner would mean it
 "misunderstood": true when the owner says you got it wrong
 "stale": field keys the new statement probably invalidates
 "references": game titles named as references
-Rules: the owner's latest words override everything earlier. Negation matters ("not turn based" REJECTS turn-based). Ordinal and list answers ("the third one", "option 3", "1, 3 and 5", "all of them", "everything except X", "both") refer to the CURRENT QUESTION's options in order. "You decide" or "whatever you recommend" is intent delegate. Never invent option ids or field keys. Never copy the owner's chat remarks about the app ("I already told you") into facts.
+Rules: the owner's latest words override everything earlier. Negation matters ("not turn based" REJECTS turn-based). Ordinal and list answers ("the third one", "option 3", "1, 3 and 5", "all of them", "everything except X", "both") refer to the CURRENT QUESTION's options in order. "You decide" or "whatever you recommend" is intent delegate. Never invent option ids or field keys. The examples inside a question are only examples: any answer that makes sense is an answer. The owner may be dictating, so repair obvious speech-to-text slips from context ("the wom" = "the win") but never guess when it is genuinely ambiguous. Never copy the owner's chat remarks about the app ("I already told you") into facts.
 Example: owner says "Actually no, forget turn based. Make it real time and keep the shaft." -> {"intent":"freeform","reject_tags":["TURN_BASED"],"facts":["The game is real time"],"edits":{"world_structure":"vertical_shaft"},"constraints":["Keep the single shaft"]}
 Example: CURRENT QUESTION options "1. bite_sized=1-5 minutes; 2. short_runs=10-20 minutes; 3. medium_sessions=30-60 minutes", owner says "the third one" -> {"intent":"select","selected":["medium_sessions"]}
 """.trim()
@@ -187,6 +201,8 @@ Example: CURRENT QUESTION options "1. bite_sized=1-5 minutes; 2. short_runs=10-2
             field.suggest(t)?.let { appendLine("BOB'S RECOMMENDATION WAS: ${it.value.take(120)}") }
         } else appendLine("CURRENT QUESTION: none (the owner is volunteering information)")
         appendLine("FIELDS: " + fieldMenu(project, field))
+        val gates = com.hotattic.gamedesigner.core.schema.Gates.all.filter { g -> project.decision(g.key) == null && Fields.get(g.key)?.isRelevant(t) == true }
+        if (gates.isNotEmpty()) appendLine("GATES (does this design have the system? answer yes/no in inferences only if their words make it clear): " + gates.joinToString("; ") { "${it.key}=${it.noun}" })
         val recent = project.messages.filter { it.role != Role.SYSTEM }.takeLast(4)
         if (recent.isNotEmpty()) appendLine("RECENT: " + recent.joinToString(" / ") { "${it.role.name.lowercase()}: ${it.text.take(140).replace('\n', ' ')}" })
         appendLine("OWNER'S LATEST MESSAGE: $text")
@@ -266,7 +282,15 @@ Example: CURRENT QUESTION options "1. bite_sized=1-5 minutes; 2. short_runs=10-2
         val tags = { k: String -> strs(k).mapNotNull { n -> runCatching { Tag.valueOf(n.uppercase().replace(' ', '_').replace('-', '_')) }.getOrNull() }.filter { it == Tag.TURN_BASED } }
         val genreIds = GenreKnowledge.all.map { it.id }.toSet()
         fun fieldKeys(k: String) = strs(k).filter { Fields.get(it) != null && it != Keys.CONCEPT }.distinct().take(8)
+        val inferences = (obj["inferences"] as? JsonArray).orEmpty().mapNotNull { e ->
+            val o = e as? JsonObject ?: return@mapNotNull null
+            fun str(k: String) = (o[k] as? JsonPrimitive)?.content?.trim().orEmpty()
+            val conf = when (str("confidence").lowercase()) { "high" -> Confidence.HIGH; "medium" -> Confidence.MEDIUM; else -> Confidence.LOW }
+            val ok = validateEdits(project, mapOf(str("key") to str("value")), field?.key)
+            ok.entries.firstOrNull()?.let { (k, v) -> Inference(k, v, conf, str("evidence").take(160)) }
+        }.take(8)
         return Interpretation(
+            inferences = inferences, followUp = (obj["follow_up"] as? JsonPrimitive)?.content?.trim()?.takeIf { it.isNotBlank() }, gloss = (obj["gloss"] as? JsonPrimitive)?.content?.trim()?.takeIf { it.isNotBlank() }?.take(220),
             intent = finalIntent, selected = selected, value = value, edits = cleanEdits,
             rejectedGenres = strs("reject_genres").filter { it in genreIds }, rejectedTags = tags("reject_tags"), affirmedTags = tags("affirm_tags"),
             references = (strs("references") + flatRefs).distinct(), facts = strs("facts").map { it.take(200) }.take(8), retract = strs("retract").map { it.take(40) }.take(8),
@@ -284,7 +308,7 @@ Example: CURRENT QUESTION options "1. bite_sized=1-5 minutes; 2. short_runs=10-2
             val prompt = if (attempt == 0) base else base + "\nYour previous reply was not a valid JSON object. Reply with ONLY the JSON object."
             val r = runCatching {
                 kotlinx.coroutines.withTimeoutOrNull(TIMEOUT_MS) {
-                    provider.complete(LlmRequest(systemPrompt(directorName), listOf(LlmMessage("user", prompt)), maxTokens = 500, temperature = 0f))
+                    provider.complete(LlmRequest(systemPrompt(directorName), listOf(LlmMessage("user", prompt)), maxTokens = 700, temperature = 0f))
                 }
             }.getOrNull()
             if (r !is LlmResult.Ok) return null // a transport failure or timeout: retrying would only double the wait
