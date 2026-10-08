@@ -1,0 +1,58 @@
+package com.hotattic.gamedesigner.core.schema
+
+/** Deterministic text hygiene for turning a rambling (often dictated) concept into usable spec phrases. */
+object ConceptText {
+    private val platformWord = Regex("(?i)\\b(android|iphone|ios|ipad|phone|mobile|pc|windows|macos|mac|linux|browser|steam|tablet|google play)\\b")
+    private val leadIn = Regex("(?i)^(?:i\\s+want(?:\\s+to\\s+make)?|i(?:'d| would)\\s+like(?:\\s+to\\s+make)?|let'?s\\s+make|make\\s+me)\\s+(?:a|an|the)?\\s*")
+
+    fun sentences(text: String): List<String> =
+        text.trim().split(Regex("(?<=[.!?])\\s+")).map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** Drops sentences that are only about where it will be played. Never returns empty for non-empty input. */
+    private val titleOnly = Regex("(?i)^(?:i\\s+want\\s+to\\s+make|i(?:'d| would)\\s+like\\s+to\\s+make|let'?s\\s+make|i(?:'m| am)\\s+making)?\\s*(?:a|an|the)?\\s*(?:new\\s+)?game\\s+(?:called|named|titled)\\s+[\\w'’:\\- ]{1,40}[.!]?$")
+
+    private val platformPhrase = Regex("(?i)[, ]*\\b(?:for|on|to run on|to play on|running on)\\s+(?:my\\s+|an?\\s+|the\\s+)?(?:android|iphone|ios|ipad|pc|windows|macos|mac|linux|browser|steam|tablet|phone|mobile)(?:\\s+(?:phone|device|tablet))?\\b")
+
+    /** Drops where-it-will-be-played wording; a sentence that is ONLY about the platform disappears, others keep their content. */
+    private fun stripPlatform(sentence: String): String? {
+        if (!platformWord.containsMatchIn(sentence)) return sentence
+        val cleaned = sentence.replace(platformPhrase, "").replace(Regex("\\s{2,}"), " ").replace(Regex("\\s+([.,!?])"), "$1").trim()
+        return cleaned.takeIf { it.length >= 20 && !platformWord.containsMatchIn(it) }
+    }
+
+    fun withoutPlatformSentences(text: String): String {
+        val keep = sentences(text).filter { !titleOnly.matches(it.trim()) }.mapNotNull { stripPlatform(it) }
+        return (if (keep.isEmpty()) sentences(text).take(1) else keep).joinToString(" ").trim()
+    }
+
+    private fun secondPerson(s: String) = s
+        .replace(Regex("(?i)\\bI'm\\b"), "You are").replace(Regex("(?i)\\bI am\\b"), "You are")
+        .replace(Regex("(?i)\\bI'd\\b"), "You would").replace(Regex("(?i)\\bmy\\b"), "your")
+        .replace(Regex("(?i)\\bI\\b"), "You")
+
+    /** A one-or-two sentence core fantasy drawn from the concept. */
+    fun fantasy(concept: String): String {
+        val cleaned = withoutPlatformSentences(concept)
+        val after = Regex("(?i)(?:,\\s*|\\s)but\\s+(.+)").find(cleaned)?.groupValues?.get(1)
+            ?: Regex("(?i)\\bwhere\\s+(.+)").find(cleaned)?.groupValues?.get(1)
+        var core = (if (after != null && after.trim().length >= 12) after else cleaned).trim()
+        core = core.replace(leadIn, "").trim()
+        if (core.isEmpty()) core = cleaned
+        // Concise: the first two sentences carry the fantasy; the rest stays in the owner's verbatim concept.
+        if (core.length > 280) core = sentences(core).take(2).joinToString(" ").take(320).trim()
+        core = secondPerson(core)
+        core = core.replaceFirstChar { it.uppercase() }
+        return if (core.endsWith(".") || core.endsWith("!") || core.endsWith("?")) core else "$core."
+    }
+
+    /** Short theme phrase for derived content text; cut on a word boundary, never mid-word. */
+    fun theme(concept: String, maxLen: Int = 110): String {
+        val f = fantasy(concept).trimEnd('.', '!', '?')
+        if (f.length <= maxLen) return f
+        // Prefer ending on a sentence boundary so the phrase never stops mid-thought.
+        val firstSentence = f.split(Regex("(?<=[.!?])\\s+")).first().trimEnd('.', '!', '?')
+        if (firstSentence.length in 12..maxLen) return firstSentence
+        val cut = f.substring(0, maxLen).substringBeforeLast(' ')
+        return cut.ifEmpty { f.substring(0, maxLen) }
+    }
+}

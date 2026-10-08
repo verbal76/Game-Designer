@@ -1,0 +1,53 @@
+# Android CI - deliberately NOT run on every push (GitHub Actions minutes are a scarce, shared budget; see CLAUDE.md section 32).
+# It checks only what cannot be proven locally: the Android modules (shell, layer, resources) compile, lint passes, the layer unit
+# tests (incl. theme contrast) pass, and the native libraries are 16 KB page-size aligned. JVM tests of :core and :otakit run locally
+# and are repeated inside the OTA and release workflows, so they are not repeated here.
+# Runs: manually (workflow_dispatch), or on pull requests that are READY FOR REVIEW (draft PRs are skipped). Docs/tooling-only changes never run it.
+name: Android CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ["**.md", "docs/**", "tools/models/**", "ota/publish-request.json", ".github/workflows/release-*.yml", ".github/workflows/model-catalog.yml", ".github/workflows/ota-publish.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Skipped jobs are not billed: draft pull requests never start the runner.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Accept Android SDK licenses (SDK is preinstalled on the runner)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false   # feature branches may save the Gradle cache so later runs are not cold
+      - name: Monotonic version code
+        run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
+      - name: Android lint, debug APK, layer unit tests (incl. theme contrast)
+        run: |
+          set -o pipefail
+          ./gradlew :app:lintDebug :app:assembleDebug :applayer:testDebugUnitTest :app:testDebugUnitTest --console=plain 2>&1 | tee build.log
+      - name: Show compiler/lint errors (only on failure)
+        if: failure()
+        run: |
+          { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
+      - name: 16 KB page-size qualification of every native library in the debug APK
+        run: python3 tools/check-16kb.py app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: reports
+          path: |
+            app/build/reports
+            applayer/build/reports

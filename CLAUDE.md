@@ -462,3 +462,18 @@ If some advanced integration (for example full GitHub write automation or a high
 
 ## 31. Immediate Owner Intent
 This repository is now the permanent home of Game Designer. Begin building from this specification when instructed by the accompanying master prompt. The Hot Attic Games logo already placed in the repository is authoritative for the app startup splash.
+
+## 32. GitHub Actions budget policy (STANDING OWNER DIRECTIVE - follow automatically)
+GitHub-hosted Actions minutes are shared across the owner's projects and the monthly budget is deliberately small. Treat them as scarce. Before starting ANY workflow ask: "Does this need GitHub Actions, or can I prove it locally?"
+
+**Prove locally first.** Run `./gradlew -PcoreOnly :core:test :otakit:test --offline` (and any script/YAML syntax checks) before pushing. Core logic, generators, the OTA kit and workflow YAML are all locally verifiable. Do not use CI as a debugging loop.
+
+**Normal pushes cost zero.** `android.yml` no longer runs on push; it runs only (a) on pull requests that are READY FOR REVIEW (PR #1 is a permanent draft, so those jobs are skipped and unbilled), (b) by `workflow_dispatch`. Docs/tooling-only paths are ignored. Add `[skip ci]` to documentation-only commit messages. NEVER put `[skip ci]` on a commit that is meant to trigger a publish workflow (`ota/publish-request.json`, a `release-v*.yml`).
+
+**Actions ARE appropriate for:** Android-only verification that cannot be done locally (the shell/layer/resources compile, lint, layer unit tests, 16 KB alignment) - dispatch `Android CI` ONCE per candidate that touches `app/`, `applayer/`, `shellapi/` or resources, after the local checks pass; OTA publication (`ota-publish.yml` already re-runs core/otakit/applayer tests and builds + verifies the bundle, so an OTA-only candidate does not need a separate Android CI run first); native APK releases (`release-vN.yml`: tests, lint, signing, badging, 16 KB, upgrade-compatibility); model-catalog discovery when its inputs change.
+
+**Actions are NOT appropriate for:** every-push validation; building APKs/AABs/EXEs on routine commits; Windows or desktop artifacts nobody asked for; Android builds for OTA-only work; re-running a workflow to see whether a failure was intermittent (a second failure is real; diagnose locally); rebuilding the same SHA when a verified result already exists; full release validation for docs, research, comments or bookkeeping.
+
+**Hygiene.** Concurrency groups cancel superseded runs (publish/signing groups never cancel mid-publish). Use path filters and job-level `if` conditions. Gradle cache is writable on feature branches. Do not add duplicate workflows that validate the same thing. Do not edit a `release-v*.yml` file casually: pushing a change to it publishes. For the next native APK copy `release-v4.yml` to `release-v5.yml` (new tag, versionName, notes) and push; that is the publish request.
+
+**Release safety is NOT negotiable.** Never bypass signing verification, runtime/OTA compatibility gates, rollback protection, the 16 KB check, the same-signing-key upgrade check, or any other check that protects shipped software to save minutes. Never publish a release, OTA or APK merely because workflows were audited.
