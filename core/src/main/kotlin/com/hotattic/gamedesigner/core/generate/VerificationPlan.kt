@@ -39,7 +39,7 @@ object VerificationPlan {
         if (p.value(Keys.SAVE_SYSTEM).let { it != null && it != "none" } || t.isMobile) out += "Pause and resume (and on a phone, background and return); if saving exists, save, kill the app, relaunch and load."
         if (p.value(Keys.OTA_UPDATES) == "content_ota") out += "Exercise the update pipeline: serve a valid update and confirm it applies on the NEXT launch only; serve a tampered and a corrupt one and confirm both are rejected with the game still starting on bundled content; confirm the game starts and plays with no network."
         if (p.value(Keys.HAS_PROGRESSION) == "no") out += "Confirm there is no player power progression anywhere: nothing the player earns makes later climbs mechanically easier."
-        if (p.value(Keys.ASSET_POLICY)?.startsWith("supplied") == true) out += "Confirm the owner-supplied asset packs are actually used in the build (list which pack feeds which asset need in ASSETS.md) and nothing supplied was silently replaced."
+        if (p.value(Keys.ASSET_POLICY)?.let { com.hotattic.gamedesigner.core.engine.AssetStrategy.of(it).usesSupplied } == true) out += "Confirm the owner-supplied asset packs are actually used in the build (list which pack feeds which asset need in ASSETS.md) and nothing supplied was silently replaced."
         out += "Reach the completion state defined for the first build, then restart cleanly."
         out += "Capture representative gameplay screenshots (or video) on the real build where tooling permits, inspect them for bad composition, camera clipping, unreadable HUD, placeholder assets, empty environments, scale problems, broken materials, visual obstruction, poor character readability, weak lighting and unfinished geometry, repair what you find, and inspect again."
         out += "Report honestly what you could and could not test. Successful compilation, an editor screenshot, a tool handshake, or unit tests alone are NOT gameplay verification."
@@ -53,6 +53,7 @@ object PlainLabels {
         val v = p.value(key) ?: return null
         val f = com.hotattic.gamedesigner.core.schema.Fields.get(key) ?: return v
         if (f.kind == com.hotattic.gamedesigner.core.schema.FieldKind.TEXT) return v
+        if (key == Keys.ASSET_POLICY) com.hotattic.gamedesigner.core.engine.AssetStrategy.label(v)?.let { return it }
         val t = Traits(p)
         return v.split("|").joinToString(", ") { id -> f.options(t).firstOrNull { it.id == id }?.label ?: id }
     }

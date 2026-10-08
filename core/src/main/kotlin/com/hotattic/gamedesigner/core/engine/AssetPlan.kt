@@ -82,50 +82,44 @@ object AssetPlan {
         return out
     }
 
-    /** Default resolution for a need under the owner's asset policy. Never returns an unresolved result. */
+    /** Default resolution for a need under the owner's asset strategy. Never returns an unresolved result. */
     fun defaultRecord(need: AssetNeed, t: Traits, now: Long): AssetRecord {
-        val policy = t.value(Keys.ASSET_POLICY) ?: "cc0_default"
+        val raw = t.value(Keys.ASSET_POLICY)
+        val strategy = AssetStrategy.of(raw)
+        val tiers = strategy.tiersFor(need.id)
         val art = t.value(Keys.ART_DIRECTION)
-        if (policy.startsWith("supplied")) {
-            val gaps = when (policy) {
-                "supplied_cc0" -> "Gaps the supplied packs do not cover: use a coherent CC0/public-domain set (verify each license), and only then an original procedural replacement: ${proceduralFallback(need)}"
-                "supplied_original" -> "Gaps the supplied packs do not cover: create original assets (${proceduralFallback(need)})"
-                else -> "Nothing external: anything the supplied packs lack is created from them or by project code (${proceduralFallback(need)})"
-            }
-            val sources = if (policy == "supplied_cc0") AssetSources.forKind(need.kind).filter { it.blanketCc0 }.joinToString("; ") { "${it.name} (${it.url})" } else ""
-            return AssetRecord(
-                needId = need.id, resolution = AssetResolution.USER_SUPPLIED, description = need.detail,
-                source = "Owner-supplied asset packs delivered with the master prompt" + if (sources.isNotEmpty()) "; gap sources: $sources" else "",
-                license = "Owner-supplied (the owner confirms the right to use them); gap assets per the policy",
-                notes = "INSPECT THE SUPPLIED PACKS FIRST: list their files, formats, scale, rigs/animations and any license or readme, and use their real contents for this need. Do not replace them with external or generated assets. $gaps",
-                verifiedAt = null,
-            )
-        }
         val proceduralArt = art in setOf("minimal_geometric", "vector_flat")
-        val sources = AssetSources.forKind(need.kind, includeNonBlanket = policy != "original_only")
-            .filter { policy != "original_only" }
-        val preferExternal = policy != "original_only" && !(proceduralArt && need.kind in setOf(AssetKind.SPRITES, AssetKind.TILESETS, AssetKind.MODELS, AssetKind.VFX, AssetKind.UI_KIT, AssetKind.ICONS, AssetKind.TEXTURES)) && sources.isNotEmpty()
-        return if (preferExternal) {
-            val blanket = sources.filter { it.blanketCc0 }
-            val ordered = (blanket + sources.filter { !it.blanketCc0 })
-            AssetRecord(
-                needId = need.id,
-                resolution = AssetResolution.EXTERNAL_CC0,
-                description = need.detail,
-                source = ordered.joinToString("; ") { "${it.name} (${it.url})" },
-                license = if (policy == "cc0_or_cc_by") "CC0 1.0 (CC-BY allowed with attribution)" else "CC0 1.0 / public domain",
-                notes = "Choose ONE visually coherent set (consistency over variety). If no coherent clean-license set covers this need, build the original procedural fallback: ${proceduralFallback(need)}",
+        val visualKinds = setOf(AssetKind.SPRITES, AssetKind.TILESETS, AssetKind.MODELS, AssetKind.VFX, AssetKind.UI_KIT, AssetKind.ICONS, AssetKind.TEXTURES)
+        // A procedural art style makes external visuals pointless unless the owner supplied material for them.
+        val chain = tiers.filterNot { it == AssetSourceKind.FREE && proceduralArt && need.kind in visualKinds }.ifEmpty { listOf(AssetSourceKind.ORIGINAL) }
+        val freeSources = AssetSources.forKind(need.kind, includeNonBlanket = true)
+            .sortedByDescending { s -> strategy.preferredFreeSource?.let { s.name.contains(it, true) } == true }
+        val sourceList = freeSources.joinToString("; ") { "${it.name} (${it.url})" }
+        val fallback = chain.drop(1).joinToString(" then ") { s -> when (s) {
+            AssetSourceKind.SUPPLIED -> "the supplied packs"
+            AssetSourceKind.FREE -> "appropriately licensed free assets (${sourceList.ifBlank { "verify each license" }})"
+            AssetSourceKind.ORIGINAL -> "original/procedural work (${proceduralFallback(need)})"
+        } }
+        val license = if (strategy.attribution) "CC0 1.0 (CC-BY allowed with attribution)" else "CC0 1.0 / public domain"
+        return when (chain.first()) {
+            AssetSourceKind.SUPPLIED -> AssetRecord(
+                needId = need.id, resolution = AssetResolution.USER_SUPPLIED, description = need.detail,
+                source = "Owner-supplied asset packs delivered with the master prompt",
+                license = "Owner-supplied (the owner confirms the right to use them)" + if (chain.size > 1) "; gap assets per the strategy" else "",
+                notes = "INSPECT THE SUPPLIED PACKS FIRST: list their files, formats, scale, rigs/animations and any license or readme, and use suitable contents for this need (suitable, not necessarily everything). " +
+                    if (fallback.isNotBlank()) "Where they do not cover this need, in order: $fallback." else "Nothing external is added.",
                 verifiedAt = null,
             )
-        } else {
-            AssetRecord(
-                needId = need.id,
-                resolution = AssetResolution.PROCEDURAL,
-                description = need.detail,
-                source = "Original, generated by project code",
-                license = "Original work (project license)",
-                notes = proceduralFallback(need),
-                verifiedAt = now,
+            AssetSourceKind.FREE -> AssetRecord(
+                needId = need.id, resolution = AssetResolution.EXTERNAL_CC0, description = need.detail,
+                source = sourceList, license = license,
+                notes = "Choose ONE visually coherent set (consistency over variety)." + if (fallback.isNotBlank()) " If no coherent clean-license set covers this need: $fallback." else "",
+                verifiedAt = null,
+            )
+            AssetSourceKind.ORIGINAL -> AssetRecord(
+                needId = need.id, resolution = AssetResolution.PROCEDURAL, description = need.detail,
+                source = "Original, generated by project code", license = "Original work (project license)",
+                notes = proceduralFallback(need), verifiedAt = now,
             )
         }
     }

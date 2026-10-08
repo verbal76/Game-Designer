@@ -110,10 +110,26 @@ class ClimbUpRegressionTest {
         assertEquals("no", p.value(Keys.HAS_PROGRESSION)); assertNull(p.decision(Keys.PROGRESSION), "no stale meta_unlocks")
         assertTrue(run.asked.none { it in combatDetail || it == Keys.PROGRESSION }, run.asked.toString())
         // supplied asset packs survive, and OTA 'yes' opened exactly one small follow-up
-        assertEquals("supplied_cc0", p.value(Keys.ASSET_POLICY)); assertFalse(Keys.ASSET_POLICY in run.asked, "already answered by the owner's own words")
+        val st = com.hotattic.gamedesigner.core.engine.AssetStrategy.of(p.value(Keys.ASSET_POLICY))
+        assertEquals(com.hotattic.gamedesigner.core.engine.AssetSourceKind.SUPPLIED, st.order.first()); assertTrue(st.usesSupplied)
+        assertFalse(Keys.ASSET_POLICY in run.asked, "already answered by the owner's own words")
         assertEquals("content_ota", p.value(Keys.OTA_UPDATES)); assertEquals("content_only", p.value(Keys.OTA_SCOPE))
         // studio logo kept
         assertEquals("Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png", p.branding["studio_splash"]?.originalName)
+    }
+
+    @Test fun theV5AssetStatementKeepsSuppliedFirstThenFreeThenOriginalAndProceduralNeverForbidsAuthoredWork() = runBlocking {
+        val said = "I want to be able to use asset packs that I give Claude with this prompt and any CC0 items you can find for me and original work done by Claude to fill in the gaps."
+        val noPacks = answers["first_slice"]!!.replace("and it should use the asset packs that I give it along with the master prompt. ", "").replace("so all the asset packs are going to be 3D", "so everything is 3D")
+        val p = replay(director(), mapOf("first_slice" to noPacks, "asset_policy" to said)).project
+        val st = com.hotattic.gamedesigner.core.engine.AssetStrategy.of(p.value(Keys.ASSET_POLICY))
+        assertEquals(listOf(com.hotattic.gamedesigner.core.engine.AssetSourceKind.SUPPLIED, com.hotattic.gamedesigner.core.engine.AssetSourceKind.FREE, com.hotattic.gamedesigner.core.engine.AssetSourceKind.ORIGINAL), st.order)
+        val md = spec(p); val mp = prompt(p)
+        assertTrue(st.describe() in md && st.describe() in mp && st.describe() in ExportPackage.assetsMarkdown(p))
+        assertFalse("CC0 / public domain, else original/procedural" in md + mp)
+        val all = (md + mp).lowercase()
+        assertFalse("never authored by hand" in all)
+        assertTrue("has not forbidden hand-authored ingredients" in all && "authored modules, patterns, templates, grammars and rules are all allowed ingredients" in all)
     }
 
     @Test fun theDesignModelReadsTheClimbUpInterviewTheWayTheGroundTruthDoes() = runBlocking {

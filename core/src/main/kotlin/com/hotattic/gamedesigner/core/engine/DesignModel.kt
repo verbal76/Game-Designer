@@ -78,6 +78,7 @@ object ProceduralInvariants {
         if (t.continuousWorld || t.verticalWorld || p.value(Keys.WORLD_STRUCTURE) == "procedural_stages") must += "The overall topology the owner described survives generation (for example an unbroken upward ascent), not a pile of disconnected pieces."
         val g = traversalGrammar(p)
         if (g.isNotEmpty()) must += "Traversal grammar: only the owner's traversal elements (${g.joinToString(", ")}) and their combinations are used; each combination is checked for fairness."
+        ProceduralAuthorship.of(p)?.takeIf { it.mode != ProceduralMode.FULLY_AUTHORED }?.let { must += it.statement() }
         val vary = listOf("order, spacing and combination of obstacles within the safe bounds above", "seed-driven layout and pacing of difficulty beats", "visual variants within the established style")
         return must to vary
     }
@@ -115,7 +116,7 @@ class DesignModel private constructor(val project: Project) {
             SystemId.MULTIPLAYER to if (dec(Keys.NETWORK_POLICY)?.value == "fully_offline" || dec(Keys.NETWORK_POLICY) == null) SystemState.ABSENT else SystemState.UNKNOWN,
             SystemId.PROCEDURAL_GENERATION to when (dec(Keys.WORLD_STRUCTURE)?.value) { null -> SystemState.UNKNOWN; "procedural_stages" -> SystemState.PRESENT; else -> SystemState.ABSENT },
             SystemId.OTA_UPDATES to when (dec(Keys.OTA_UPDATES)?.value) { null -> SystemState.UNKNOWN; "none" -> SystemState.ABSENT; else -> SystemState.PRESENT },
-            SystemId.SUPPLIED_ASSETS to if (dec(Keys.ASSET_POLICY)?.value?.startsWith("supplied") == true) SystemState.PRESENT else if (dec(Keys.ASSET_POLICY) == null) SystemState.UNKNOWN else SystemState.ABSENT,
+            SystemId.SUPPLIED_ASSETS to if (dec(Keys.ASSET_POLICY)?.value?.let { AssetStrategy.of(it).usesSupplied } == true) SystemState.PRESENT else if (dec(Keys.ASSET_POLICY) == null) SystemState.UNKNOWN else SystemState.ABSENT,
         )
     }
 
@@ -134,6 +135,7 @@ class DesignModel private constructor(val project: Project) {
     val characterPowerProgression: SystemState get() = state(SystemId.CHARACTER_POWER)
     val playerMasteryIsProgression: Boolean get() = characterPowerProgression == SystemState.ABSENT
     val procedural: Boolean get() = state(SystemId.PROCEDURAL_GENERATION) == SystemState.PRESENT
+    val proceduralAuthorship: ProceduralAuthorship? by lazy { ProceduralAuthorship.of(project) }
 
     val ownerRequirements: Map<String, Decision> get() = project.decisions.filter { (_, d) -> d.ownerAuthored && d.value.isNotBlank() && d.status == DecisionStatus.CONFIRMED }
     val acceptedRecommendations: Map<String, Decision> get() = project.decisions.filter { (_, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION && d.value.isNotBlank() }

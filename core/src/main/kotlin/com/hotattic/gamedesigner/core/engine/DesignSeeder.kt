@@ -71,13 +71,14 @@ object DesignSeeder {
                 seeded += Keys.WIN_LOSS
             }
         }
-        // "Use the asset packs I give you" is an asset decision, not a remark: it must reach the export and survive later questions.
+        // What the owner said about where assets come from ("use the packs I give you, CC0 for gaps, original for the rest") is an asset
+        // decision, not a remark. Only sentences that talk about assets are read, so "procedurally generated stages" is never an asset preference.
         if (p.decision(Keys.ASSET_POLICY) == null && Fields.get(Keys.ASSET_POLICY)?.isRelevant(Traits(p)) == true) {
             val ownerText = (listOf(said) + listOf(Keys.FIRST_SLICE, Keys.CORE_LOOP).mapNotNull { p.decision(it)?.takeIf { d -> d.ownerAuthored }?.value }).joinToString(". ")
-            val supplied = Regex("(?i)\\b(?:asset packs?|assets|art packs?|packs)\\b.{0,50}\\b(?:i|we)\\b.{0,20}\\b(?:give|gave|supply|supplied|provide|provided|send|upload|have)\\b|\\b(?:my|the)\\s+(?:own\\s+)?(?:asset|art) packs?\\b|\\buse\\s+(?:the\\s+)?(?:asset\\s+)?packs?\\s+(?:that\\s+)?i\\b").containsMatchIn(ownerText)
-            if (supplied) {
-                val only = Regex("(?i)\\bonly\\b.{0,25}\\b(?:my|supplied|the packs?)\\b").containsMatchIn(ownerText)
-                p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, if (only) "supplied_only" else "supplied_cc0", Provenance.SYSTEM_INFERENCE, now, DecisionStatus.CONFIRMED, "Read from your words: you will supply asset packs")
+            val assetSentences = ownerText.split(Regex("(?<=[.!?])\\s+")).filter { com.hotattic.gamedesigner.core.engine.AssetStrategy.assetTalk.containsMatchIn(it) }.joinToString(" ")
+            val st = com.hotattic.gamedesigner.core.engine.AssetStrategy.parse(assetSentences)
+            if (st != null && (st.usesSupplied || st.preferredFreeSource != null || st.byCategory.isNotEmpty())) {
+                p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, st.encode(), Provenance.SYSTEM_INFERENCE, now, DecisionStatus.CONFIRMED, "Read from your words about assets")
                 seeded += Keys.ASSET_POLICY
             }
         }

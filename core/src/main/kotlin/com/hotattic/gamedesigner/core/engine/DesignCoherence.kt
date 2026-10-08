@@ -78,6 +78,33 @@ object DesignCoherence {
             if (name != "ASSETS.md" && name != "CLAUDE.md" && name != "MASTER_PROMPT.md") continue
             if (!Regex("(?i)asset packs").containsMatchIn(text)) out += ReviewFinding(ReviewLevel.ERROR, "supplied_assets_lost", "[$name] The owner supplies asset packs but this document does not tell the builder to use them first.", name)
         }
+
+        // Asset strategy: the exports must carry the strategy the design state holds, not a generic paragraph that reorders it.
+        val strategy = AssetStrategy.of(p.value(Keys.ASSET_POLICY))
+        val describe = strategy.describe()
+        for (name in listOf("CLAUDE.md", "MASTER_PROMPT.md", "ASSETS.md")) {
+            val text = docs[name] ?: continue
+            if (describe !in text) out += ReviewFinding(ReviewLevel.ERROR, "asset_strategy_missing", "[$name] does not carry the owner's asset strategy.", name)
+            if (strategy.order.first() != AssetSourceKind.FREE) {
+                val hit = text.lines().firstOrNull { Regex("(?i)\\b(?:cc0|public[- ]domain)\\b[^.,;]{0,40}\\bfirst\\b|cc0 / public domain, else original").containsMatchIn(it) && !negation.containsMatchIn(it) && !Regex("(?i)supplied|asset packs|my asset").containsMatchIn(it) }
+                if (hit != null) out += ReviewFinding(ReviewLevel.ERROR, "asset_priority_contradiction", "[$name] puts free/CC0 assets first but the owner's strategy starts with ${strategy.order.first().name.lowercase()}.", hit.trim().take(160))
+            }
+            if (!strategy.allowsFree) {
+                val hit = text.lines().firstOrNull { Regex("(?i)use a cc0/public-domain set from external sources").containsMatchIn(it) }
+                if (hit != null) out += ReviewFinding(ReviewLevel.ERROR, "external_assets_introduced", "[$name] introduces external assets but the owner's strategy allows none.", hit.trim().take(160))
+            }
+        }
+        // Procedural authorship: state the mode, and never invent a prohibition on authored ingredients.
+        m.proceduralAuthorship?.let { pa ->
+            if (pa.mode != ProceduralMode.FULLY_AUTHORED && docs["CLAUDE.md"]?.contains(pa.statement()) == false)
+                out += ReviewFinding(ReviewLevel.ERROR, "procedural_authorship_missing", "The spec does not state how procedural content relates to authored content.", "CLAUDE.md")
+            val ban = Regex("(?i)never authored by hand|nothing (?:is |may be )?(?:hand-?)?authored|no hand-?(?:built|authored|made)|not authored by hand|without any authored")
+            // Quotes of the owner's own words are theirs to say; the ban is about what the EXPORT adds.
+            if (pa.mode != ProceduralMode.HIGHLY_GENERATIVE) for ((name, text) in docs) text.lines().firstOrNull { ban.containsMatchIn(it) && !it.trimStart().startsWith(">") }?.let {
+                out += ReviewFinding(ReviewLevel.ERROR, "invented_authoring_prohibition", "[$name] forbids authored content, which the owner never did.", it.trim().take(160))
+            }
+            if (pa.mode == ProceduralMode.FULLY_AUTHORED) docs["CLAUDE.md"]?.let { if ("Procedural generation constraints" in it) out += ReviewFinding(ReviewLevel.ERROR, "procedural_in_authored_game", "An authored game carries procedural-generation requirements.", "CLAUDE.md") }
+        }
         return out
     }
 }

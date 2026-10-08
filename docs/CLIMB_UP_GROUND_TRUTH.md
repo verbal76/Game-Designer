@@ -57,3 +57,8 @@ You are the lead engineer for **Climb up**. Read the repository `CLAUDE.md` firs
 ## What the design model must say about this game (asserted by `ClimbUpRegressionTest`)
 
 Combat `ABSENT`; character power progression `ABSENT` (so player mastery is the progression); procedural generation, supplied assets and OTA `PRESENT`; experience = skilled near-miss (not randomness); no unresolved material decision; the export contains "Procedural generation constraints" with the owner's traversal grammar (jumps, ropes, trampolines, moving/swinging/crumbling platforms, ledge catch) and no combat, XP, upgrade or unlock requirement. See `docs/DESIGN_INTELLIGENCE.md`.
+
+## Two fidelity corrections (asserted by `ClimbUpRegressionTest` / `FidelityTest`)
+
+- **Assets.** The owner's strategy is supplied packs first (inspect and use suitable contents), appropriately licensed CC0/free assets for what they do not cover, original/procedural work for what remains. It is carried as a strategy, not as "CC0 / public domain, else original".
+- **Procedural authorship.** "Procedural climbing stages" means generation under authored constraints. Authored obstacle modules, patterns, templates, grammars and validation rules are all allowed ingredients; the spec says so and never says stages are "never authored by hand".

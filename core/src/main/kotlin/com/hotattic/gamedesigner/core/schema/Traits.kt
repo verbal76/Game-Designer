@@ -62,7 +62,7 @@ class Traits(val project: Project) {
         return when {
             sys.id == "hazards_enemies" && noCombat -> SystemReq("hazards", "Environmental hazards", "Hazards that set the player back (falls, crumbling or moving obstacles). No enemies, no combat and no health or damage model.")
             noCombat && Regex("(?i)combat|enem|boss|weapon|damage").containsMatchIn(sys.id + " " + sys.name) -> null
-            procedural && sys.id == "level_set" -> SystemReq("stage_generator", "Procedural stage generator", "Seeded generator that composes the obstacle types into coherent, readable, fair routes; every generated stage is completable, deliberate hard jumps are allowed, and difficulty rises. Stages are never authored by hand.")
+            procedural && sys.id == "level_set" -> SystemReq("stage_generator", "Procedural stage generator", "Seeded generator that composes the obstacle types into coherent, readable, fair routes; every generated stage is completable, deliberate hard jumps are allowed, and difficulty rises. Authored components, patterns and rules are allowed ingredients.")
             procedural && sys.id == "level_select_progress" -> SystemReq("run_progress_save", "Checkpoint and run progress save", "Persist checkpoint, best height and settings; there is no stage menu.")
             noPower && Regex("(?i)unlock|upgrade|skill|power").containsMatchIn(sys.id + " " + sys.name) -> null
             else -> sys

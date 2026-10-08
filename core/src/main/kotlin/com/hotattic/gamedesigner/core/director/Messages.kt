@@ -22,6 +22,7 @@ object Messages {
     fun display(p: Project, key: String, value: String): String {
         val f = Fields.get(key) ?: return value
         if (f.kind == FieldKind.TEXT) return value
+        if (key == Keys.ASSET_POLICY) com.hotattic.gamedesigner.core.engine.AssetStrategy.label(value)?.let { return it }
         val t = Traits(p)
         val opts = f.options(t)
         return value.split(Decision.LIST_SEPARATOR).filter { it.isNotBlank() }.joinToString(", ") { id ->

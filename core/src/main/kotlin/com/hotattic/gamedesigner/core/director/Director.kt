@@ -357,6 +357,9 @@ class Director(private val deps: DirectorDeps) {
                 val policyField = Fields.get(Keys.ASSET_POLICY)!!
                 if (AnswerParser.isAffirm(text) || AnswerParser.isDelegate(text)) {
                     p = p.copy(assets = p.assets + AssetPlan.resolveMissing(p, now))
+                } else if (com.hotattic.gamedesigner.core.engine.AssetStrategy.parse(text) != null) {
+                    val st = com.hotattic.gamedesigner.core.engine.AssetStrategy.parse(text)!!
+                    p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, st.encode(), Provenance.OWNER_EXPLICIT, now, raw = text.trim()).copy(assets = emptyList()); p = p.copy(assets = AssetPlan.resolveMissing(p, now))
                 } else when (val a = AnswerParser.parse(policyField, Traits(p), text)) {
                     is Answer.Value -> { p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, a.value, Provenance.OWNER_EXPLICIT, now, raw = text.trim()).copy(assets = emptyList()); p = p.copy(assets = AssetPlan.resolveMissing(p, now)) }
                     else -> return DirectorTurn(reply(p, "Say \"looks good\" to accept the asset plan, or tell me to switch the policy (CC0 only / allow CC-BY / only original assets).", PENDING_ASSET_PLAN, assetPlanQuick()))
@@ -668,6 +671,13 @@ class Director(private val deps: DirectorDeps) {
 
     private suspend fun answerFieldWith(p0: Project, settings: AppSettings, field: Field, text: String, now: Long, interp0: Interpretation): FieldResult {
         val traits = Traits(p0)
+        // Where assets may come from is a strategy (ordered sources, optionally per category), not one of three presets: keep what the owner actually said.
+        if (field.key == Keys.ASSET_POLICY && interp0.intent !in setOf(AnswerIntent.DELEGATE, AnswerIntent.POSTPONE, AnswerIntent.SKIP, AnswerIntent.NONE, AnswerIntent.QUESTION)) {
+            com.hotattic.gamedesigner.core.engine.AssetStrategy.parse(text)?.let { st ->
+                val r = commitValue(p0, settings, field, st.encode(), text, now, interp0)
+                return r.copy(project = r.project.copy(assets = emptyList()), kind = interp0.by, modelNote = r.modelNote ?: interp0.by.takeIf { it != InterpreterKind.RULES }?.label)
+            }
+        }
         // A title or an identifier is a name, not a statement about the design: never mine it for reference games, rejections or facts.
         val interp = if (field.key == Keys.DISPLAY_NAME || field.key == Keys.PACKAGE_ID)
             interp0.copy(references = emptyList(), rejectedTags = emptyList(), rejectedGenres = emptyList(), affirmedTags = emptyList(), retract = emptyList(), facts = emptyList(), edits = emptyMap())

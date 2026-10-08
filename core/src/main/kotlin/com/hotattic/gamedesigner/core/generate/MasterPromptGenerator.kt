@@ -1,5 +1,6 @@
 package com.hotattic.gamedesigner.core.generate
 
+import com.hotattic.gamedesigner.core.engine.AssetStrategy
 import com.hotattic.gamedesigner.core.engine.BuildObjective
 import com.hotattic.gamedesigner.core.engine.MetaConversation
 import com.hotattic.gamedesigner.core.engine.ProjectObjective
@@ -121,8 +122,8 @@ object MasterPromptGenerator {
 
             val ups = project.branding.values.filter { it.mode == BrandingMode.UPLOADED }
             section("SUPPLIED ASSETS / ASSET POLICY", listOfNotNull(
-                lab(Keys.ASSET_POLICY)?.let { "Asset policy: $it. Verify every external asset's license on its own page, log provenance in `ASSETS.md`, never assume 'free to download' is a license." },
-                if (v(Keys.ASSET_POLICY)?.startsWith("supplied") == true) "The owner supplies asset packs with this prompt. INSPECT THEM FIRST and use their real contents (${if (v(Keys.ART_DIRECTION) == "voxel" || v(Keys.DIMENSION) == "3D") "they are 3D assets, appropriate to the ${v(Keys.DIMENSION) ?: "3D"} presentation" else "check their format and scale"}); create missing animations for the supplied player character where technically reasonable; only genuine gaps follow the policy above. Record the packs in `ASSETS.md`." else null,
+                v(Keys.ASSET_POLICY)?.let { AssetStrategy.of(it).describe() + " Verify every external asset's license on its own page, log provenance in `ASSETS.md`, never assume 'free to download' is a license." },
+                if (v(Keys.ASSET_POLICY)?.let { AssetStrategy.of(it).usesSupplied } == true) "The owner supplies asset packs with this prompt. INSPECT THEM FIRST and use their real contents (${if (v(Keys.ART_DIRECTION) == "voxel" || v(Keys.DIMENSION) == "3D") "they are 3D assets, appropriate to the ${v(Keys.DIMENSION) ?: "3D"} presentation" else "check their format and scale"}); create missing animations for the supplied player character where technically reasonable; only genuine gaps follow the policy above. Record the packs in `ASSETS.md`." else null,
             ) + ups.map { "Owner-supplied ${it.slot.replace('_', ' ')}: `${it.originalName}` (${it.width}x${it.height}), included in the package under `branding/master/`. Use it as-is; never replace or regenerate it. Keep the master untouched and derive every size from it." })
 
             val inv = v(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }

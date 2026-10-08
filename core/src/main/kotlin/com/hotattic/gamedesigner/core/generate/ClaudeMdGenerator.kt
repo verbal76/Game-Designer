@@ -4,6 +4,7 @@ import com.hotattic.gamedesigner.core.engine.AssetPlan
 import com.hotattic.gamedesigner.core.engine.AuditEngine
 import com.hotattic.gamedesigner.core.engine.AuditReport
 import com.hotattic.gamedesigner.core.engine.ConflictEngine
+import com.hotattic.gamedesigner.core.engine.AssetStrategy
 import com.hotattic.gamedesigner.core.engine.BuildObjective
 import com.hotattic.gamedesigner.core.engine.ConsistencyReview
 import com.hotattic.gamedesigner.core.engine.MetaConversation
@@ -116,8 +117,8 @@ object ClaudeMdGenerator {
         if (completion.isEmpty()) p("The owner delegated the completion criteria; see Part B.") else bullets(completion)
 
         h2("A7. Asset policy and owner-supplied assets")
-        v(Keys.ASSET_POLICY)?.let { pol -> p("Asset policy: **${label(Keys.ASSET_POLICY, pol)}**" + (project.decision(Keys.ASSET_POLICY)?.let { if (it.ownerAuthored) " (chosen by the owner)" else "" } ?: "") + ".") }
-        if (v(Keys.ASSET_POLICY)?.startsWith("supplied") == true)
+        v(Keys.ASSET_POLICY)?.let { pol -> p(AssetStrategy.of(pol).describe()); p("Asset policy: **${label(Keys.ASSET_POLICY, pol)}**" + (project.decision(Keys.ASSET_POLICY)?.let { if (it.ownerAuthored) " (chosen by the owner)" else "" } ?: "") + ".") }
+        if (v(Keys.ASSET_POLICY)?.let { AssetStrategy.of(it).usesSupplied } == true)
             p("**OWNER-SUPPLIED ASSET PACKS.** The owner will give you asset packs together with the master prompt. They are the FIRST choice for every asset need: inspect them before choosing anything else (files, formats, scale, rigs and animations, bundled licenses), use their real contents, and create missing animations for the supplied player character where technically reasonable. Do not replace them with external or generated assets. " + (project.activeFacts().map { it.text }.firstOrNull { Regex("(?i)\\b3d\\b").containsMatchIn(it) && Regex("(?i)asset").containsMatchIn(it) } ?.let { "The owner noted: \"$it\". " } ?: "") + "Only gaps the packs cannot cover follow the gap policy in section 8.")
         val slotLines = Keys.brandingKeyForSlot.map { (slot, key) ->
             val up = project.branding[slot]?.takeIf { it.mode == BrandingMode.UPLOADED }
@@ -272,7 +273,7 @@ object ClaudeMdGenerator {
         // 8. Assets
         h2("8. Assets, provenance and branding")
         val policy = v(Keys.ASSET_POLICY) ?: "cc0_default"
-        if (policy.startsWith("supplied")) p("Supplied packs come first (see A7). The rules below apply to every GAP asset and to anything external that is added; the supplied packs themselves are the owner's responsibility, but still log them in `ASSETS.md`.")
+        if (AssetStrategy.of(policy).usesSupplied) p("Supplied material is used first for the needs it covers (see A7). The rules below apply to every GAP asset and to anything external that is added; the supplied packs themselves are the owner's responsibility, but still log them in `ASSETS.md`.")
         p("License policy: **${label(Keys.ASSET_POLICY, policy)}**. 'Free to download' is not a license. For every external asset: verify the license on the asset's own page, save a copy of the license text under `assets/licenses/`, and add an entry to `ASSETS.md` with file, source URL, creator, license, and download date. The in-game credits screen lists all of them. Do not scrape or redistribute assets against a site's terms.")
         p("If no coherent, appropriately licensed set exists for a need, build the original procedural replacement described below. Never leave an asset need unresolved or as a placeholder.")
         val needs = AssetPlan.needs(t)
@@ -514,6 +515,7 @@ object ClaudeMdGenerator {
     private fun optionLabel(t: Traits, key: String, value: String): String {
         val f: Field = Fields.get(key) ?: return value
         if (f.kind == com.hotattic.gamedesigner.core.schema.FieldKind.TEXT) return value
+        if (key == Keys.ASSET_POLICY) com.hotattic.gamedesigner.core.engine.AssetStrategy.label(value)?.let { return it }
         return f.options(t).firstOrNull { it.id == value }?.label ?: when (key) {
             Keys.GENRE -> GenreKnowledge.resolve(value).label
             Keys.PLATFORMS -> Platforms.labels[value] ?: value
