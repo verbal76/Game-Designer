@@ -31,7 +31,7 @@ object DesignDimensions {
         DimId.INTERACTION -> listOf(Keys.HAS_COMBAT, Keys.HAS_ECONOMY, Keys.HAS_CRAFTING, Keys.COMBAT_MODEL, Keys.ENEMIES_BOSSES, Keys.ECONOMY, Keys.SURVIVAL_CRAFTING, Keys.AUTOMATION_SIM, Keys.CHARACTERS)
         DimId.WORLD -> listOf(Keys.WORLD_STRUCTURE)
         DimId.FAILURE -> listOf(Keys.DIFFICULTY_FAILURE)
-        DimId.PROGRESSION -> listOf(Keys.PROGRESSION)
+        DimId.PROGRESSION -> listOf(Keys.HAS_PROGRESSION, Keys.PROGRESSION)
         DimId.SESSION -> listOf(Keys.SESSION_STRUCTURE)
         DimId.SLICE -> listOf(Keys.FIRST_SLICE)
         DimId.VISUAL -> listOf(Keys.ART_DIRECTION)

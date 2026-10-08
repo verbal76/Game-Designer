@@ -51,6 +51,8 @@ object ClaudeMdGenerator {
         // Only confirmed, still-relevant decisions are rendered; proposals and stale values never reach the spec.
         fun active(key: String) = project.decision(key)?.takeIf { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() && (Fields.get(key)?.isRelevant(t) != false) }
         fun v(key: String) = active(key)?.value
+        /** A value the owner (or their accepted recommendation / a grounded inference) set, not one of Bob's routine defaults. */
+        fun nd(key: String) = active(key)?.takeIf { it.prov != Provenance.DEFAULT }?.value
         fun label(key: String, value: String?): String = value?.let { raw -> raw.split("|").joinToString(", ") { optionLabel(t, key, it) } } ?: "(not specified)"
 
         h1("$title - AUTHORITATIVE BUILD SPECIFICATION")
@@ -115,6 +117,8 @@ object ClaudeMdGenerator {
 
         h2("A7. Asset policy and owner-supplied assets")
         v(Keys.ASSET_POLICY)?.let { pol -> p("Asset policy: **${label(Keys.ASSET_POLICY, pol)}**" + (project.decision(Keys.ASSET_POLICY)?.let { if (it.ownerAuthored) " (chosen by the owner)" else "" } ?: "") + ".") }
+        if (v(Keys.ASSET_POLICY)?.startsWith("supplied") == true)
+            p("**OWNER-SUPPLIED ASSET PACKS.** The owner will give you asset packs together with the master prompt. They are the FIRST choice for every asset need: inspect them before choosing anything else (files, formats, scale, rigs and animations, bundled licenses), use their real contents, and create missing animations for the supplied player character where technically reasonable. Do not replace them with external or generated assets. " + (project.activeFacts().map { it.text }.firstOrNull { Regex("(?i)\\b3d\\b").containsMatchIn(it) && Regex("(?i)asset").containsMatchIn(it) } ?.let { "The owner noted: \"$it\". " } ?: "") + "Only gaps the packs cannot cover follow the gap policy in section 8.")
         val slotLines = Keys.brandingKeyForSlot.map { (slot, key) ->
             val up = project.branding[slot]?.takeIf { it.mode == BrandingMode.UPLOADED }
             val nice = when (slot) { BrandingSlot.ICON -> "Game icon"; BrandingSlot.STUDIO_SPLASH -> "Studio logo / splash"; else -> "Game splash / title image" }
@@ -139,7 +143,11 @@ object ClaudeMdGenerator {
 
         sb.append("# PART C - IMPLEMENTATION GUIDANCE (how to build it; derived from Parts A and B plus engineering practice)\n\n")
         p("Where anything in this part appears to conflict with Part A, Part A wins.")
-        val derivedDefaults = project.decisions.filter { (k, d) -> d.prov == Provenance.DEFAULT && d.value.isNotBlank() && active(k) != null }
+        // A routine default never sits beside the owner's own description of the same thing (their camera idea beats "side view"; their stated slice beats "1-5 minute sessions").
+        val ownerCamera = project.decision(Keys.MOVEMENT_CAMERA)?.ownerAuthored == true
+        val ownerSlice = project.decision(Keys.FIRST_SLICE)?.ownerAuthored == true
+        val derivedDefaults = project.decisions.filter { (k, d) -> d.prov == Provenance.DEFAULT && d.value.isNotBlank() && active(k) != null &&
+            !(k == Keys.PERSPECTIVE && ownerCamera) && !(k == Keys.SESSION_STRUCTURE && ownerSlice) }
         if (derivedDefaults.isNotEmpty()) {
             h3("Engineering decisions Bob made so the owner did not have to (change any of them for a good reason)")
             bullets(derivedDefaults.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" })
@@ -153,7 +161,7 @@ object ClaudeMdGenerator {
         p("The owner's concept is quoted verbatim in section A1.")
         v(Keys.CORE_FANTASY)?.let { p("**Core fantasy:** $it") }
         v(Keys.PLAYER_FEELING)?.let { p("**Intended player feeling:** $it") }
-        if (t.genresKnown) p("**Genre:** ${t.genres.joinToString(" + ") { it.label }}. **Dimension:** ${v(Keys.DIMENSION) ?: "n/a"}. **Perspective:** ${label(Keys.PERSPECTIVE, v(Keys.PERSPECTIVE))}.")
+        if (t.genresKnown) p("**Genre:** ${t.genres.joinToString(" + ") { it.label }}. **Dimension:** ${v(Keys.DIMENSION) ?: "n/a"}. ${nd(Keys.PERSPECTIVE)?.let { " **Perspective:** ${label(Keys.PERSPECTIVE, it)}." } ?: ""}")
         if (project.references.isNotEmpty()) {
             h3("Reference games")
             p("References inform design characteristics only. Never copy characters, art, maps, music, writing, names or any proprietary asset from them.")
@@ -181,7 +189,7 @@ object ClaudeMdGenerator {
         h2("3. Player experience")
         bullets(listOfNotNull(
             v(Keys.CORE_LOOP)?.let { "**Core loop:** $it" },
-            v(Keys.SESSION_STRUCTURE)?.let { "**Session structure:** ${label(Keys.SESSION_STRUCTURE, it)}" },
+            nd(Keys.SESSION_STRUCTURE)?.let { "**Session structure:** ${label(Keys.SESSION_STRUCTURE, it)}" },
             v(Keys.WORLD_STRUCTURE)?.let { "**World/level structure:** ${label(Keys.WORLD_STRUCTURE, it)}" },
             v(Keys.WIN_LOSS)?.let { "**Win/loss:** $it" },
             v(Keys.DIFFICULTY_FAILURE)?.let { "**Difficulty and failure:** ${label(Keys.DIFFICULTY_FAILURE, it)}" },
@@ -197,7 +205,9 @@ object ClaudeMdGenerator {
             v(Keys.COMBAT_MODEL)?.let { "**Combat:** ${label(Keys.COMBAT_MODEL, it)}" },
             v(Keys.ENEMIES_BOSSES)?.let { "**Enemies and bosses:** $it" },
             v(Keys.CHARACTERS)?.let { "**Characters:** ${label(Keys.CHARACTERS, it)}" },
-            v(Keys.PROGRESSION)?.let { "**Progression:** ${label(Keys.PROGRESSION, it)}" },
+            if (v(Keys.HAS_PROGRESSION) == "no") "**Progression:** NONE by design (owner decision). The player never gets stronger - no XP, levels, upgrades, unlocks or power-ups. Skill and physical progress through the game are the only progression; do not add any."
+            else v(Keys.PROGRESSION)?.let { "**Progression:** ${label(Keys.PROGRESSION, it)}" },
+            if (v(Keys.HAS_COMBAT) == "no") "**Combat:** NONE by design (owner decision). No enemies, bosses, weapons, health or damage model; challenge comes from the environment." else null,
             v(Keys.ECONOMY)?.let { "**Economy:** $it" },
             v(Keys.SURVIVAL_CRAFTING)?.let { "**Survival and crafting:** $it" },
             v(Keys.AUTOMATION_SIM)?.let { "**Simulation/building:** $it" },
@@ -249,6 +259,7 @@ object ClaudeMdGenerator {
         // 8. Assets
         h2("8. Assets, provenance and branding")
         val policy = v(Keys.ASSET_POLICY) ?: "cc0_default"
+        if (policy.startsWith("supplied")) p("Supplied packs come first (see A7). The rules below apply to every GAP asset and to anything external that is added; the supplied packs themselves are the owner's responsibility, but still log them in `ASSETS.md`.")
         p("License policy: **${label(Keys.ASSET_POLICY, policy)}**. 'Free to download' is not a license. For every external asset: verify the license on the asset's own page, save a copy of the license text under `assets/licenses/`, and add an entry to `ASSETS.md` with file, source URL, creator, license, and download date. The in-game credits screen lists all of them. Do not scrape or redistribute assets against a site's terms.")
         p("If no coherent, appropriately licensed set exists for a need, build the original procedural replacement described below. Never leave an asset need unresolved or as a placeholder.")
         val needs = AssetPlan.needs(t)
@@ -314,7 +325,8 @@ object ClaudeMdGenerator {
         if (v(Keys.OTA_UPDATES) == "content_ota") {
             h3("Over-the-air updates (owner chose this; implement the LEAST INTRUSIVE design)")
             bullets(listOf(
-                "**Scope:** data only - levels, tuning tables, text and localisation, art/audio assets and config. Never download or execute code; code changes ship as normal builds. This keeps the game inside store policy and needs no embedded runtime.",
+                if (v(Keys.OTA_SCOPE) == "content_and_logic") "**Scope (owner decision):** content, tuning AND game logic expressed as sandboxed data/scripts the game interprets (no native code, no arbitrary code execution; the script runtime is part of the bundled build and versioned by the schema gate). Everything else ships as a normal build."
+                else "**Scope:** data only - levels, tuning tables, text and localisation, art/audio assets and config. Never download or execute code; code changes ship as normal builds. This keeps the game inside store policy and needs no embedded runtime.",
                 "**Checking:** silent and non-blocking, at most once every 24 hours and at app start, only on an unmetered connection, with a short timeout. Failure is silent. Nothing interrupts play, nothing is shown unless the player opens Settings.",
                 "**Applying:** only on the next cold start, never mid-session. No restart prompts, no popups, no forced updates.",
                 "**Safety:** a signed manifest (public key pinned in the app), a SHA-256 for every file, a minimum-app-version and schema gate, atomic staging, an anti-rollback counter, and automatic fallback to the bundled content if anything fails to verify or load.",
@@ -482,7 +494,7 @@ object ClaudeMdGenerator {
         AssetResolution.EXTERNAL_OTHER_LICENSE -> "external asset under a non-CC0 license (attribution rules apply)"
         AssetResolution.PROCEDURAL -> "original, generated procedurally by project code"
         AssetResolution.GENERATED_ORIGINAL -> "original, generated"
-        AssetResolution.USER_SUPPLIED -> "supplied by the owner"
+        AssetResolution.USER_SUPPLIED -> "use the owner-supplied asset packs (inspect them first)"
         AssetResolution.DEFERRED_BY_OWNER -> "deferred by the owner"
     }
 
@@ -503,7 +515,7 @@ object ClaudeMdGenerator {
         "subtitles" -> "Subtitles/captions for all speech and meaningful audio cues, with size and background options."
         "haptics_control" -> "Vibration/haptics: global on/off and intensity control."
         "large_touch_targets" -> "Large touch targets: minimum 48dp, 56dp for primary actions, adequate spacing."
-        "difficulty_assists" -> "Difficulty assists: adjustable damage, speed, aim assist and similar, changeable at any time without penalty."
+        "difficulty_assists" -> "Difficulty assists: adjustable game speed, jump forgiveness and similar (and damage or aim assist where the game has combat), changeable at any time without penalty."
         "remappable_controls" -> "Fully remappable keyboard/gamepad controls with conflict detection and reset to defaults."
         else -> id
     }

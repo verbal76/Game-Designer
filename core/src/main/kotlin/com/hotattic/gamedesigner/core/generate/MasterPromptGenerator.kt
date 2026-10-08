@@ -38,6 +38,8 @@ object MasterPromptGenerator {
         fun v(k: String) = project.decision(k)?.takeIf { it.status == DecisionStatus.CONFIRMED && it.value.isNotBlank() && (Fields.get(k)?.isRelevant(t) != false) }?.value
         fun rec(k: String) = if (project.decision(k)?.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION) " (accepted recommendation)" else ""
         fun lab(k: String) = v(k)?.let { PlainLabels.of(project, k) + rec(k) }
+        // Design-level values only when the owner (or a grounded inference / accepted recommendation) set them; Bob's routine defaults are implementation discretion.
+        fun labOwn(k: String) = project.decision(k)?.takeIf { it.prov != Provenance.DEFAULT }?.let { lab(k) }
         val usage = when (project.prefs.usageStyle) {
             UsageStyle.CONSERVATIVE -> "The owner shares one usage allowance across many projects: work economically and stop cleanly at a checkpoint rather than burning the whole window."
             UsageStyle.BALANCED -> "Work at a steady, economical pace; checkpoint often so a context reset costs nothing."
@@ -65,10 +67,9 @@ object MasterPromptGenerator {
             section("CREATIVE TARGET", listOfNotNull(
                 conceptLines.takeIf { it.isNotEmpty() }?.let { "The owner's concept, in their words: \"${it.joinToString(" ")}\"" },
                 v(Keys.CORE_FANTASY)?.let { "Core fantasy: $it" },
-                if (t.genresKnown) "Genre: ${t.genres.joinToString(" + ") { it.label }}. ${v(Keys.DIMENSION) ?: ""} ${lab(Keys.PERSPECTIVE)?.let { "View: $it." } ?: ""}".trim() else null))
+                if (t.genresKnown) "Genre: ${t.genres.joinToString(" + ") { it.label }}. ${v(Keys.DIMENSION) ?: ""} ${labOwn(Keys.PERSPECTIVE)?.let { "View: $it." } ?: ""}".trim() else null))
 
-            section("PLAYER EXPERIENCE", listOfNotNull(v(Keys.PLAYER_FEELING)?.let { "How it should feel: $it" }, lab(Keys.SESSION_STRUCTURE)?.let { "Typical session: $it" },
-                DimensionLexicon.sentencesFor(project, DimId.FEELING).firstOrNull()?.takeIf { it != v(Keys.PLAYER_FEELING) }?.let { "In the owner's words: \"$it\"" }))
+            section("PLAYER EXPERIENCE", listOfNotNull(v(Keys.PLAYER_FEELING)?.let { "How it should feel (the owner's words): $it" }, labOwn(Keys.SESSION_STRUCTURE)?.let { "Typical session: $it" }))
 
             section("PLAYABLE FIRST-BUILD SCOPE", listOfNotNull(
                 (v(Keys.FIRST_SLICE)?.let { it + rec(Keys.FIRST_SLICE) } ?: "Build the smallest polished slice that fully demonstrates the concept."),
@@ -83,7 +84,7 @@ object MasterPromptGenerator {
                 lab(Keys.COMBAT_MODEL)?.let { "Combat: $it" },
                 v(Keys.CHARACTERS)?.let { "Characters: ${lab(Keys.CHARACTERS)}" },
                 v(Keys.ECONOMY)?.let { "Economy: $it" }, v(Keys.SURVIVAL_CRAFTING)?.let { "Survival and crafting: $it" }, v(Keys.AUTOMATION_SIM)?.let { "Simulation: $it" },
-            ) + project.activeFacts().map { it.text }.filter { f -> DimensionLexicon.classify(f).let { c -> DimId.MOVEMENT in c || DimId.INTERACTION in c } }.take(4).map { "Owner said: \"$it\"" }
+            ) + project.activeFacts().map { it.text }.filter { f -> DimensionLexicon.classify(f).let { c -> DimId.MOVEMENT in c || DimId.INTERACTION in c } }.take(9).map { "Owner said: \"$it\"" }
             section("GAMEPLAY THAT MUST WORK", must.distinct())
 
             section("WORLD / LEVEL STRUCTURE", listOfNotNull(
@@ -98,7 +99,8 @@ object MasterPromptGenerator {
                 }))
 
             section("PROGRESSION / FAILURE / COMPLETION", listOfNotNull(
-                lab(Keys.PROGRESSION)?.let { "Progression: $it" }, lab(Keys.DIFFICULTY_FAILURE)?.let { "Failure and recovery: $it" },
+                if (project.value(Keys.HAS_PROGRESSION) == "no") "Progression: NONE by design. The player never gets stronger: no XP, levels, upgrades, unlocks or power-ups of any kind. The player's own skill and physical progress through the game are the only progression. Do not add any."
+                else lab(Keys.PROGRESSION)?.let { "Progression: $it" }, lab(Keys.DIFFICULTY_FAILURE)?.let { "Failure and recovery: $it" },
                 v(Keys.WIN_LOSS)?.let { "Win and loss: $it${rec(Keys.WIN_LOSS)}" }, v(Keys.DONE)?.let { "The first build is complete when: $it${rec(Keys.DONE)}" }))
 
             section("VISUAL QUALITY IS PART OF COMPLETION", listOfNotNull(
@@ -113,11 +115,12 @@ object MasterPromptGenerator {
                 "Platforms: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not set" }}.",
                 lab(Keys.INPUT_METHODS)?.let { "Input: $it. Map the game's semantic actions to these inputs yourself; the owner did not specify every button." },
                 lab(Keys.ORIENTATION)?.let { "Orientation: $it" },
-                if (v(Keys.OTA_UPDATES) == "content_ota") "Over-the-air updates were requested: implement the least intrusive design in `CLAUDE.md` (signed data-only updates, quiet check, applied on next launch, automatic rollback). Do not download code." else null))
+                if (v(Keys.OTA_UPDATES) == "content_ota") "Over-the-air updates were requested: implement the least intrusive design in `CLAUDE.md` (signed updates, quiet check, applied on next launch, automatic rollback). Updates may change: ${if (v(Keys.OTA_SCOPE) == "content_and_logic") "content, tuning and sandboxed game-logic scripts (the owner chose this; never download native code)" else "content and tuning data only - do not download code"}." else null))
 
             val ups = project.branding.values.filter { it.mode == BrandingMode.UPLOADED }
             section("SUPPLIED ASSETS / ASSET POLICY", listOfNotNull(
                 lab(Keys.ASSET_POLICY)?.let { "Asset policy: $it. Verify every external asset's license on its own page, log provenance in `ASSETS.md`, never assume 'free to download' is a license." },
+                if (v(Keys.ASSET_POLICY)?.startsWith("supplied") == true) "The owner supplies asset packs with this prompt. INSPECT THEM FIRST and use their real contents (${if (v(Keys.ART_DIRECTION) == "voxel" || v(Keys.DIMENSION) == "3D") "they are 3D assets, appropriate to the ${v(Keys.DIMENSION) ?: "3D"} presentation" else "check their format and scale"}); create missing animations for the supplied player character where technically reasonable; only genuine gaps follow the policy above. Record the packs in `ASSETS.md`." else null,
             ) + ups.map { "Owner-supplied ${it.slot.replace('_', ' ')}: `${it.originalName}` (${it.width}x${it.height}), included in the package under `branding/master/`. Use it as-is; never replace or regenerate it. Keep the master untouched and derive every size from it." })
 
             val inv = v(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }

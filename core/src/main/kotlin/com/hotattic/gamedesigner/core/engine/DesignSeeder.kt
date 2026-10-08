@@ -71,6 +71,16 @@ object DesignSeeder {
                 seeded += Keys.WIN_LOSS
             }
         }
+        // "Use the asset packs I give you" is an asset decision, not a remark: it must reach the export and survive later questions.
+        if (p.decision(Keys.ASSET_POLICY) == null && Fields.get(Keys.ASSET_POLICY)?.isRelevant(Traits(p)) == true) {
+            val ownerText = (listOf(said) + listOf(Keys.FIRST_SLICE, Keys.CORE_LOOP).mapNotNull { p.decision(it)?.takeIf { d -> d.ownerAuthored }?.value }).joinToString(". ")
+            val supplied = Regex("(?i)\\b(?:asset packs?|assets|art packs?|packs)\\b.{0,50}\\b(?:i|we)\\b.{0,20}\\b(?:give|gave|supply|supplied|provide|provided|send|upload|have)\\b|\\b(?:my|the)\\s+(?:own\\s+)?(?:asset|art) packs?\\b|\\buse\\s+(?:the\\s+)?(?:asset\\s+)?packs?\\s+(?:that\\s+)?i\\b").containsMatchIn(ownerText)
+            if (supplied) {
+                val only = Regex("(?i)\\bonly\\b.{0,25}\\b(?:my|supplied|the packs?)\\b").containsMatchIn(ownerText)
+                p = ProjectOps.setDecision(p, Keys.ASSET_POLICY, if (only) "supplied_only" else "supplied_cc0", Provenance.SYSTEM_INFERENCE, now, DecisionStatus.CONFIRMED, "Read from your words: you will supply asset packs")
+                seeded += Keys.ASSET_POLICY
+            }
+        }
         // The owner's own first-build scope, and what finishes it, when they already said so.
         val sliceFact = p.activeFacts().map { it.text }.firstOrNull { it.length >= 25 && Regex("(?i)\\b(prototype|first (build|version|playable)|vertical slice|slice|demo)\\b").containsMatchIn(it) }
         if (sliceFact != null && p.decision(Keys.FIRST_SLICE) == null && Fields.get(Keys.FIRST_SLICE)?.isRelevant(Traits(p)) == true) {

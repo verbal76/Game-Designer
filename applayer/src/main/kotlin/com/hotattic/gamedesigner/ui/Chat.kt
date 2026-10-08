@@ -5,7 +5,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.heightIn
@@ -58,6 +61,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -100,8 +104,13 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     LaunchedEffect(p?.messages?.size, busy) { p?.messages?.size?.let { if (it > 0) listState.animateScrollToItem(it - 1 + if (busy != null) 1 else 0) } }
 
     val completeness = remember(p) { p?.let { CompletenessEngine.compute(it) } }
+    // When the keyboard opens, closes or changes height, keep the latest message in view above the composer.
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    LaunchedEffect(imeBottom > 0) { p?.messages?.size?.let { if (it > 0) listState.scrollToItem(it - 1) } }
 
-    Scaffold(topBar = {
+    // The Scaffold adds no bottom inset of its own: the keyboard and the navigation bar are applied exactly once, on the content below
+    // (the default content insets plus imePadding counted the same space twice and left the composer's position at the mercy of the IME).
+    Scaffold(contentWindowInsets = WindowInsets(0), topBar = {
         TopAppBar(
             title = {
                 Column {
@@ -128,7 +137,11 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
             },
         )
     }) { pad ->
-        Column(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
+        // The composer is the one thing that must always stay visible. The panel above it (answer card, chips, Back) is capped to a share of
+        // the space that is actually left after the keyboard opens and scrolls inside that share, so it can never push the composer out of view.
+        BoxWithConstraints(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
+        val dockMax = (maxHeight * 0.38f).coerceAtLeast(96.dp)
+        Column(Modifier.fillMaxSize()) {
             if (completeness != null && p?.mode == ProjectMode.NEW_GAME) LinearProgressIndicator(progress = { completeness.percent / 100f }, modifier = Modifier.fillMaxWidth())
             if (interpreter == InterpreterKind.RULES && p?.mode != ProjectMode.PLAYTEST_CONTINUE) {
                 Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -158,6 +171,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                 if (busy != null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
             }
             val last = msgs.lastOrNull()
+            Column(Modifier.fillMaxWidth().heightIn(max = dockMax).verticalScroll(rememberScrollState())) {
             val spec = last?.question?.takeIf { last.role == Role.DIRECTOR && busy == null && it.fieldKey == p?.pendingFieldKey && (it.kind == "SINGLE" || it.kind == "MULTI" || it.kind == "BOOLEAN" || it.kind == "ASSET_UPLOAD") }
             if (spec != null && last != null) {
                 QuestionCard(spec, last.id, onSelect = { ids -> vm.submitSelection(spec.fieldKey, ids) }, onSend = { vm.send(it) })
@@ -169,9 +183,10 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
             if (busy == null && p?.answerTrail?.isNotEmpty() == true && p.pendingTurn == null) {
                 TextButton({ vm.goBack() }, Modifier.padding(start = 8.dp)) { Text("\u2190 Back to previous question") }
             }
+            }
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
                 OutlinedTextField(
-                    input, { input = it }, Modifier.weight(1f),
+                    input, { input = it }, Modifier.weight(1f).heightIn(max = 168.dp),
                     placeholder = { Text(if (p?.mode == ProjectMode.PLAYTEST_CONTINUE) "Describe what you noticed..." else "Type or dictate your answer...") },
                     minLines = 1, maxLines = 8,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -179,6 +194,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                 )
                 FilledIconButton({ val t = input; input = ""; vm.send(t) }, Modifier.padding(start = 8.dp), enabled = input.isNotBlank() && busy == null) { Icon(Icons.AutoMirrored.Filled.Send, "Send") }
             }
+        }
         }
     }
 

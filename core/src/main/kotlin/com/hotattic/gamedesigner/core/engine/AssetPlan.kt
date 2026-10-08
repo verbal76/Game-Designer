@@ -57,7 +57,8 @@ object AssetPlan {
 
     fun needs(t: Traits): List<AssetNeed> {
         if (!t.genresKnown) return emptyList()
-        val is3D = t.dimension == "3D"
+        // 3D models are needed for true 3D and for 2.5D with a voxel/3D look (the world is 3D even though play is on a plane).
+        val is3D = t.dimension == "3D" || t.value(Keys.ART_DIRECTION) == "voxel"
         val out = mutableListOf<AssetNeed>()
         val visualKind = if (is3D) AssetKind.MODELS else AssetKind.SPRITES
         out += AssetNeed("characters", if (is3D) "Character and creature models" else "Character and creature sprites", visualKind,
@@ -83,6 +84,21 @@ object AssetPlan {
     fun defaultRecord(need: AssetNeed, t: Traits, now: Long): AssetRecord {
         val policy = t.value(Keys.ASSET_POLICY) ?: "cc0_default"
         val art = t.value(Keys.ART_DIRECTION)
+        if (policy.startsWith("supplied")) {
+            val gaps = when (policy) {
+                "supplied_cc0" -> "Gaps the supplied packs do not cover: use a coherent CC0/public-domain set (verify each license), and only then an original procedural replacement: ${proceduralFallback(need)}"
+                "supplied_original" -> "Gaps the supplied packs do not cover: create original assets (${proceduralFallback(need)})"
+                else -> "Nothing external: anything the supplied packs lack is created from them or by project code (${proceduralFallback(need)})"
+            }
+            val sources = if (policy == "supplied_cc0") AssetSources.forKind(need.kind).filter { it.blanketCc0 }.joinToString("; ") { "${it.name} (${it.url})" } else ""
+            return AssetRecord(
+                needId = need.id, resolution = AssetResolution.USER_SUPPLIED, description = need.detail,
+                source = "Owner-supplied asset packs delivered with the master prompt" + if (sources.isNotEmpty()) "; gap sources: $sources" else "",
+                license = "Owner-supplied (the owner confirms the right to use them); gap assets per the policy",
+                notes = "INSPECT THE SUPPLIED PACKS FIRST: list their files, formats, scale, rigs/animations and any license or readme, and use their real contents for this need. Do not replace them with external or generated assets. $gaps",
+                verifiedAt = null,
+            )
+        }
         val proceduralArt = art in setOf("minimal_geometric", "vector_flat")
         val sources = AssetSources.forKind(need.kind, includeNonBlanket = policy != "original_only")
             .filter { policy != "original_only" }

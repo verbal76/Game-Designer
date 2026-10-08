@@ -51,20 +51,39 @@ class Traits(val project: Project) {
             else SystemReq("continuous_world", "Connected world", "One connected traversable world in contiguous regions with checkpoints; no level boundaries or level-select."),
             SystemReq("depth_progress_save", "World progress save", "Persist position, checkpoints, unlocks and abilities."),
         ) else g.systems
-        list.map { g to it }
+        list.mapNotNull { sys -> adapt(sys)?.let { g to it } }
     }.distinctBy { it.second.id }
 
+    /** The genre checklist fitted to what the owner ruled in or out: no combat means no enemy roster, a procedural world means no hand-built level set. */
+    private fun adapt(sys: SystemReq): SystemReq? {
+        val noCombat = !has(Tag.COMBAT)
+        val procedural = project.value(Keys.WORLD_STRUCTURE) == "procedural_stages"
+        val noPower = project.value(Keys.HAS_PROGRESSION) == "no"
+        return when {
+            sys.id == "hazards_enemies" && noCombat -> SystemReq("hazards", "Environmental hazards", "Hazards that set the player back (falls, crumbling or moving obstacles). No enemies, no combat and no health or damage model.")
+            noCombat && Regex("(?i)combat|enem|boss|weapon|damage").containsMatchIn(sys.id + " " + sys.name) -> null
+            procedural && sys.id == "level_set" -> SystemReq("stage_generator", "Procedural stage generator", "Seeded generator that composes the obstacle types into coherent, readable, fair routes; every generated stage is completable, deliberate hard jumps are allowed, and difficulty rises. Stages are never authored by hand.")
+            procedural && sys.id == "level_select_progress" -> SystemReq("run_progress_save", "Checkpoint and run progress save", "Persist checkpoint, best height and settings; there is no stage menu.")
+            noPower && Regex("(?i)unlock|upgrade|skill|power").containsMatchIn(sys.id + " " + sys.name) -> null
+            else -> sys
+        }
+    }
+
     fun loopText(g: Genre): String =
-        if (continuousWorld && g.id == "platformer") "Move through the continuous world using tight movement, avoid hazards and enemies, and progress through it toward its far end."
+        if (project.value(Keys.WORLD_STRUCTURE) == "procedural_stages" && g.id == "platformer") "Cross a generated, readable route using precise movement and the traversal tools it offers, recover from missed jumps through checkpoints, and reach the goal."
+        else if (continuousWorld && g.id == "platformer") "Move through the continuous world using tight movement, avoid hazards and enemies, and progress through it toward its far end."
         else g.loopTemplate
 
     fun smokeChecks(): List<String> = genres.flatMap { g ->
-        if (continuousWorld && g.id == "platformer") listOf("A scripted run traverses the continuous world between its extremes with no unreachable section (automated reachability check).") else g.smokeChecks
+        if (project.value(Keys.WORLD_STRUCTURE) == "procedural_stages" && g.id == "platformer") listOf("Generate stages from many seeds; an automated solver confirms every one has a completable route from start to goal, and a scripted run completes at least one.")
+        else if (continuousWorld && g.id == "platformer") listOf("A scripted run traverses the continuous world between its extremes with no unreachable section (automated reachability check).") else g.smokeChecks
     }.distinct()
 
     fun hasGenre(id: String) = genres.any { it.id == id }
 
     val dimension: String? = project.value(Keys.DIMENSION)
+    /** What the engine must handle: a 2.5D game built from 3D (voxel) models still needs a 3D-capable engine. */
+    val engineDimension: String? get() = if (dimension == "2.5D" && project.value(Keys.ART_DIRECTION) == "voxel") "3D" else dimension
     val platforms: Set<String> = project.list(Keys.PLATFORMS).toSet()
     val platformsKnown: Boolean get() = platforms.isNotEmpty()
     val isMobile: Boolean = platforms.any { it in Platforms.mobile }

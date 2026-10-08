@@ -36,7 +36,7 @@ object AntiSlop {
         }
         if (has("character", "hero", "explorer", "soldier", "creature", "humanoid", "protagonist", "wizard", "knight") || ownerValue(Keys.CHARACTERS) != null)
             out += "A default capsule, an unchanged engine mannequin or a coloured rectangle does not satisfy character presentation. Each playable character needs a distinct silhouette, readable animation states (idle, move, act, hurt, defeated as relevant) and a recognisable identity."
-        if (has("two characters", "both characters", "either character", "two modes", "two sides", "two playable") || Regex("\\beither\\b.{0,40}\\bor\\b").containsMatchIn(corpus))
+        if (has("two characters", "both characters", "either character", "two modes", "two sides", "two playable") || Regex("\\beither (?:character|mode|side|one)\\b.{0,40}\\bor\\b").containsMatchIn(corpus))
             out += "Implementing only one of the described characters or modes, or making the other a reskin with identical behaviour, does not satisfy the design; each must play differently in the ways the owner described."
         listOf("gravity", "spherical", "grapple", "glide", "gliding", "swim", "swimming", "fly", "flying", "wall run", "double jump", "dash").firstOrNull { has(it) }?.let { m ->
             out += "A mechanic the owner named ($m) must be a real, controllable mechanic with consequences in play; a visual effect or an animation alone does not satisfy it."
@@ -57,7 +57,7 @@ object AntiSlop {
             out += "Enemies that stand still or cannot hurt the player, or attacks with no feedback (hit flash, sound, knockback or equivalent), do not satisfy combat."
         if ((p.value(Keys.DIFFICULTY_FAILURE) != null && p.value(Keys.DIFFICULTY_FAILURE) != "no_fail") || has("die", "death", "respawn", "checkpoint"))
             out += "A death with no consequence, a recovery that can soft-lock, or a restart that leaves stale state does not satisfy the failure-and-recovery design."
-        if (p.value(Keys.PROGRESSION) != null)
+        if (p.value(Keys.PROGRESSION) != null && p.value(Keys.HAS_PROGRESSION) != "no")
             out += "Progression that changes only a hidden number the player cannot feel does not satisfy progression; each step must visibly change what the player can do or how they play."
         if (t.isMobile) out += "A HUD too small to read on a phone, or touch controls that cover critical play, do not satisfy the controls and presentation requirements."
         out += "Engine-default, placeholder-looking or visually incoherent output does not satisfy " + (if (ProjectObjective.of(p) == BuildObjective.PROTOTYPE) "even a prototype: scope may be small, but it must be polished enough to judge the game. Smaller and polished beats larger and unfinished." else "the visual target: smaller and polished beats larger and unfinished.")

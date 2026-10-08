@@ -104,7 +104,15 @@ object ScopeEngine {
         val genres = t.genres.ifEmpty { listOf(com.hotattic.gamedesigner.core.schema.GenreKnowledge.other) }
         val primary = genres.first()
         val relabel = if (t.continuousWorld) mapOf("Levels" to (if (t.verticalWorld) "Depth zones along the continuous world" else "Regions of the connected world"), "Worlds / themes" to "Visual themes") else emptyMap()
-        val targets = (genreTargets[primary.id] ?: genreTargets.getValue("other")).map { (label, arr) -> ContentTarget(relabel[label] ?: label, arr[eff]) }.toMutableList()
+        val noCombat = !t.has(com.hotattic.gamedesigner.core.schema.Tag.COMBAT)
+        val noPower = t.project.value(Keys.HAS_PROGRESSION) == "no"
+        val procedural = t.project.value(Keys.WORLD_STRUCTURE) == "procedural_stages"
+        // Counts only for what this design actually contains: no enemies or bosses when combat is ruled out, no power-ups when the player does not get stronger.
+        val dropped = buildSet { if (noCombat) { add("Enemy types"); add("Bosses") }; if (noPower) { add("Power-ups / abilities"); add("Meta unlocks"); add("Upgrades") } }
+        val relabel2 = if (procedural) mapOf("Levels" to "Generated stage templates / segments") else emptyMap()
+        val base = (genreTargets[primary.id] ?: genreTargets.getValue("other")).filter { it.first !in dropped }
+        val extra = if (primary.id == "platformer" && noCombat) listOf("Obstacle and traversal types" to ia(5, 8, 12, 16)) else emptyList()
+        val targets = (base + extra).map { (label, arr) -> ContentTarget(relabel[label] ?: relabel2[label] ?: label, arr[eff]) }.toMutableList()
         // Hybrid designs add a smaller contribution from the secondary genre so both halves of the hybrid are really present.
         val have = targets.map { it.label }.toSet()
         genres.drop(1).take(1).forEach { g ->

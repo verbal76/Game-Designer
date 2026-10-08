@@ -27,6 +27,15 @@ object ExportPackage {
         appendLine("Every external asset used by the game must have a row here with its exact source URL, creator, license and download date.")
         appendLine("Planned resolutions from Game Designer are listed first; the build appends one row per actual file.")
         appendLine()
+        if (p.value(com.hotattic.gamedesigner.core.schema.Keys.ASSET_POLICY)?.startsWith("supplied") == true) {
+            appendLine("## Owner-supplied asset packs (FIRST CHOICE for every need below)")
+            appendLine()
+            appendLine("The owner supplies asset packs together with the master prompt. Before choosing anything else: inspect every supplied pack (file list, formats, scale, rigs and animations, bundled license or readme), record each pack here with its name, creator and license as stated by the owner, and use its real contents. Create missing animations for the supplied player character where technically reasonable. Only the gaps the packs genuinely cannot cover follow the policy in the table.")
+            appendLine()
+            appendLine("| Pack (fill in after inspection) | Creator | License / terms | Used for |")
+            appendLine("|---|---|---|---|")
+            appendLine()
+        }
         appendLine("| Need | Resolution | License | Source / instructions |")
         appendLine("|---|---|---|---|")
         p.assets.forEach { a ->

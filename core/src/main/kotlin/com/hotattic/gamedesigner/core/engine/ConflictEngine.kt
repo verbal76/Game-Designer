@@ -41,7 +41,7 @@ object ConflictEngine {
             if (e == null) null else {
                 val missing = t.platforms.filter { !EngineCatalog.supportsWrapped(e, it) }
                 if (missing.isEmpty()) null else {
-                    val alt = EngineRecommender.best(t.platforms, t.dimension, t.complexity, t.beginner, t.tags)
+                    val alt = EngineRecommender.best(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags)
                     Conflict("engine_platform_unsupported", Severity.BLOCKER, "${e.name} can't target ${missing.joinToString { Platforms.labels[it] ?: it }}",
                         "${e.name} has no supported export for ${missing.joinToString { Platforms.labels[it] ?: it }}.",
                         alt?.let { "Switch to ${it.engine.name}, which covers your platforms." } ?: "Drop the unsupported platform or pick another engine.",
@@ -111,7 +111,7 @@ object ConflictEngine {
             if (e != null && e.autonomyFit <= 2)
                 Conflict("engine_autonomy", Severity.WARNING, "${e.name} is hard for Claude to drive autonomously",
                     e.caveats, "A code-first engine lets Claude build, test and package without a GUI editor.", listOf(Keys.ENGINE),
-                    EngineRecommender.rank(t.platforms, t.dimension, t.complexity, t.beginner, t.tags).filter { it.engine.autonomyFit >= 4 }.take(2)
+                    EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags).filter { it.engine.autonomyFit >= 4 }.take(2)
                         .map { Alternative("Use ${it.engine.name}", mapOf(Keys.ENGINE to it.engine.id)) })
             else null
         },

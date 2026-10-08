@@ -85,7 +85,7 @@ object Messages {
         }
         Keys.ENGINE -> {
             val t = Traits(p)
-            val ranked = EngineRecommender.rank(t.platforms, t.dimension, t.complexity, t.beginner, t.tags).take(3)
+            val ranked = EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags).take(3)
             if (ranked.isEmpty()) null
             else "Engine options for your game: " + ranked.joinToString("; ") { it.engine.name } + ". The first is my recommendation: " + ranked.first().engine.strengths
         }

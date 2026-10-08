@@ -23,6 +23,8 @@ object Keys {
     const val HAS_COMBAT = "has_combat"
     const val HAS_ECONOMY = "has_economy"
     const val HAS_CRAFTING = "has_crafting"
+    const val HAS_PROGRESSION = "has_progression"
+    const val OTA_SCOPE = "ota_scope"
     const val CHARACTERS = "characters_classes"
     const val PROGRESSION = "progression"
     const val ECONOMY = "economy_systems"
@@ -400,7 +402,7 @@ object Fields {
         Field(Keys.PROGRESSION, Category.GAMEPLAY, FieldKind.SINGLE, "Progression",
             "How does the player get stronger or unlock things over time?",
             "Progression is what keeps players coming back.",
-            88, relevant = { it.genresKnown && !it.hasGenre("puzzle") || it.genres.size > 1 },
+            88, relevant = { (it.genresKnown && !it.hasGenre("puzzle") || it.genres.size > 1) && Gates.open(it, Keys.HAS_PROGRESSION) },
             options = { listOf(
                 o("in_run_upgrades", "Upgrades during a run only"),
                 o("meta_unlocks", "Permanent unlocks between runs"),
@@ -459,6 +461,13 @@ object Fields {
             89, relevant = { Gates.needed(it, Tag.CRAFTING) },
             options = { listOf(o("yes", "Yes"), o("no", "No")) },
             suggest = { t -> Gates.suggest(t, Tag.CRAFTING) }),
+
+        Field(Keys.HAS_PROGRESSION, Category.GAMEPLAY, FieldKind.SINGLE, "Player progression",
+            "Does the player get stronger over time - XP, levels, upgrades or unlocks that change what they can do? Yes or no.",
+            "A yes opens the progression questions; a no means skill and physical progress through the game are the only progression.",
+            87, relevant = { Gates.neededFor(it, Keys.HAS_PROGRESSION) },
+            options = { listOf(o("yes", "Yes"), o("no", "No")) },
+            suggest = { t -> Gates.suggestFor(t, Gates.byKey.getValue(Keys.HAS_PROGRESSION)) }),
 
         Field(Keys.STORY, Category.CONTENT, FieldKind.SINGLE, "Story",
             "How much story does it have?",
@@ -669,11 +678,11 @@ object Fields {
             "The engine decides how easily Claude can build, test and package the game without manual editor work.",
             150, modes = Field.ALL_MODES, relevant = { it.platformsKnown && it.dimension != null },
             options = { t ->
-                val ranked = EngineRecommender.rank(t.platforms, t.dimension, t.complexity, t.beginner, t.tags).map { Option(it.engine.id, it.engine.name, it.engine.strengths) }
+                val ranked = EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags).map { Option(it.engine.id, it.engine.name, it.engine.strengths) }
                 if (ranked.isEmpty()) EngineCatalog.all.map { Option(it.id, it.name, it.strengths) } else ranked
             },
             suggest = { t ->
-                EngineRecommender.best(t.platforms, t.dimension, t.complexity, t.beginner, t.tags)?.let { Suggestion(it.engine.id, "${it.engine.name}: ${it.rationale}") }
+                EngineRecommender.best(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags)?.let { Suggestion(it.engine.id, "${it.engine.name}: ${it.rationale}") }
             }),
 
         Field(Keys.TOOLCHAIN_PREFS, Category.TECHNICAL, FieldKind.TEXT, "Toolchain preferences",
@@ -699,6 +708,16 @@ object Fields {
                 o("none", "No - updates come as a normal new install", "Simplest. Nothing extra to build or host."),
                 o("content_ota", "Yes - over-the-air updates (least intrusive)", "Signed content and tuning updates, checked quietly, applied on next launch, automatic rollback.")) },
             suggest = { Suggestion("none", "Skip it unless you plan to update the game often after release; it can be added later.") }),
+
+        // The one owner-level decision left once updates are wanted: what may change. How, when and rollback are engineering defaults.
+        Field(Keys.OTA_SCOPE, Category.TECHNICAL, FieldKind.SINGLE, "What updates may change",
+            "Since you want over-the-air updates: should they only change content and tuning (levels, generator settings, text, art, audio), or game logic too?",
+            "Content-only updates are safe and store-friendly. Updating game logic means shipping scripts the game runs, which is only worth it if you expect to change how the game plays after release.",
+            157, relevant = { it.genresKnown && it.value(Keys.OTA_UPDATES) == "content_ota" },
+            options = { listOf(
+                o("content_only", "Content and tuning only", "Recommended: data updates only, never code."),
+                o("content_and_logic", "Content, tuning and game logic", "Sandboxed scripted rules can change too; more to build and test.")) },
+            suggest = { Suggestion("content_only", "Safest and enough for balance, levels and polish; logic updates can be added later.") }),
 
         Field(Keys.CI_BUILD, Category.TECHNICAL, FieldKind.SINGLE, "Build pipeline",
             "How should the installable build get produced?",
@@ -727,6 +746,9 @@ object Fields {
             options = { listOf(
                 o("cc0_default", "CC0 / public domain, else original/procedural", "Recommended: no attribution or license worries.", "cc0 only", "cc0", "public domain only", "public domain", "cc zero"),
                 o("cc0_or_cc_by", "CC0 plus CC-BY with attribution", "Larger selection; credits screen required.", "cc by", "cc-by", "cc0 and cc by", "allow attribution", "attribution is fine"),
+                o("supplied_cc0", "My asset packs first, CC0/free for gaps", "You give the builder asset packs; it uses their real contents first, fills gaps with CC0/public-domain assets, then original ones.", "my asset packs", "asset packs i give", "assets i supply", "supplied assets", "supplied packs", "use my assets", "i will give you asset packs"),
+                o("supplied_original", "My asset packs first, original/procedural for gaps", "Supplied packs first; anything missing is created by code or the builder.", "my packs then original", "supplied and original"),
+                o("supplied_only", "Only the asset packs I supply", "Nothing external; gaps are created from your packs or by code.", "only my assets", "only my packs", "only supplied"),
                 o("original_only", "Only original/procedural assets", "Everything generated by code.", "original only", "only original", "original assets only", "procedural only", "only procedural", "generate everything"),
             ) },
             suggest = { Suggestion("cc0_default", "Safest default per your project rules; missing assets get original procedural replacements.") }),

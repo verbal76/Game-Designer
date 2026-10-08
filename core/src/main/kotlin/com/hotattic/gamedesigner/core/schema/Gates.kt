@@ -8,7 +8,7 @@ import com.hotattic.gamedesigner.core.model.Project
  */
 object Gates {
     data class Gate(
-        val tag: Tag, val key: String, val noun: String,
+        val tag: Tag?, val key: String, val noun: String,
         /** Detail questions that exist only when the gate is open; answered ones are taken back when the owner says "no". */
         val dependents: List<String>,
         /** Genres where this system is the point of the game, so there is nothing to gate. */
@@ -32,8 +32,13 @@ object Gates {
             setOf("survival_crafting", "factory_automation", "colony_sim"),
             setOf("rpg"),
             Regex("(?i)\\b(?:no|without|zero|not any|(?:doesn'?t|does not|don'?t|do not|never)\\s+(?:have|include|need|want|use))\\s+(?:any\\s+)?(?:crafting|gathering|building materials|resource gathering)\\b"), affirm = Regex("(?i)\\b(?:add|include|want|need|with|has|have)\\s+(?:some\\s+)?(?:crafting|gathering)\\b")),
+        Gate(null, Keys.HAS_PROGRESSION, "player power progression (XP, levels, upgrades, unlocks that make the player stronger)", listOf(Keys.PROGRESSION),
+            setOf("survivors_like", "action_roguelite", "rpg", "metroidvania", "colony_sim", "sim_management", "management_sim", "fantasy_city_builder", "card_deckbuilder", "factory_automation", "strategy_rts", "turn_based_strategy", "city_builder"),
+            emptySet(),
+            Regex("(?i)\\b(?:no|without|zero)\\s+(?:any\\s+)?(?:player\\s+)?(?:progression|upgrades?|xp|experience|levell?ing|level ups?|skill tree|unlocks?|power[- ]?ups?)\\b|\\b(?:doesn'?t|does not|don'?t|do not|never|won'?t|will not|can'?t)\\s+(?:ever\\s+)?(?:get|gets|become|becomes|grow|grows|getting)\\s+(?:any\\s+)?(?:stronger|better|more powerful)\\b|\\beither\\s+you\\s+(?:can|could|are able to|'re able to)\\b.{0,60}\\bor\\s+you\\s+(?:can'?t|cannot|are not|aren'?t|'re not)\\b"),
+            affirm = Regex("(?i)\\b(?:get|gets|become|becomes|grow|grows)\\s+(?:much\\s+)?(?:stronger|more powerful)\\b|\\blevel(?:s|ing)?\\s+up\\b|\\b(?:upgrades?|skill tree|xp|experience points|unlock(?:s|ables?)?|power[- ]?ups?|stat (?:growth|boosts?))\\b")),
     )
-    val byTag: Map<Tag, Gate> = all.associateBy { it.tag }
+    val byTag: Map<Tag, Gate> = all.filter { it.tag != null }.associateBy { it.tag!! }
     val byKey: Map<String, Gate> = all.associateBy { it.key }
 
     /** The gate question is only worth asking when the genre carries the tag without it being the point of the game. */
@@ -41,6 +46,15 @@ object Gates {
         val g = byTag[tag] ?: return false
         return t.genresKnown && tag in t.rawTags && t.genres.none { it.id in g.core }
     }
+
+    /** Gates with no genre tag (player power progression) are asked whenever the genre does not make the system the point of the game. */
+    fun neededFor(t: Traits, key: String): Boolean {
+        val g = byKey[key] ?: return false
+        return t.genresKnown && t.genres.none { it.id in g.core }
+    }
+
+    /** True unless the owner (or a settled inference) has ruled the system out; gated detail questions use this. */
+    fun open(t: Traits, key: String): Boolean = t.project.decision(key)?.value != "no"
 
     /** Words in the owner's own description that show they want the system. */
     private val wanted = mapOf(
@@ -50,13 +64,15 @@ object Gates {
     )
 
     /** "Choose for me" judged on the owner's description first, the genre's habits second. */
-    fun suggest(t: Traits, tag: Tag): Suggestion {
-        val g = byTag.getValue(tag)
+    fun suggest(t: Traits, tag: Tag): Suggestion = suggestFor(t, byTag.getValue(tag))
+
+    fun suggestFor(t: Traits, g: Gate): Suggestion {
         val said = (listOf(t.project.originalConcept) + t.project.activeFacts().map { it.text }).joinToString(". ")
-        val wants = wanted[tag]?.containsMatchIn(said) == true
-        val yes = wants || t.genres.any { it.id in g.usually }
+        val denied = g.denial.containsMatchIn(said)
+        val wants = !denied && (g.tag?.let { wanted[it] } ?: g.affirm).containsMatchIn(g.denial.replace(said, " "))
+        val yes = !denied && (wants || t.genres.any { it.id in g.usually })
         return Suggestion(if (yes) "yes" else "no",
-            if (wants) "You described ${g.noun} yourself." else if (yes) "Games like this usually have ${g.noun}." else "Nothing you've described needs ${g.noun}, and adding it would dilute the focus.")
+            if (denied) "You told me there is no ${g.noun}." else if (wants) "You described ${g.noun} yourself." else if (yes) "Games like this usually have ${g.noun}." else "Nothing you've described needs ${g.noun}, and adding it would dilute the focus.")
     }
 
     /** Re-settles gates from something the owner just said: the latest explicit word wins over an earlier answer or an inference. */
