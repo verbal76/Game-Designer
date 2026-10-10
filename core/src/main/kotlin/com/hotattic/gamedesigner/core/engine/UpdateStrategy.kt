@@ -15,7 +15,8 @@ enum class CodeUpdates(val label: String) {
     DEPLOY("an update is simply a new deployment of the static files"),
 }
 
-data class PlatformUpdate(val platform: String, val channel: String, val mechanism: String, val code: CodeUpdates)
+/** [capability] is what is technically possible on the platform; [policy] is what the distribution channel allows. They are kept apart so a policy limit is never mistaken for a technical one. */
+data class PlatformUpdate(val platform: String, val channel: String, val mechanism: String, val code: CodeUpdates, val capability: String = "", val policy: String = "", val channelAssumed: Boolean = false)
 
 /**
  * OTA is a functional requirement first (what must be updateable, how automatic), and an implementation second. The implementation is
@@ -41,27 +42,41 @@ object UpdateStrategy {
 
     fun perPlatform(p: Project): List<PlatformUpdate> {
         val t = Traits(p)
-        val channel = p.value(Keys.STORE_PLAN) ?: "personal_sideload"
+        val chosen = p.value(Keys.STORE_PLAN)
+        val channel = chosen ?: "personal_sideload"
+        val assumed = chosen == null || p.decision(Keys.STORE_PLAN)?.prov.let { it == com.hotattic.gamedesigner.core.model.Provenance.DEFAULT || it == com.hotattic.gamedesigner.core.model.Provenance.SYSTEM_INFERENCE }
         val play = channel in setOf("play_store", "play_internal_testing")
         return t.platforms.map { pl ->
             when (pl) {
-                Platforms.ANDROID -> if (play) PlatformUpdate(pl, "Google Play", "Signed content/script bundles for assets, audio, data and interpreted gameplay logic; Google Play's policy does not allow downloading executable code from outside Play, so native changes ship through Play releases.", CodeUpdates.INTERPRETED_ONLY)
-                    else PlatformUpdate(pl, "sideload / own distribution", "Native shell plus a signed, compatibility-checked, updatable application layer (the Mote model); gameplay code can be updated this way.", CodeUpdates.FULL)
-                Platforms.IOS -> PlatformUpdate(pl, if (channel == "app_store") "Apple App Store" else "iOS distribution", "Signed content bundles for assets, audio and data; gameplay logic only as interpreted data/scripts within Apple's guidelines (verify the current App Store rules on downloaded code); native changes ship as new builds.", CodeUpdates.INTERPRETED_ONLY)
+                Platforms.ANDROID -> if (play) PlatformUpdate(pl, "Google Play", "Signed content/script bundles for assets, audio, data and interpreted gameplay logic; native changes ship through Play releases.", CodeUpdates.INTERPRETED_ONLY,
+                        "Technically, Android can load updated application code.", "Google Play policy does not allow an app to download executable code from outside Play (re-verify the current policy).", assumed)
+                    else PlatformUpdate(pl, "sideload / own distribution", "Native shell plus a signed, compatibility-checked, updatable application layer (the Mote model); gameplay code can be updated this way.", CodeUpdates.FULL,
+                        "Android can load an updated, signed application layer.", "No store policy applies to sideloaded or self-distributed builds. Choosing Google Play later would restrict downloaded code.", assumed)
+                Platforms.IOS -> PlatformUpdate(pl, if (channel == "app_store") "Apple App Store" else "iOS distribution", "Signed content bundles for assets, audio and data; gameplay logic only as interpreted data/scripts within Apple's guidelines; native changes ship as new builds.", CodeUpdates.INTERPRETED_ONLY,
+                    "Technically, an app can run downloaded scripts or data through an interpreter or VM that ships inside the app.", "Apple's App Store rules limit downloaded executable code (re-verify the current guidelines); downloaded native code is not allowed.", assumed && channel == "personal_sideload")
                 Platforms.WINDOWS, Platforms.MAC, Platforms.LINUX ->
-                    if (channel == "steam_or_pc_store") PlatformUpdate(pl, "Steam / PC store", "The store delivers updates; build content so it can be patched, and do not duplicate the store's updater.", CodeUpdates.STORE_MANAGED)
-                    else PlatformUpdate(pl, "standalone distribution", "A signed self-updater with the same compatibility, staging and rollback rules; gameplay code can ship in update packages.", CodeUpdates.FULL)
-                else -> PlatformUpdate(pl, "web", "Updates are new deployments of versioned static files; no separate OTA machinery.", CodeUpdates.DEPLOY)
+                    if (channel == "steam_or_pc_store") PlatformUpdate(pl, "Steam / PC store", "The store delivers updates; build content so it can be patched, and do not duplicate the store's updater.", CodeUpdates.STORE_MANAGED,
+                        "Desktop apps can replace their own files.", "The store's updater owns delivery; follow its depot and patching rules.")
+                    else PlatformUpdate(pl, "standalone distribution", "A signed self-updater with the same compatibility, staging and rollback rules; gameplay code can ship in update packages.", CodeUpdates.FULL,
+                        "Desktop apps can replace their own files and restart.", "No store policy applies to standalone distribution.", assumed)
+                else -> PlatformUpdate(pl, "web", "Updates are new deployments of versioned static files; no separate OTA machinery.", CodeUpdates.DEPLOY,
+                    "A web build is redeployed.", "No store policy.")
             }
         }
     }
 
-    /** Meaningful limits the owner should hear before the package is generated. */
-    fun limitations(p: Project): List<String> {
-        if (!wanted(p)) return emptyList()
-        return perPlatform(p).filter { wantsCode(p) && it.code == CodeUpdates.INTERPRETED_ONLY }.map {
-            "${Platforms.labels[it.platform] ?: it.platform} via ${it.channel}: ${it.code.label}. To keep gameplay-code updates, gameplay is built as a data/script layer; native changes still need a new build."
+    /** Requested content that a selected platform/channel cannot deliver as asked. Never downgraded silently: the spec and the review state each one. */
+    fun unmet(p: Project): List<String> {
+        if (!wanted(p) || !wantsCode(p)) return emptyList()
+        val asked = content(p).filter { it == "gameplay_code" || it == "features" }.map { labels[it] ?: it }.joinToString(" and ")
+        return perPlatform(p).filter { it.code == CodeUpdates.INTERPRETED_ONLY }.map {
+            "${Platforms.labels[it.platform] ?: it.platform} (${it.channel}): updating $asked as downloaded native code cannot be satisfied there. ${it.policy} What can be delivered: data and interpreted scripts the app already knows how to run; anything needing new native code ships as a new build."
         }
+    }
+
+    /** Meaningful limits the owner should hear before the package is generated. */
+    fun limitations(p: Project): List<String> = unmet(p) + perPlatform(p).filter { wanted(p) && it.channelAssumed }.map {
+        "No distribution channel has been chosen for ${Platforms.labels[it.platform] ?: it.platform}; I assumed ${it.channel}. A different channel could change what can be updated."
     }
 
     /** Changes that always need a newly installed package. */
@@ -100,14 +115,16 @@ object StackAdvisor {
 
     fun ranked(p: Project) = Traits(p).let { t -> EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags) }
 
-    /** Concise comparison of the top two candidates (only when more than one qualifies). */
+    /** Concise comparison of the chosen engine and the closest alternative that also meets every platform and dimension requirement, with a concrete tradeoff. */
     fun comparison(p: Project): List<String> {
         val r = ranked(p)
         if (r.size < 2) return emptyList()
         val chosen = Traits(p).engine?.id
         val top = r.firstOrNull { it.engine.id == chosen } ?: r.first()
         val other = r.first { it.engine.id != top.engine.id }
-        return listOf("Chosen: ${top.engine.name} (${top.engine.strengths})", "Closest alternative: ${other.engine.name} (${other.engine.strengths}); not chosen because it scores lower against this project's requirements${other.notes.takeIf { it.isNotEmpty() }?.let { " (${it.joinToString(" ")})" } ?: ""}.")
+        val why = (other.notes + listOfNotNull(if (Traits(p).engineDimension == "3D" && other.engine.capability < top.engine.capability) "Its 3D capability is lower than ${top.engine.name}'s." else null) + "Known caveats: ${other.engine.caveats}").joinToString(" ")
+        return listOf("Chosen: ${top.engine.name} (${top.engine.strengths})",
+            "Closest viable alternative: ${other.engine.name} (${other.engine.strengths}) It also reaches every selected platform. Not chosen because it fits this project's requirements less well: $why")
     }
 
     /** Genuine incompatibilities between the CHOSEN engine and the selected requirements. */

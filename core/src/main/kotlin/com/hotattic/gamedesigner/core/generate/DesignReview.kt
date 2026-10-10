@@ -77,6 +77,8 @@ object DesignReview {
         if (done.isNotBlank()) out += "**It's complete when.** $done."
         p.value(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }?.let { out += "**Claude must not change.** ${clean(it)}." }
         out += "**Platform.** ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not set yet" }}."
+        val stack = com.hotattic.gamedesigner.core.engine.StackAdvisor
+        t.engine?.let { e -> out += "**Technology I'd use.** ${e.name}: ${clean(e.strengths)}. ${stack.comparison(p).getOrNull(1)?.replace("Closest viable alternative:", "The closest alternative that also reaches all your platforms is")?.let { "$it" } ?: ""}".trim() }
         val notes = com.hotattic.gamedesigner.core.engine.PlatformCompat.notes(p)
         if (notes.isNotEmpty()) out += "**Things to know before I generate anything.** ${notes.joinToString(" ")}"
         t.multiplayer?.let { m -> out += "**Multiplayer.** " + when (m) { "single_player" -> "Single-player only."; "undecided" -> "Undecided; I'll keep the design ready for it without building networking."; else -> "${m.replace('_', ' ')}${p.value(Keys.MULTIPLAYER_TIMING)?.let { ", $it" } ?: ""}." } }

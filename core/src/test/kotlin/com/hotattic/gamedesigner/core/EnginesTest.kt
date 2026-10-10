@@ -127,10 +127,10 @@ class ConflictTest {
     @Test fun invalidPackageIdBlocks() {
         assertTrue(ConflictEngine.blockers(base.with(Keys.PACKAGE_ID to "Not Valid")).any { it.id == "package_id_invalid" })
     }
-    @Test fun onlineIsFlaggedAsV1Deferred() {
+    @Test fun onlineMultiplayerIsNoLongerDeferredByTheTool() {
         val p = base.with(Keys.NETWORK_POLICY to "online_required", Keys.CONCEPT to "co-op online multiplayer puzzle")
         assertTrue(ConflictEngine.all(p).any { it.id == "network_cost" })
-        assertTrue(ConflictEngine.all(p).any { it.id == "multiplayer_deferred" })
+        assertTrue(ConflictEngine.all(p).none { it.id == "multiplayer_deferred" }, "the old v1 deferral note contradicts multiplayer discovery")
     }
 }
 

@@ -351,7 +351,7 @@ object ClaudeMdGenerator {
             "Target platforms: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not specified" }}",
             v(Keys.PERFORMANCE)?.let { "Performance target: ${label(Keys.PERFORMANCE, it)}" },
             v(Keys.MIN_HARDWARE)?.let { "Minimum hardware: $it" },
-            v(Keys.NETWORK_POLICY)?.let { "Network policy: ${label(Keys.NETWORK_POLICY, it)}. ${if (it == "fully_offline" && PlatformPolicy.otaState(project) == SystemState.PRESENT) "Apart from the signed update check described below, the game makes no network calls and works fully offline." else if (it == "fully_offline") "The build must request no INTERNET permission and make no network calls." else "Network features degrade gracefully when offline."}" },
+            v(Keys.NETWORK_POLICY)?.let { "Network policy: ${label(Keys.NETWORK_POLICY, it)}. ${if (it == "fully_offline" && PlatformPolicy.otaState(project) == SystemState.PRESENT) "Apart from the signed update check described below, the game makes no network calls and works fully offline; any planned online multiplayer arrives with its own later phase." else if (it == "fully_offline") "The build must request no INTERNET permission and make no network calls." else "Network features degrade gracefully when offline."}" },
             v(Keys.TOOLCHAIN_PREFS)?.let { "Owner toolchain preferences: $it" },
         ))
         h3("Platform priority and architecture")
@@ -360,7 +360,7 @@ object ClaudeMdGenerator {
                 add(t.primaryPlatform?.let { "**${Platforms.labels[it] ?: it} is built and tested first.** The other selected platforms (${(t.platforms - it).joinToString { pl -> Platforms.labels[pl] ?: pl }}) are retained as architectural targets: do not choose a stack or write code that rules them out." } ?: "Primary platform not yet chosen.")
                 add("Architecture: ONE shared gameplay core (rules, simulation, data, content) plus a thin integration layer per platform (input, windowing, audio output, storage, packaging, updates). Platform code never contains gameplay rules.")
             } else add("Single target platform: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not specified" }}.")
-            addAll(PlatformCompat.notes(project).filterNot { it.contains("built and tested first") })
+            addAll(PlatformCompat.notes(project).filterNot { it.contains("built and tested first") || it in UpdateStrategy.unmet(project) })
         })
         val mp = t.multiplayer
         if (mp != null) {
@@ -382,7 +382,8 @@ object ClaudeMdGenerator {
                 UpdateStrategy.contentLabels(project).takeIf { it.isNotBlank() }?.let { "Must be updateable after install: $it." },
                 "Behavior: ${UpdateStrategy.behavior(project)}",
                 "Least intrusive means minimal player effort, not hidden updates: tell the player when an update is downloaded or applied.",
-            ) + UpdateStrategy.perPlatform(project).map { "${Platforms.labels[it.platform] ?: it.platform} (${it.channel}): ${it.mechanism}" } +
+            ) + UpdateStrategy.perPlatform(project).map { "${Platforms.labels[it.platform] ?: it.platform} (${it.channel}${if (it.channelAssumed) ", assumed: no channel chosen yet" else ""}): ${it.mechanism} Technical capability: ${it.capability} Distribution policy: ${it.policy}" } +
+                (UpdateStrategy.unmet(project).takeIf { it.isNotEmpty() }?.let { u -> listOf("**Requested updates that CANNOT be fully satisfied as asked** (a distribution-policy limit, not a technical one; do not silently downgrade them, build the closest compliant mechanism and tell the owner). Per platform:") + u.map { "Cannot be fully satisfied: $it" } } ?: emptyList()) +
                 listOf("Always needs a new package: " + UpdateStrategy.requiresNewPackage(project).joinToString("; ") + ".",
                     "Do not promise unrestricted dynamic code loading where a store forbids it; re-verify current store policy before implementing. Do not copy another project's OTA implementation: follow the reference where it fits and record deviations in `docs/DECISIONS.md`."))
             p("Hosting and cost: static files on free hosting such as GitHub Releases or Pages; no server of your own, no accounts, no analytics, and no device identifiers or personal data in update requests. Permissions: INTERNET only. Record the update-pipeline tests (bad signature rejected, corrupt artifact rejected, incompatible fingerprint rejected, interrupted download handled, rollback works, offline start works, saves survive an update, no repeated update loop) in `docs/VERIFICATION.md`.")

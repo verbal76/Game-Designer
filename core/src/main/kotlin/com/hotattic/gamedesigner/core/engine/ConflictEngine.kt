@@ -234,13 +234,6 @@ object ConflictEngine {
             else null
         },
         { t ->
-            val c = t.value(Keys.CONCEPT)?.lowercase().orEmpty()
-            if (listOf("multiplayer", "co-op online", "online co-op", "pvp", "online pvp", "mmo").any { GenreKnowledge.containsWord(c, it) })
-                Conflict("multiplayer_deferred", Severity.NOTE, "Online multiplayer is deferred", "Game Designer's first version doesn't design online multiplayer. The game will be specified as single-player (or local), keeping the architecture ready for it later.",
-                    "Proceed single-player now.", listOf(Keys.CONCEPT))
-            else null
-        },
-        { t ->
             val q = t.genres.firstOrNull { it.id in setOf("factory_automation", "city_builder", "colony_sim", "fantasy_city_builder") }
             if (q != null && t.beginner && t.engine?.id in setOf("bevy"))
                 Conflict("beginner_bevy", Severity.WARNING, "Bevy is very hard for beginners to inspect or tweak", "Rust and a pre-1.0 engine make small hands-on changes difficult.",

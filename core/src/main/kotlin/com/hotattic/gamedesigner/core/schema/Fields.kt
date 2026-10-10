@@ -720,25 +720,25 @@ object Fields {
             "Multiplayer changes the architecture (networking, synchronisation, saves, security), so it is decided before the technology is chosen, even if it only arrives later.",
             36, relevant = { it.genresKnown },
             options = { listOf(
-                o("single_player", "Single-player only"),
-                o("local", "Local multiplayer", "Same device or same room."),
-                o("online", "Online multiplayer"),
-                o("both", "Both local and online"),
-                o("undecided", "Undecided", "I'll pick a practical, reversible architecture and flag what it would cost to add later.")) },
-            suggest = { Suggestion("single_player", "Nothing you described needs other players, and single-player keeps the first build focused.") }),
+                o("single_player", "Single-player only", "", "single player", "solo", "just me", "no multiplayer"),
+                o("local", "Local multiplayer", "Same device or same room.", "local", "couch co-op", "split screen", "local co-op"),
+                o("online", "Online multiplayer", "", "online", "online co-op", "co-op online", "online pvp", "over the internet"),
+                o("both", "Both local and online", "", "both", "local and online"),
+                o("undecided", "Undecided", "I'll pick a practical, reversible architecture and flag what it would cost to add later.", "not sure", "don't know", "maybe", "undecided") ) },
+            suggest = { t -> if (Regex("(?i)multiplayer|co-?op|pvp|multi-player").containsMatchIn(t.value(Keys.CONCEPT).orEmpty())) Suggestion("undecided", "You mentioned multiplayer, so I will keep the architecture ready for it without building networking until you decide.") else Suggestion("single_player", "Nothing you described needs other players, and single-player keeps the first build focused.") }),
 
         Field(Keys.MULTIPLAYER_TIMING, Category.GAMEPLAY, FieldKind.SINGLE, "When multiplayer is needed",
             "Do you need multiplayer in the first playable prototype, or is it planned for a later production phase?",
             "A later-phase plan only needs a compatible architecture now. Building networking into the prototype costs a lot, so I only do it if you need it right away.",
             37, relevant = { it.value(Keys.MULTIPLAYER_INTENT) in setOf("local", "online", "both") },
-            options = { listOf(o("prototype", "In the first prototype"), o("later", "Planned for later production")) },
+            options = { listOf(o("prototype", "In the first prototype", "", "prototype", "first build", "right away", "now"), o("later", "Planned for later production", "", "later", "later phase", "production", "full game", "after the prototype")) },
             suggest = { Suggestion("later", "Keeps the prototype small while the architecture stays ready for it.") }),
 
         Field(Keys.MULTIPLAYER_MODE, Category.GAMEPLAY, FieldKind.SINGLE, "Online play style",
             "For online play: cooperative, competitive, or both?",
             "Cooperative and competitive play need different authority, fairness and anti-cheat decisions.",
             38, relevant = { it.value(Keys.MULTIPLAYER_INTENT) in setOf("online", "both") },
-            options = { listOf(o("coop", "Cooperative"), o("competitive", "Competitive"), o("both", "Both")) },
+            options = { listOf(o("coop", "Cooperative", "", "co-op", "coop", "cooperative", "together"), o("competitive", "Competitive", "", "pvp", "versus", "competitive", "against each other"), o("both", "Both", "", "both")) },
             suggest = { Suggestion("coop", "Cooperative play is the simplest to make fair and the usual starting point.") }),
 
         Field(Keys.NETWORK_POLICY, Category.TECHNICAL, FieldKind.SINGLE, "Network use",
@@ -970,6 +970,8 @@ object TitleSuggester {
         "im", "i'm", "kind", "something", "little", "bit", "very", "really", "some", "similar", "style", "type", "build", "create", "design",
         "play", "player", "players", "you", "your", "they", "their", "can", "will", "would", "should", "could", "about", "into", "over",
         "defending", "defend", "crossed", "vampire", "survivors", "risk", "rain", "2",
+        // Planning words are not part of a title: "prototype first, then a full game, with multiplayer later".
+        "prototype", "full", "then", "first", "later", "phase", "multiplayer", "singleplayer", "online", "local", "coop", "android", "ios", "windows", "iphone", "ipad", "mac", "linux", "web", "updates", "update", "ota", "platform", "platforms", "production", "version",
     )
 
     fun suggest(t: Traits): String {

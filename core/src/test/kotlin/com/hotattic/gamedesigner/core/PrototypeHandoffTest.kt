@@ -156,7 +156,8 @@ class PrototypeHandoffTest {
     // 9 AUTOMATED: questions are not instructions.
     @Test fun questionsAreNotInstructions() = runBlocking {
         val mp = prompt(run(multi).project); val md = spec(run(multi).project)
-        for (doc in listOf(mp, md)) assertTrue("A question from the owner is a question" in doc && "implement" in doc)
+        assertTrue("A question from the owner is a question" in md && "implement" in md)
+        assertTrue("NOT a handoff trigger and not an instruction" in mp)
         assertTrue("without asking for repeated approval" in mp)
     }
 

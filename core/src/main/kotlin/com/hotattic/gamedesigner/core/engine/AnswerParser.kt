@@ -34,7 +34,11 @@ object AnswerParser {
     private fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9.\\s/+-]"), " ").replace(Regex("\\s+"), " ").trim()
 
     fun isDelegate(text: String): Boolean = OptionResolver.resolve(listOf(com.hotattic.gamedesigner.core.schema.Option("x", "x")), false, text).mode == OptionResolver.Mode.DELEGATE
-    fun isPostpone(text: String): Boolean { val t = norm(text); return postponePhrases.any { t.contains(it) } }
+    /** A postponement is a short deferral ("later", "not sure yet"), never a long description that merely contains the word ("...multiplayer later"). */
+    fun isPostpone(text: String): Boolean {
+        val t = norm(text)
+        return postponePhrases.any { t.contains(it) } && t.split(' ').size <= 8
+    }
     fun isAffirm(text: String): Boolean {
         val t = norm(text)
         if (t.isEmpty()) return false
