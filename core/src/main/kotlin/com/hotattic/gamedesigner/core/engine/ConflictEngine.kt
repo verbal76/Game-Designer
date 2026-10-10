@@ -194,9 +194,9 @@ object ConflictEngine {
         },
         // --- Network / cost / privacy ------------------------------------------------------------------------
         { t ->
-            if (t.network != null && t.network != "fully_offline")
+            if (t.network != null && t.network != "fully_offline" && !t.onlineMultiplayer)
                 Conflict("network_cost", Severity.WARNING, "Online features add servers, cost and privacy duties",
-                    "Online features usually need a backend with ongoing cost, security work and a privacy policy. Online multiplayer design isn't part of this version of Game Designer.",
+                    "Online features usually need a backend with ongoing cost, security work and a privacy policy.",
                     "Make the game fully offline for the first build; add online extras later.", listOf(Keys.NETWORK_POLICY),
                     listOf(Alternative("Fully offline", mapOf(Keys.NETWORK_POLICY to "fully_offline"))))
             else null

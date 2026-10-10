@@ -61,6 +61,20 @@ object DesignSeeder {
             p = ProjectOps.setDecision(p, g.key, "yes", Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
             seeded += g.key
         }
+        // Multiplayer intent only from unmistakable words; otherwise Bob asks.
+        if (p.decision(Keys.MULTIPLAYER_INTENT) == null && Fields.get(Keys.MULTIPLAYER_INTENT)?.isRelevant(Traits(p)) == true) {
+            val lc = said.lowercase()
+            val mp = when {
+                Regex("\\b(single[- ]player only|solo only|only single[- ]player|just single[- ]player|no multiplayer)\\b").containsMatchIn(lc) -> "single_player"
+                Regex("\\bonline (multiplayer|co-?op|coop|pvp)\\b|\\bco-?op online\\b").containsMatchIn(lc) -> "online"
+                Regex("\\b(local|couch|split[- ]screen) (multiplayer|co-?op|coop)\\b").containsMatchIn(lc) -> "local"
+                else -> null
+            }
+            if (mp != null && !Regex("\\bno (online )?multiplayer\\b").containsMatchIn(lc).let { it && mp != "single_player" }) {
+                p = ProjectOps.setDecision(p, Keys.MULTIPLAYER_INTENT, mp, Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
+                seeded += Keys.MULTIPLAYER_INTENT
+            }
+        }
         // A hypothesis from the owner's words, held for confirmation: "try to reach the top" implies the win condition.
         if (p.decision(Keys.WIN_LOSS) == null && Fields.get(Keys.WIN_LOSS)?.isRelevant(Traits(p)) == true) {
             val win = Regex("(?i)\\b(?:reach|get to|make it to|climb to|get up to|arrive at)\\s+(?:the\\s+)?(top|summit|peak|end|exit|goal|finish)\\b").find(said)

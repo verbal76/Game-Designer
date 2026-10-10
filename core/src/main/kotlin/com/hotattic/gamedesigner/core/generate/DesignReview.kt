@@ -77,6 +77,9 @@ object DesignReview {
         if (done.isNotBlank()) out += "**It's complete when.** $done."
         p.value(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }?.let { out += "**Claude must not change.** ${clean(it)}." }
         out += "**Platform.** ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not set yet" }}."
+        val notes = com.hotattic.gamedesigner.core.engine.PlatformCompat.notes(p)
+        if (notes.isNotEmpty()) out += "**Things to know before I generate anything.** ${notes.joinToString(" ")}"
+        t.multiplayer?.let { m -> out += "**Multiplayer.** " + when (m) { "single_player" -> "Single-player only."; "undecided" -> "Undecided; I'll keep the design ready for it without building networking."; else -> "${m.replace('_', ' ')}${p.value(Keys.MULTIPLAYER_TIMING)?.let { ", $it" } ?: ""}." } }
         out += "Is that the game you have in your head? Say \"looks right\", tell me what to change in your own words, or name a part to edit (world, loop, failure, first build, look...)."
         return out.joinToString("\n\n")
     }

@@ -60,6 +60,7 @@ object AntiSlop {
         if (p.value(Keys.PROGRESSION) != null && p.value(Keys.HAS_PROGRESSION) != "no")
             out += "Progression that changes only a hidden number the player cannot feel does not satisfy progression; each step must visibly change what the player can do or how they play."
         if (t.isMobile) out += "A HUD too small to read on a phone, or touch controls that cover critical play, do not satisfy the controls and presentation requirements."
+        p.value(Keys.ART_DIRECTION)?.let { a -> val name = a.replace('_', ' '); out += "Substituting a different visual style does not satisfy the chosen art direction ($name): a voxel look is not smooth low-poly, pixel art or generic stylized 3D, and the reverse. Technical convenience is not a reason to change the style without the owner's approval." }
         out += "Engine-default, placeholder-looking or visually incoherent output does not satisfy " + (if (ProjectObjective.of(p) == BuildObjective.PROTOTYPE) "even a prototype: scope may be small, but it must be polished enough to judge the game. Smaller and polished beats larger and unfinished." else "the visual target: smaller and polished beats larger and unfinished.")
         return out.distinct()
     }

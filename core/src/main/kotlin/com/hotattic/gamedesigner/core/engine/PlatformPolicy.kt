@@ -37,9 +37,10 @@ object PlatformPolicy {
         "Verify the built artifact (for example `aapt2 dump badging` shows targetSdkVersion '$ANDROID_TARGET_API') and record it in `docs/VERIFICATION.md`.",
     )
 
-    val moteHeadline = "Over-the-air updates are PRESENT (owner decision). The reference architecture is the Hot Attic Games $MOTE OTA implementation."
+    val moteHeadline = "Over-the-air updates are a FUNCTIONAL REQUIREMENT (owner decision). What must be updateable, how automatic it is and how it is delivered per platform are in section 9; the Hot Attic Games $MOTE OTA implementation is the reference architecture where it fits."
 
     val moteRequirements: List<String> = listOf(
+        "The requirement comes first, the mechanism second: deliver the update behavior described in section 9 (content, automation, timing, save protection) on each platform and distribution channel. $MOTE is the reference for how, not a reason to narrow what the owner asked to be updateable. Never reduce the requirement to data-only updates unless the owner chose that.",
         "Inspect and follow the actual $MOTE OTA implementation (its repository or reference material) wherever you can access it, rather than substituting a generic framework OTA solution. Do not use Expo EAS Update, CodePush, credentials embedded in the application, or another hosted OTA product by default.",
         "Carry forward, wherever technically applicable: a native shell/runtime boundary; classification of every change as OTA-safe or native-change; a runtime compatibility identity/fingerprint against which incompatible updates are rejected; a channel/update pointer for discovery; downloadable update artifacts; integrity and signature verification before use; staging before application; safe application and restart behavior; rollback and recovery protections; protection against broken or repeated update loops; owner-controlled publication; exact-source release discipline (a published update names the exact source it was built from).",
         "OTA compatibility does NOT mean every future change can be delivered over the air. Native, runtime or toolchain changes still require a new native build whenever the compatibility check says so.",
@@ -53,7 +54,7 @@ object PlatformPolicy {
     fun promptLines(p: Project): List<String> = buildList {
         if (androidSelected(p)) add("Android: Target API $ANDROID_TARGET_API is REQUIRED (compileSdk/targetSdk $ANDROID_TARGET_API). Pick a toolchain and dependency set compatible with it (SDK, AGP, Gradle, JDK, AndroidX, engine Android components); never keep an older target or pin older dependencies to preserve one. Details in CLAUDE.md section A0.")
         when (otaState(p)) {
-            SystemState.PRESENT -> add("OTA: YES. Use the Hot Attic Games $MOTE OTA architecture as the reference (inspect the actual $MOTE implementation; no EAS Update, CodePush or other hosted OTA by default). OTA does not cover native/runtime changes, which still need a new native build, and nothing is published without the owner's authorization. Details in CLAUDE.md section A0.")
+            SystemState.PRESENT -> add("OTA: YES, a functional requirement (what updates, how automatically and per platform: CLAUDE.md section 9). Use the Hot Attic Games $MOTE OTA architecture as the reference where it fits (inspect the actual $MOTE implementation; no EAS Update, CodePush or other hosted OTA by default). OTA does not cover native/runtime changes, which still need a new native build, and nothing is published without the owner's authorization. Details in CLAUDE.md section A0.")
             SystemState.ABSENT -> add("OTA: NO. Do not add OTA infrastructure.")
             else -> Unit
         }

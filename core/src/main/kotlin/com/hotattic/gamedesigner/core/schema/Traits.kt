@@ -86,6 +86,10 @@ class Traits(val project: Project) {
     val engineDimension: String? get() = if (dimension == "2.5D" && project.value(Keys.ART_DIRECTION) == "voxel") "3D" else dimension
     val platforms: Set<String> = project.list(Keys.PLATFORMS).toSet()
     val platformsKnown: Boolean get() = platforms.isNotEmpty()
+    /** The platform built and tested first. One selected platform is trivially primary; with several, the owner chose (the others stay targets). */
+    val primaryPlatform: String? get() = if (platforms.size == 1) platforms.first() else project.value(Keys.PRIMARY_PLATFORM)?.takeIf { it in platforms }
+    val multiplayer: String? get() = project.value(Keys.MULTIPLAYER_INTENT)
+    val onlineMultiplayer: Boolean get() = multiplayer == "online" || multiplayer == "both"
     val isMobile: Boolean = platforms.any { it in Platforms.mobile }
     val mobileOnly: Boolean = platforms.isNotEmpty() && platforms.all { it in Platforms.mobile }
     val inputs: Set<String> = project.list(Keys.INPUT_METHODS).toSet()

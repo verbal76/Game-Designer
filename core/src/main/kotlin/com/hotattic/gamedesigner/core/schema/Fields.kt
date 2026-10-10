@@ -26,6 +26,12 @@ object Keys {
     const val HAS_PROGRESSION = "has_progression"
     const val OTA_SCOPE = "ota_scope"
     const val ANDROID_TARGET_API = "android_target_api"
+    const val PRIMARY_PLATFORM = "primary_platform"
+    const val MULTIPLAYER_INTENT = "multiplayer_intent"
+    const val MULTIPLAYER_TIMING = "multiplayer_timing"
+    const val MULTIPLAYER_MODE = "multiplayer_mode"
+    const val OTA_CONTENT = "ota_content"
+    const val OTA_BEHAVIOR = "ota_behavior"
     const val CHARACTERS = "characters_classes"
     const val PROGRESSION = "progression"
     const val ECONOMY = "economy_systems"
@@ -153,6 +159,9 @@ private fun o(id: String, label: String, desc: String = "", vararg aliases: Stri
 private fun List<Option>.pick(vararg ids: String) = filter { it.id in ids }
 
 object Fields {
+    /** The owner wants an over-the-air update path (the OTA question was answered "yes"). */
+    fun otaWanted(t: Traits): Boolean = t.value(Keys.OTA_UPDATES).let { it != null && it != "none" }
+
 
     val genreOptions: List<Option> = GenreKnowledge.all.map { Option(it.id, it.label) } + Option("other", "Something else", "Describe it in your own words.")
 
@@ -699,15 +708,48 @@ object Fields {
             "Experts can pin choices; everyone else can skip.",
             152, required = false, expertOnly = true, modes = Field.ALL_MODES),
 
+        Field(Keys.PRIMARY_PLATFORM, Category.PLATFORM, FieldKind.SINGLE, "First platform to build and test",
+            "Which platform do you want to build and test first?",
+            "The first playable prototype is built and tested on one platform. Your other selected platforms stay targets of the design and are not dropped; they just are not required to be finished in the prototype.",
+            41, modes = Field.ALL_MODES, relevant = { it.platforms.size >= 2 },
+            options = { t -> t.platforms.map { id -> Option(id, Platforms.labels[id] ?: id) } },
+            suggest = { t -> (if (Platforms.ANDROID in t.platforms) Platforms.ANDROID else t.platforms.firstOrNull())?.let { Suggestion(it, "It gets first implementation and testing; every selected platform stays a design target.") } }),
+
+        Field(Keys.MULTIPLAYER_INTENT, Category.GAMEPLAY, FieldKind.SINGLE, "Multiplayer",
+            "Is this game single-player, or should it have multiplayer?",
+            "Multiplayer changes the architecture (networking, synchronisation, saves, security), so it is decided before the technology is chosen, even if it only arrives later.",
+            36, relevant = { it.genresKnown },
+            options = { listOf(
+                o("single_player", "Single-player only"),
+                o("local", "Local multiplayer", "Same device or same room."),
+                o("online", "Online multiplayer"),
+                o("both", "Both local and online"),
+                o("undecided", "Undecided", "I'll pick a practical, reversible architecture and flag what it would cost to add later.")) },
+            suggest = { Suggestion("single_player", "Nothing you described needs other players, and single-player keeps the first build focused.") }),
+
+        Field(Keys.MULTIPLAYER_TIMING, Category.GAMEPLAY, FieldKind.SINGLE, "When multiplayer is needed",
+            "Do you need multiplayer in the first playable prototype, or is it planned for a later production phase?",
+            "A later-phase plan only needs a compatible architecture now. Building networking into the prototype costs a lot, so I only do it if you need it right away.",
+            37, relevant = { it.value(Keys.MULTIPLAYER_INTENT) in setOf("local", "online", "both") },
+            options = { listOf(o("prototype", "In the first prototype"), o("later", "Planned for later production")) },
+            suggest = { Suggestion("later", "Keeps the prototype small while the architecture stays ready for it.") }),
+
+        Field(Keys.MULTIPLAYER_MODE, Category.GAMEPLAY, FieldKind.SINGLE, "Online play style",
+            "For online play: cooperative, competitive, or both?",
+            "Cooperative and competitive play need different authority, fairness and anti-cheat decisions.",
+            38, relevant = { it.value(Keys.MULTIPLAYER_INTENT) in setOf("online", "both") },
+            options = { listOf(o("coop", "Cooperative"), o("competitive", "Competitive"), o("both", "Both")) },
+            suggest = { Suggestion("coop", "Cooperative play is the simplest to make fair and the usual starting point.") }),
+
         Field(Keys.NETWORK_POLICY, Category.TECHNICAL, FieldKind.SINGLE, "Network use",
             "Should the game work fully offline?",
-            "Offline games avoid servers, ongoing costs and privacy obligations. Online multiplayer design is not part of this version of Game Designer.",
+            "Offline games avoid servers, ongoing costs and privacy obligations. Online play needs a backend and a privacy policy.",
             155, relevant = { it.genresKnown },
             options = { listOf(
                 o("fully_offline", "Fully offline"),
                 o("optional_online", "Offline play with optional online extras"),
                 o("online_required", "Requires internet")) },
-            suggest = { Suggestion("fully_offline", "No servers, no recurring cost, no privacy overhead.") }),
+            suggest = { t -> if (t.value(Keys.MULTIPLAYER_INTENT) in setOf("online", "both") && t.value(Keys.MULTIPLAYER_TIMING) == "prototype") Suggestion("online_required", "Online multiplayer is part of the prototype.") else Suggestion("fully_offline", "No servers, no recurring cost, no privacy overhead; a later online mode only needs a compatible architecture.") }),
 
         // Hot Attic Games platform policy: Android projects always target API 36 (derived, never asked, rendered as a requirement, not a default).
         Field(Keys.ANDROID_TARGET_API, Category.TECHNICAL, FieldKind.TEXT, "Android target API",
@@ -730,6 +772,28 @@ object Fields {
             "What may updates change?", "Superseded: Mote classifies OTA-safe versus native changes.",
             157, relevant = { false },
             options = { listOf(o("content_only", "Content and tuning only"), o("content_and_logic", "Content, tuning and game logic")) }),
+
+        Field(Keys.OTA_CONTENT, Category.TECHNICAL, FieldKind.MULTI, "What must be updateable after install",
+            "What should be updateable after the game is installed? Pick everything that applies.",
+            "This decides the update architecture. Updating gameplay logic needs a different design than updating only art and data, and some stores restrict it.",
+            157, relevant = { Fields.otaWanted(it) },
+            options = { listOf(
+                o("gameplay_code", "Gameplay fixes and new gameplay logic"),
+                o("assets", "Art, models and other visual assets"),
+                o("audio", "Audio and music"),
+                o("data", "Text, levels and tuning data"),
+                o("features", "Whole new features and content")) },
+            suggest = { Suggestion("gameplay_code|assets|audio|data|features", "You want the game to keep improving after install, so everything that makes up the game should be updateable where the platform allows it.") }),
+
+        Field(Keys.OTA_BEHAVIOR, Category.TECHNICAL, FieldKind.SINGLE, "How automatic updates are",
+            "How hands-off should updates be?",
+            "Least intrusive means the least effort for the player, not a hidden or buried setting.",
+            158, relevant = { Fields.otaWanted(it) },
+            options = { listOf(
+                o("auto_apply", "Fully automatic", "Check at launch, download in the background, apply at a safe moment and restart for me."),
+                o("next_launch", "Automatic download, applied next launch"),
+                o("ask", "Tell me and let me choose")) },
+            suggest = { Suggestion("auto_apply", "Least effort for the player: updates arrive and apply themselves at a safe point, saves protected.") }),
 
         Field(Keys.CI_BUILD, Category.TECHNICAL, FieldKind.SINGLE, "Build pipeline",
             "How should the installable build get produced?",

@@ -6,7 +6,13 @@ import com.hotattic.gamedesigner.core.engine.AuditReport
 import com.hotattic.gamedesigner.core.engine.ConflictEngine
 import com.hotattic.gamedesigner.core.engine.AssetStrategy
 import com.hotattic.gamedesigner.core.engine.BuildObjective
+import com.hotattic.gamedesigner.core.engine.DesignModel
 import com.hotattic.gamedesigner.core.engine.PlatformPolicy
+import com.hotattic.gamedesigner.core.engine.PrototypeLifecycle
+import com.hotattic.gamedesigner.core.engine.StackAdvisor
+import com.hotattic.gamedesigner.core.engine.SystemId
+import com.hotattic.gamedesigner.core.engine.UpdateStrategy
+import com.hotattic.gamedesigner.core.engine.PlatformCompat
 import com.hotattic.gamedesigner.core.engine.SystemState
 import com.hotattic.gamedesigner.core.engine.ConsistencyReview
 import com.hotattic.gamedesigner.core.engine.MetaConversation
@@ -60,6 +66,11 @@ object ClaudeMdGenerator {
 
         h1("$title - AUTHORITATIVE BUILD SPECIFICATION")
         p("Spec version $versionNumber ($versionLabel) - generated $nowIso by Game Designer. This file supersedes earlier versions; earlier versions are preserved in the Game Designer project history and must not be re-derived from memory.")
+
+        sb.append(PrototypeLifecycle.marker(PrototypeLifecycle.Phase.PROTOTYPE)).append("\n\n")
+        h2("0a. Lifecycle and handoff (read this first)")
+        bullets(PrototypeLifecycle.section())
+        p("**How to read this file.** Part A is what the owner stated or decided (authoritative while it stands). Part B holds designer recommendations the owner accepted, and Part C holds implementation guidance and designer assumptions: both are provisional and carry no authority after handoff. Part D lists open and delegated matters. Part E lists constraints the owner set; they bind until the owner changes them. Future possibilities are listed in section 16 and are never prohibited.")
 
         // 0. Authority
         h2("0. Authority and how to use this file")
@@ -144,12 +155,12 @@ object ClaudeMdGenerator {
         val acknowledged = ConflictEngine.acknowledged(project)
         if (acknowledged.isNotEmpty()) bullets(acknowledged.map { "Acknowledged risk - ${it.title}: ${it.message}" })
 
-        sb.append("# PART B - ACCEPTED RECOMMENDATIONS (Game Designer's suggestions the owner accepted or delegated; keep unless there is a strong engineering reason)\n\n")
+        sb.append("# PART B - ACCEPTED RECOMMENDATIONS (provisional: designer suggestions the owner accepted or delegated; keep them during the prototype unless there is a good reason; no authority after handoff)\n\n")
         val accepted = project.decisions.filter { (k, d) -> d.prov == Provenance.OWNER_ACCEPTED_RECOMMENDATION && d.status == DecisionStatus.CONFIRMED && d.value.isNotBlank() && active(k) != null && k != Keys.CONCEPT && k !in Keys.brandingKeyForSlot.values && k != Keys.ASSET_POLICY }
         if (accepted.isEmpty()) p("None.")
         else bullets(accepted.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" + (d.note.takeIf { it.isNotBlank() }?.let { " - $it" } ?: "") })
 
-        sb.append("# PART C - IMPLEMENTATION GUIDANCE (how to build it; derived from Parts A and B plus engineering practice)\n\n")
+        sb.append("# PART C - IMPLEMENTATION GUIDANCE (provisional: how to build the prototype; designer assumptions, not owner requirements; no authority after handoff)\n\n")
         p("Where anything in this part appears to conflict with Part A, Part A wins.")
         // A routine default never sits beside the owner's own description of the same thing (their camera idea beats "side view"; their stated slice beats "1-5 minute sessions").
         val ownerCamera = project.decision(Keys.MOVEMENT_CAMERA)?.ownerAuthored == true
@@ -343,9 +354,38 @@ object ClaudeMdGenerator {
             v(Keys.NETWORK_POLICY)?.let { "Network policy: ${label(Keys.NETWORK_POLICY, it)}. ${if (it == "fully_offline" && PlatformPolicy.otaState(project) == SystemState.PRESENT) "Apart from the signed update check described below, the game makes no network calls and works fully offline." else if (it == "fully_offline") "The build must request no INTERNET permission and make no network calls." else "Network features degrade gracefully when offline."}" },
             v(Keys.TOOLCHAIN_PREFS)?.let { "Owner toolchain preferences: $it" },
         ))
+        h3("Platform priority and architecture")
+        bullets(buildList {
+            if (t.platforms.size > 1) {
+                add(t.primaryPlatform?.let { "**${Platforms.labels[it] ?: it} is built and tested first.** The other selected platforms (${(t.platforms - it).joinToString { pl -> Platforms.labels[pl] ?: pl }}) are retained as architectural targets: do not choose a stack or write code that rules them out." } ?: "Primary platform not yet chosen.")
+                add("Architecture: ONE shared gameplay core (rules, simulation, data, content) plus a thin integration layer per platform (input, windowing, audio output, storage, packaging, updates). Platform code never contains gameplay rules.")
+            } else add("Single target platform: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not specified" }}.")
+            addAll(PlatformCompat.notes(project).filterNot { it.contains("built and tested first") })
+        })
+        val mp = t.multiplayer
+        if (mp != null) {
+            h3("Multiplayer")
+            bullets(listOfNotNull(
+                when (mp) {
+                    "single_player" -> "Single-player only (owner decision). Do not build networking or multiplayer structure."
+                    "undecided" -> "Multiplayer is undecided. Keep game state deterministic and separable from presentation and input so multiplayer can be added later; implement no networking now."
+                    else -> "Multiplayer intent: ${mp.replace('_', ' ')}${project.value(Keys.MULTIPLAYER_MODE)?.let { ", $it" } ?: ""}."
+                },
+                if (mp !in setOf("single_player", "undecided")) (if (project.value(Keys.MULTIPLAYER_TIMING) == "prototype") "Required in the prototype: implement it, with the simplest architecture that is genuinely playable." else "Planned for later, NOT part of this prototype: implement no networking now, but keep simulation deterministic, state serializable and input abstracted so it can be added without a rewrite. ${PrototypeLifecycle.PROTOTYPE_ONLY}") else null,
+            ))
+        }
+        val why = StackAdvisor.considered(project) + StackAdvisor.comparison(project)
+        if (why.isNotEmpty()) { h3("Why this stack (requirements it was chosen against)"); bullets(why) }
         if (PlatformPolicy.otaState(project) == SystemState.PRESENT) {
-            h3("Over-the-air updates (owner decision; the Hot Attic Games Mote OTA architecture, see A0)")
-            p("The authoritative OTA requirements are in section A0. Hosting and cost: static files on free hosting such as GitHub Releases or Pages; no server of your own, no accounts, no analytics, and no device identifiers or personal data in update requests. Permissions: INTERNET only. Record the update-pipeline tests (bad signature rejected, corrupt artifact rejected, incompatible fingerprint rejected, interrupted download handled, rollback works, offline start works, no repeated update loop) in `docs/VERIFICATION.md`.")
+            h3("Over-the-air updates (owner requirement; Hot Attic Games ${PlatformPolicy.MOTE} is the reference architecture where it fits, see A0)")
+            bullets(listOfNotNull(
+                UpdateStrategy.contentLabels(project).takeIf { it.isNotBlank() }?.let { "Must be updateable after install: $it." },
+                "Behavior: ${UpdateStrategy.behavior(project)}",
+                "Least intrusive means minimal player effort, not hidden updates: tell the player when an update is downloaded or applied.",
+            ) + UpdateStrategy.perPlatform(project).map { "${Platforms.labels[it.platform] ?: it.platform} (${it.channel}): ${it.mechanism}" } +
+                listOf("Always needs a new package: " + UpdateStrategy.requiresNewPackage(project).joinToString("; ") + ".",
+                    "Do not promise unrestricted dynamic code loading where a store forbids it; re-verify current store policy before implementing. Do not copy another project's OTA implementation: follow the reference where it fits and record deviations in `docs/DECISIONS.md`."))
+            p("Hosting and cost: static files on free hosting such as GitHub Releases or Pages; no server of your own, no accounts, no analytics, and no device identifiers or personal data in update requests. Permissions: INTERNET only. Record the update-pipeline tests (bad signature rejected, corrupt artifact rejected, incompatible fingerprint rejected, interrupted download handled, rollback works, offline start works, saves survive an update, no repeated update loop) in `docs/VERIFICATION.md`.")
         }
         h3("Repository layout and rules")
         bullets(listOf(
@@ -437,9 +477,18 @@ object ClaudeMdGenerator {
         ))
 
         // 16. Exclusions
-        h2("16. Explicit exclusions and deferred features")
+        h2("16. Not required for this prototype, and future possibilities")
+        p("Everything here is temporary prototype scope. 'Not required' never means 'forbidden': after handoff, or on any explicit owner instruction, any of it can be built.")
         val ex = v(Keys.EXCLUSIONS)
-        if (ex != null) p(ex) else p("No exclusions were declared beyond: online multiplayer, accounts and cloud services (not part of this build).")
+        val skipped = buildList {
+            ex?.let { add("${PrototypeLifecycle.PROTOTYPE_ONLY} Not required for this prototype (owner's note): $it") }
+            val tt = Traits(project)
+            if (tt.platforms.size > 1) add("${PrototypeLifecycle.PROTOTYPE_ONLY} Not required for this prototype: finished builds for ${(tt.platforms - (tt.primaryPlatform ?: "")).joinToString { Platforms.labels[it] ?: it }} (they remain design targets).")
+            if (tt.multiplayer in setOf("local", "online", "both") && v(Keys.MULTIPLAYER_TIMING) != "prototype") add("${PrototypeLifecycle.PROTOTYPE_ONLY} Not required for this prototype: multiplayer networking or local-play features (planned for later production; the architecture must not block them).")
+            if (!DesignModel.of(project).let { it.state(SystemId.COMBAT) == SystemState.PRESENT }) add("${PrototypeLifecycle.PROTOTYPE_ONLY} Not required for this prototype: any system not described in Part A (extra worlds, characters, enemies, mechanics, modes).")
+        }
+        bullets(skipped)
+        bullets(listOf("Future possibilities the owner may direct at any time: new mechanics, enemies, worlds, characters, modes, platforms, visual changes and architecture changes. None is excluded by this document."))
 
         // 17. Continuation
         if (project.mode != ProjectMode.NEW_GAME) {
@@ -480,7 +529,7 @@ object ClaudeMdGenerator {
 
 
         // PART E
-        sb.append("\n# PART E - MUST NOT CHANGE (binding constraints; do not reinterpret, 'improve' or normalise any of them)\n\n")
+        sb.append("\n# PART E - MUST NOT CHANGE (owner-set constraints: do not reinterpret or 'improve' them while the owner keeps them; the owner can change any of them at any time)\n\n")
         if (invariants == null && derivedInvariants == null) p("None declared by the owner.")
         else {
             invariants?.let { p("Stated by the owner:"); bullets(MetaConversation.designSentences(it.replace(" | ", ". "), 6)) }

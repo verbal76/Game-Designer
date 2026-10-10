@@ -64,6 +64,25 @@ object MasterPromptGenerator {
                 "FIRST ACTION: read the repository-root `CLAUDE.md` in full. It is the authoritative specification and Part A (the owner's requirements, corrections and must-not-change constraints) overrides everything else. If it is missing, tell the owner it must be added at the repository root before you proceed.",
                 "Deliverable: ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "the target platform" }} build, source, assets, README with exact install/launch steps and controls, and `docs/VERIFICATION.md` (what you actually exercised, what you could not, known issues)."))
 
+            section("LIFECYCLE AND HANDOFF (this prompt is temporary)", listOf(
+                "This prompt exists to get a PLAYABLE PROOF OF CONCEPT built. Read the lifecycle marker at the top of `CLAUDE.md` (section 0a). `PROTOTYPE`: follow this prompt. `OWNER_DIRECTED`: this prompt no longer governs; follow the owner's current instructions and treat `CLAUDE.md` as project context.",
+                "Handoff happens when the owner accepts the prototype, starts post-prototype work, or gives an explicit instruction beyond the prototype scope. Then, without asking: flip the marker, add a dated entry to `docs/HANDOFF.md`, and carry on. Prototype scope limits, designer assumptions and `[prototype-only]` items expire; genuine security, licensing, platform and saved-data constraints and the technical docs remain.",
+                "A scope limit means 'not required for this prototype', never 'forbidden'. An explicit owner instruction always outranks it. A question from the owner is a question: answer it, and implement only when they instruct. Carry out explicit instructions without asking for repeated approval."))
+
+            section("PLATFORMS AND MULTIPLAYER", listOfNotNull(
+                if (t.platforms.size > 1) (t.primaryPlatform?.let { "Selected platforms: ${t.platforms.joinToString { pl -> Platforms.labels[pl] ?: pl }}. Build and test ${Platforms.labels[it] ?: it} FIRST. The others stay architectural targets: one shared gameplay core plus a thin integration layer per platform, no platform-specific gameplay code, nothing that rules them out." } ?: "Selected platforms: ${t.platforms.joinToString { pl -> Platforms.labels[pl] ?: pl }}.") else null,
+                t.multiplayer?.let { mp -> when (mp) {
+                    "single_player" -> "Single-player only: build no networking."
+                    "undecided" -> "Multiplayer undecided: keep state deterministic and separable so it can be added later; build no networking now."
+                    else -> if (project.value(Keys.MULTIPLAYER_TIMING) == "prototype") "Multiplayer (${mp.replace('_', ' ')}) is required in the prototype." else "Multiplayer (${mp.replace('_', ' ')}) is planned for later: build no networking now, but keep the core compatible with it."
+                } },
+                com.hotattic.gamedesigner.core.engine.PlatformCompat.notes(project).filter { "built and tested first" !in it }.takeIf { it.isNotEmpty() }?.let { "Limits to respect: " + it.joinToString(" ") }))
+
+            section("WORKING MODEL", listOf(
+                "ONE authoritative project, ONE source of truth (`CLAUDE.md`) and ONE integration workflow. You are the lead and stay responsible for the result.",
+                "Parallel agents are an optional resource, not a requirement. If you delegate, give each the context, the relevant part of the spec, its capabilities and a clear interface, and integrate their work yourself. Do not run disconnected per-platform agents; if coordination is unreliable, work sequentially.",
+                "Shared gameplay core first, platform integration layers on top."))
+
             section("PLATFORM POLICY (Hot Attic Games standing rules; binding for this project)", com.hotattic.gamedesigner.core.engine.PlatformPolicy.promptLines(project))
 
             val conceptLines = MetaConversation.designSentences(project.originalConcept.ifBlank { project.value(Keys.CONCEPT).orEmpty() }, 8).take(6)
@@ -131,6 +150,10 @@ object MasterPromptGenerator {
             val inv = v(Keys.MUST_NOT_CHANGE)?.takeIf { it.trim().lowercase() != "none" }
             val implied = com.hotattic.gamedesigner.core.schema.SliceSuggester.invariants(t).value.takeIf { it != "none" }
             section("MUST-NOT-CHANGE CONSTRAINTS", listOfNotNull(inv?.let { "- ${it.trim()}" }, implied?.takeIf { it != inv }?.let { "- $it" }))
+
+            section("PROTOTYPE QUALITY BAR", listOf(
+                "The result must be genuinely playable end to end: real input, the actual core loop, feedback, a win/fail/restart cycle where the design has one, and representative presentation. Scaffolding, empty projects, stubs, TODOs or placeholder-only output do not count as playable.",
+                "Art style is a requirement: keep the style the owner chose (voxel stays voxel; it is not smooth low-poly, pixel art or generic stylized 3D). If a technical constraint forces a change, explain it and get the owner's approval first; if the look is ambiguous, ask for reference images."))
 
             section("AUTONOMOUS WORKFLOW", listOf(
                 "The owner defines the vision; you solve the engineering. Work autonomously: implement rather than merely plan, make reasonable reversible engineering decisions yourself and record them in `docs/DECISIONS.md`, and never stop to ask the owner anything `CLAUDE.md` already answers.",

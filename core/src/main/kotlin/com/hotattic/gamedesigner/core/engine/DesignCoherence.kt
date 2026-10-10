@@ -38,6 +38,8 @@ object DesignCoherence {
             p = p.copy(decisions = p.decisions - Keys.ANDROID_TARGET_API, updatedAt = now)
             notes += "Dropped the Android target policy: Android is no longer a target platform."
         }
+        val tr = com.hotattic.gamedesigner.core.schema.Traits(p)
+        p.decision(Keys.PRIMARY_PLATFORM)?.let { d -> if (d.value !in tr.platforms) { p = p.copy(decisions = p.decisions - Keys.PRIMARY_PLATFORM, updatedAt = now); notes += "Dropped the primary-platform choice: ${d.value} is no longer selected." } }
         return p to notes
     }
 
@@ -98,6 +100,18 @@ object DesignCoherence {
             if (ota != SystemState.PRESENT) text.lines().firstOrNull { Regex("(?i)\\bmote\\b").containsMatchIn(it) && !negation.containsMatchIn(it) }?.let { out += ReviewFinding(ReviewLevel.ERROR, "ota_infrastructure_imposed", "[$name] OTA infrastructure is required but the OTA decision is ${ota.name.lowercase()}.", it.trim().take(160)) }
             text.lines().firstOrNull { foreignOta.containsMatchIn(it) && !negation.containsMatchIn(it) }?.let { out += ReviewFinding(ReviewLevel.ERROR, "foreign_ota_default", "[$name] names a hosted OTA product as a default; Hot Attic Games OTA is ${PlatformPolicy.MOTE}.", it.trim().take(160)) }
         }
+        // Prototype handoff reform: lifecycle marker, platform priority, multiplayer, requirement-driven updates, stack compatibility.
+        val tr = com.hotattic.gamedesigner.core.schema.Traits(p)
+        docs["CLAUDE.md"]?.let { md ->
+            if (PrototypeLifecycle.phase(md) == null) out += ReviewFinding(ReviewLevel.ERROR, "lifecycle_marker_missing", "CLAUDE.md has no prototype lifecycle marker, so a fresh conversation cannot tell when the designer's authority ends.", "CLAUDE.md")
+            if (Regex("(?i)\\b(?:permanently|forever|under no circumstances)\\b[^.\\n]{0,40}\\b(?:prohibit|forbid|never add)").containsMatchIn(md)) out += ReviewFinding(ReviewLevel.ERROR, "permanent_prohibition", "CLAUDE.md states a permanent prohibition; scope limits must read as not required for this prototype.", "CLAUDE.md")
+            if (tr.platforms.size > 1 && tr.primaryPlatform != null && "built and tested first" !in md) out += ReviewFinding(ReviewLevel.ERROR, "primary_platform_missing", "Several platforms are selected but CLAUDE.md does not say which is built and tested first.", "CLAUDE.md")
+            if (tr.multiplayer != null && "ultiplayer" !in md && "Single-player" !in md) out += ReviewFinding(ReviewLevel.ERROR, "multiplayer_missing", "Multiplayer intent is decided but not carried into CLAUDE.md.", "CLAUDE.md")
+            if (ota == SystemState.PRESENT && "Over-the-air updates (owner requirement" !in md) out += ReviewFinding(ReviewLevel.ERROR, "ota_requirements_missing", "OTA is wanted but CLAUDE.md does not state what must be updateable and how it is delivered per platform.", "CLAUDE.md")
+        }
+        if (tr.platforms.size > 1 && tr.primaryPlatform == null) out += ReviewFinding(ReviewLevel.ERROR, "primary_platform_unresolved", "Several platforms are selected but the owner has not said which to build and test first.")
+        if (p.decision(Keys.MULTIPLAYER_INTENT)?.value.isNullOrBlank() && com.hotattic.gamedesigner.core.schema.Fields.get(Keys.MULTIPLAYER_INTENT)?.isRelevant(tr) == true) out += ReviewFinding(ReviewLevel.ERROR, "multiplayer_unresolved", "Whether the game is single-player, local or online multiplayer has not been decided.")
+        StackAdvisor.incompatibilities(p).forEach { out += ReviewFinding(ReviewLevel.ERROR, "stack_incompatible", it) }
         if (PlatformPolicy.otaUnresolved(p)) out += ReviewFinding(ReviewLevel.ERROR, "ota_unresolved", "Whether this project needs an over-the-air update path has not been decided.")
 
         // Asset strategy: the exports must carry the strategy the design state holds, not a generic paragraph that reorders it.
