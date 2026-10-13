@@ -162,3 +162,44 @@ object StackAdvisor {
         return out
     }
 }
+
+/** The multiplayer answers turned into a concrete network plan, so the architecture is chosen before the engine and never defaulted. */
+object NetworkPlan {
+    private val players = mapOf("two" to "2 players", "three_four" to "3-4 players", "five_eight" to "5-8 players", "nine_plus" to "9 or more players")
+
+    fun lines(p: Project): List<String> {
+        val t = Traits(p)
+        val mp = t.multiplayer ?: return emptyList()
+        if (mp == "single_player") return emptyList()
+        val out = mutableListOf<String>()
+        p.value(Keys.MP_PLAYERS)?.let { out += "Players at once: ${players[it] ?: it}." }
+        if (mp == "local" || mp == "both") out += when (p.value(Keys.MP_DEVICES)) {
+            "separate_devices" -> "Local play: each player on their own device in the same room (devices find each other over the local network)."
+            "shared_screen" -> "Local play: everyone on one shared screen (one camera or split screen; no networking)."
+            else -> "Local play: shared screen versus separate devices is not decided."
+        }
+        if (t.onlineMultiplayer) {
+            out += "Online play style: ${p.value(Keys.MULTIPLAYER_MODE)?.let { if (it == "coop") "cooperative" else it } ?: "not decided"}."
+            out += when (p.value(Keys.MP_HOSTING)) {
+                "dedicated_servers" -> "Hosting: dedicated, authoritative servers (client-server). The server decides what really happened. Running costs apply${if (p.value(Keys.BUDGET) == "free_only") " - this conflicts with the zero budget and needs the owner's decision" else ""}."
+                "player_hosted" -> "Hosting: one player hosts the session and the others join it (the host is authoritative). No server bill; sessions depend on the host's connection."
+                else -> "Hosting: not decided; choose the cheapest architecture that is fair for the player count and keep it behind a transport interface."
+            }
+            p.value(Keys.MP_SESSION)?.let { out += if (it == "persistent_world") "Sessions: a persistent online world (needs always-on servers and a database)." else "Sessions: individual matches or runs that start and end on demand." }
+            p.value(Keys.MP_CONNECT)?.let { out += "Finding each other: ${when (it) { "matchmaking" -> "automatic matchmaking"; "both" -> "invitations and matchmaking"; else -> "invitations (friend code or link)" }}." }
+            if (t.platforms.size >= 2) p.value(Keys.MP_CROSSPLAY)?.let { out += if (it == "yes") "Cross-platform play is required: one network design must work on every selected platform." else "Cross-platform play is not required: each platform plays separately." }
+            p.value(Keys.MP_OFFLINE)?.let { out += if (it == "yes") "An offline mode is required and must never need a connection." else "Online only; no offline mode is required." }
+        }
+        out += "Architecture rule: keep game state deterministic and serializable, input abstracted, and networking behind a transport layer, so multiplayer ${if (p.value(Keys.MULTIPLAYER_TIMING) == "prototype") "works in the prototype and" else "can be added later without a rewrite and"} procedural content is reproducible from a shared seed."
+        return out
+    }
+
+    /** Verification steps appropriate to the multiplayer plan. */
+    fun verification(p: Project): List<String> {
+        val t = Traits(p)
+        if (t.multiplayer in setOf(null, "single_player", "undecided")) return emptyList()
+        return if (p.value(Keys.MULTIPLAYER_TIMING) == "prototype") listOf(
+            "Multiplayer: run two game instances against each other; verify both stay in sync during play, that a player disconnecting mid-session is handled without a crash or a soft-lock, and that a rejoin works. Report which parts were exercised on real devices and which only in simulation.")
+        else listOf("Multiplayer is planned for later: verify the game state is deterministic and serializable (a recorded session replays identically) so the later networking phase can rely on it.")
+    }
+}

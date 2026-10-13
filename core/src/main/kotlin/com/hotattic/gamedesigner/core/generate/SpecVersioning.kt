@@ -60,7 +60,7 @@ object SpecVersioning {
         // Contradictory conflicts that remain are also blocking.
         val conflictFindings = ConflictEngine.all(withAssets).filter { it.id == "combat_turn_based_vs_real_time" }
             .map { ReviewFinding(ReviewLevel.ERROR, it.id, it.message) }
-        val coherence = com.hotattic.gamedesigner.core.engine.DesignCoherence.check(withAssets, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to prompt, "ASSETS.md" to assetsMd))
+        val coherence = com.hotattic.gamedesigner.core.engine.DesignCoherence.check(withAssets, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to prompt, "ASSETS.md" to assetsMd) + HandoffDocs.files(withAssets))
         val report = ReviewReport(review.findings + conflictFindings + coherence)
         if (!report.clean) return Generation(project, report, notes)
         val readiness = CompletenessEngine.compute(withAssets).percent

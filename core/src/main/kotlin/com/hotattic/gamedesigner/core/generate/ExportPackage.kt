@@ -17,6 +17,8 @@ object ExportPackage {
         out["ASSETS.md"] = assetsMarkdown(project)
         out["docs/RESEARCH.md"] = researchMarkdown(project)
         out["docs/SPEC_HISTORY.md"] = historyMarkdown(project)
+        // The handoff documents are rendered from the decisions as they were when this version was generated.
+        out.putAll(HandoffDocs.files(project.copy(decisions = version.decisions)))
         out["game-designer/project.json"] = ProjectCodec.encode(project)
         return out
     }

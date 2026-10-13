@@ -51,7 +51,7 @@ class Traits(val project: Project) {
             else SystemReq("continuous_world", "Connected world", "One connected traversable world in contiguous regions with checkpoints; no level boundaries or level-select."),
             SystemReq("depth_progress_save", "World progress save", "Persist position, checkpoints, unlocks and abilities."),
         ) else g.systems
-        list.mapNotNull { sys -> adapt(sys)?.let { g to it } }
+        list.mapNotNull { sys -> adapt(sys)?.takeUnless { com.hotattic.gamedesigner.core.engine.Exclusions.excludes(project, it.name) }?.let { g to it } }
     }.distinctBy { it.second.id }
 
     /** The genre checklist fitted to what the owner ruled in or out: no combat means no enemy roster, a procedural world means no hand-built level set. */

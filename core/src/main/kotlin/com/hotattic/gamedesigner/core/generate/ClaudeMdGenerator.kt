@@ -371,6 +371,7 @@ object ClaudeMdGenerator {
                     "undecided" -> "Multiplayer is undecided. Keep game state deterministic and separable from presentation and input so multiplayer can be added later; implement no networking now."
                     else -> "Multiplayer intent: ${mp.replace('_', ' ')}${project.value(Keys.MULTIPLAYER_MODE)?.let { ", $it" } ?: ""}."
                 },
+                *com.hotattic.gamedesigner.core.engine.NetworkPlan.lines(project).toTypedArray(),
                 if (mp !in setOf("single_player", "undecided")) (if (project.value(Keys.MULTIPLAYER_TIMING) == "prototype") "Required in the prototype: implement it, with the simplest architecture that is genuinely playable." else "Planned for later, NOT part of this prototype: implement no networking now, but keep simulation deterministic, state serializable and input abstracted so it can be added without a rewrite. ${PrototypeLifecycle.PROTOTYPE_ONLY}") else null,
             ))
         }
@@ -381,6 +382,8 @@ object ClaudeMdGenerator {
             bullets(listOfNotNull(
                 UpdateStrategy.contentLabels(project).takeIf { it.isNotBlank() }?.let { "Must be updateable after install: $it." },
                 "Behavior: ${UpdateStrategy.behavior(project)}",
+                if (UpdateStrategy.wantsCode(project)) "Includes EXECUTABLE updates (scripts and gameplay logic). Build the game so its logic lives in scripts or data that the app's own interpreter loads at runtime, from the very first milestone; do not defer this. Native code and engine behavior always ship as a new package."
+                else "This is a CONTENT update system: it replaces data the game loads. It is not a complete OTA solution for executable code; any change to code needs a new package. Do not describe it as more than it is.",
                 "Least intrusive means minimal player effort, not hidden updates: tell the player when an update is downloaded or applied.",
             ) + UpdateStrategy.perPlatform(project).map { "${Platforms.labels[it.platform] ?: it.platform} (${it.channel}${if (it.channelAssumed) ", assumed: no channel chosen yet" else ""}): ${it.mechanism} Technical capability: ${it.capability} Distribution policy: ${it.policy}" } +
                 (UpdateStrategy.unmet(project).takeIf { it.isNotEmpty() }?.let { u -> listOf("**Requested updates that CANNOT be fully satisfied as asked** (a distribution-policy limit, not a technical one; do not silently downgrade them, build the closest compliant mechanism and tell the owner). Per platform:") + u.map { "Cannot be fully satisfied: $it" } } ?: emptyList()) +
@@ -478,11 +481,16 @@ object ClaudeMdGenerator {
         ))
 
         // 16. Exclusions
-        h2("16. Not required for this prototype, and future possibilities")
-        p("Everything here is temporary prototype scope. 'Not required' never means 'forbidden': after handoff, or on any explicit owner instruction, any of it can be built.")
-        val ex = v(Keys.EXCLUSIONS)
+        h2("16. Explicit exclusions, prototype scope and future possibilities")
+        val ownerEx = com.hotattic.gamedesigner.core.engine.Exclusions.fromOwner(project)
+        val note = v(Keys.EXCLUSIONS)
+        if (ownerEx.isNotEmpty() || note != null) {
+            h3("Excluded by the owner (stays excluded until the owner says otherwise; do not add these, and do not ask about them again)")
+            bullets(ownerEx.map { "**${it.label}** - the owner said: \"${it.evidence}\"" } + listOfNotNull(note?.let { "Owner's note on what is out of scope or deferred: $it" }))
+        }
+        h3("Not required for this prototype")
+        p("Everything below is temporary prototype scope. 'Not required' never means 'forbidden': after handoff, or on any explicit owner instruction, any of it can be built.")
         val skipped = buildList {
-            ex?.let { add("${PrototypeLifecycle.PROTOTYPE_ONLY} Not required for this prototype (owner's note): $it") }
             val tt = Traits(project)
             if (tt.platforms.size > 1) add("${PrototypeLifecycle.PROTOTYPE_ONLY} Not required for this prototype: finished builds for ${(tt.platforms - (tt.primaryPlatform ?: "")).joinToString { Platforms.labels[it] ?: it }} (they remain design targets).")
             if (tt.multiplayer in setOf("local", "online", "both") && v(Keys.MULTIPLAYER_TIMING) != "prototype") add("${PrototypeLifecycle.PROTOTYPE_ONLY} Not required for this prototype: multiplayer networking or local-play features (planned for later production; the architecture must not block them).")
@@ -517,6 +525,19 @@ object ClaudeMdGenerator {
                 })
             }
         }
+
+        h2("18. Handoff package, milestones and operating policies")
+        p("The full handoff package is in `docs/`: GAME_DESIGN.md, REQUIREMENTS_LEDGER.md (every requirement with status and evidence), EXCLUSIONS.md, ARCHITECTURE_DECISIONS.md, TECH_STACK.md, ASSET_PLAN.md, BUILD_AND_RELEASE.md, TEST_PLAN.md, GAMEPLAY_INVARIANTS.md, MILESTONES.md, COMPLETION_CRITERIA.md, OWNER_AUTHORIZATION.md, FAILURE_ESCALATION.md and PROGRESS_REPORTING.md. Keep the ledger current; it is how the owner sees what is really done.")
+        h3("Milestones (a playable build comes early; the plan ends at the finished game)")
+        bullets(HandoffPolicy.milestones(project).map { "**${it.id} ${it.title}:** ${it.deliverable}" })
+        h3("Protecting the game's identity and feel")
+        bullets(HandoffPolicy.invariantRules(project))
+        h3("When a repair keeps failing")
+        bullets(HandoffPolicy.failureEscalation)
+        h3("Who may authorize what")
+        bullets(HandoffPolicy.authorization(project))
+        h3("How to report progress")
+        bullets(HandoffPolicy.progressReporting)
 
         // PART D
         sb.append("# PART D - UNRESOLVED AND DELEGATED DECISIONS\n\n")

@@ -100,6 +100,12 @@ object DesignCoherence {
             if (ota != SystemState.PRESENT) text.lines().firstOrNull { Regex("(?i)\\bmote\\b").containsMatchIn(it) && !negation.containsMatchIn(it) }?.let { out += ReviewFinding(ReviewLevel.ERROR, "ota_infrastructure_imposed", "[$name] OTA infrastructure is required but the OTA decision is ${ota.name.lowercase()}.", it.trim().take(160)) }
             text.lines().firstOrNull { foreignOta.containsMatchIn(it) && !negation.containsMatchIn(it) }?.let { out += ReviewFinding(ReviewLevel.ERROR, "foreign_ota_default", "[$name] names a hosted OTA product as a default; Hot Attic Games OTA is ${PlatformPolicy.MOTE}.", it.trim().take(160)) }
         }
+        // Explicit owner exclusions are never reintroduced by any generated document.
+        val owned = Exclusions.fromOwner(p)
+        for ((name, text) in docs) for (ex in owned) text.lines().firstOrNull { ex.docPattern.containsMatchIn(it) && !negation.containsMatchIn(it) && !it.contains("Excluded by the owner") && !it.trimStart().startsWith("- **${ex.label}**") }?.let {
+            out += ReviewFinding(ReviewLevel.ERROR, "excluded_system_reintroduced", "[$name] ${ex.label} was excluded by the owner (\"${ex.evidence.take(80)}\") but the document requires it.", it.trim().take(160))
+        }
+
         // Prototype handoff reform: lifecycle marker, platform priority, multiplayer, requirement-driven updates, stack compatibility.
         val tr = com.hotattic.gamedesigner.core.schema.Traits(p)
         docs["CLAUDE.md"]?.let { md ->

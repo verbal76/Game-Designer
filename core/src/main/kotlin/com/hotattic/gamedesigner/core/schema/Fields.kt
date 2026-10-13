@@ -1040,7 +1040,7 @@ object Fields {
             "Is there anything you explicitly do NOT want or want to defer?",
             "Things deferred on purpose aren't treated as holes.",
             208, required = false, modes = Field.ALL_MODES, relevant = { it.genresKnown },
-            suggest = { Suggestion("Online multiplayer, accounts and cloud services; monetization; store listing assets beyond what is already specified.", "Keeps V1 local, offline and free of recurring costs.") }),
+            suggest = { t -> Suggestion(listOfNotNull(if (t.onlineMultiplayer) null else "Online multiplayer", "accounts and cloud services", "monetization", "store listing assets beyond what is already specified").joinToString(", ") + ".", "Keeps the first build free of recurring costs; anything here can be added later.") }),
     )
 
     val byKey: Map<String, Field> = all.associateBy { it.key }

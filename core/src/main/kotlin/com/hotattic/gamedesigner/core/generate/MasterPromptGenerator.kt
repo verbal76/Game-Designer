@@ -151,6 +151,18 @@ object MasterPromptGenerator {
             val implied = com.hotattic.gamedesigner.core.schema.SliceSuggester.invariants(t).value.takeIf { it != "none" }
             section("MUST-NOT-CHANGE CONSTRAINTS", listOfNotNull(inv?.let { "- ${it.trim()}" }, implied?.takeIf { it != inv }?.let { "- $it" }))
 
+            section("HANDOFF PACKAGE AND MILESTONES", listOf(
+                "After `CLAUDE.md`, read `docs/` (GAME_DESIGN, REQUIREMENTS_LEDGER, EXCLUSIONS, ARCHITECTURE_DECISIONS, TECH_STACK, ASSET_PLAN, BUILD_AND_RELEASE, TEST_PLAN, GAMEPLAY_INVARIANTS, MILESTONES, COMPLETION_CRITERIA, OWNER_AUTHORIZATION, FAILURE_ESCALATION, PROGRESS_REPORTING). Keep REQUIREMENTS_LEDGER current: a feature is Complete only with the evidence the ledger names.",
+                "Milestones: ${HandoffPolicy.milestoneLine(project)}.",
+                "Deliver an installable build on ${t.primaryPlatform?.let { Platforms.labels[it] ?: it } ?: "the target platform"} EARLY (M1), even if incomplete, and say honestly what works. Do not spend most of the effort on infrastructure before the owner can try something.",
+                if (prototype) "The owner asked for a prototype: after M3 stop for the owner's acceptance; do not build M4-M6 until they direct it." else "Build the ENTIRE approved game through M6. Do not stop at planning, scaffolding, a prototype or a few screenshots.",
+                "Protected gameplay (`docs/GAMEPLAY_INVARIANTS.md`): once the owner approves a playable baseline, repair narrowly (fix the broken animation, not the jump, the climb, the physics or the camera) and keep regression checks green.",
+                "Failure: ${HandoffPolicy.escalationShort}",
+                "Releases: ${HandoffPolicy.authorizationShort(project)}${HandoffPolicy.buildNames(project).takeIf { it.isNotEmpty() }?.let { " Artifact names: ${it.joinToString("; ")}." } ?: ""}",
+                "Progress: ${HandoffPolicy.progressShort}"))
+
+            section("EXCLUSIONS", com.hotattic.gamedesigner.core.engine.Exclusions.fromOwner(project).map { "- ${it.label}: excluded by the owner (\"${it.evidence.take(100)}\"). Do not add it." })
+
             section("PROTOTYPE QUALITY BAR", listOf(
                 "The result must be genuinely playable end to end: real input, the actual core loop, feedback, a win/fail/restart cycle where the design has one, and representative presentation. Scaffolding, empty projects, stubs, TODOs or placeholder-only output do not count as playable.",
                 "Art style is a requirement: keep the style the owner chose (voxel stays voxel; it is not smooth low-poly, pixel art or generic stylized 3D). If a technical constraint forces a change, explain it and get the owner's approval first; if the look is ambiguous, ask for reference images."))
