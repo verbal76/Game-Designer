@@ -147,7 +147,7 @@ object StackAdvisor {
         val chosen = Traits(p).engine?.id
         val top = r.firstOrNull { it.engine.id == chosen } ?: r.first()
         val other = r.first { it.engine.id != top.engine.id }
-        val why = (other.notes + listOfNotNull(if (Traits(p).engineDimension == "3D" && other.engine.capability < top.engine.capability) "Its 3D capability is lower than ${top.engine.name}'s." else null) + "Known caveats: ${other.engine.caveats}").joinToString(" ")
+        val why = (other.notes + listOfNotNull(if (Traits(p).engineDimension == "3D" && other.engine.capability < top.engine.capability) "Its ceiling for large or heavy 3D scope is lower than ${top.engine.name}'s." else null) + "Known caveats: ${other.engine.caveats}").joinToString(" ")
         return listOf("Chosen: ${top.engine.name} (${top.engine.strengths})",
             "Closest viable alternative: ${other.engine.name} (${other.engine.strengths}) It also reaches every selected platform. Not chosen because it fits this project's requirements less well: $why")
     }

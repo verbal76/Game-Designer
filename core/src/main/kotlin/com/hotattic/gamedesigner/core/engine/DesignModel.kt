@@ -74,6 +74,7 @@ object ProceduralInvariants {
             "Challenge alternates with recovery (checkpoints, safe footing or resting points) so tension has a rhythm.",
             "Style, scale and visual language stay coherent from stage to stage.",
         )
+        must += "Every generated stage is reproducible from a recorded seed, so a stage can be replayed, debugged and (for competitive, speedrun or shared-course play) run identically by different players."
         if (exp.skilledNearMiss) must += "Margins are tuned so skilled play regularly lands near-misses and last-moment catches; generation never relies on luck to make a stage passable."
         if (t.continuousWorld || t.verticalWorld || p.value(Keys.WORLD_STRUCTURE) == "procedural_stages") must += "The overall topology the owner described survives generation (for example an unbroken upward ascent), not a pile of disconnected pieces."
         val g = traversalGrammar(p)

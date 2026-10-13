@@ -106,6 +106,13 @@ object DesignCoherence {
             out += ReviewFinding(ReviewLevel.ERROR, "excluded_system_reintroduced", "[$name] ${ex.label} was excluded by the owner (\"${ex.evidence.take(80)}\") but the document requires it.", it.trim().take(160))
         }
 
+        // The milestone plan must match the owner's objective: a complete game never ends at a prototype, and a requested prototype is not inflated.
+        docs["docs/MILESTONES.md"]?.let { m ->
+            val proto = ProjectObjective.of(p) == BuildObjective.PROTOTYPE
+            if (!proto && "M6" !in m) out += ReviewFinding(ReviewLevel.ERROR, "milestones_end_at_prototype", "A complete game was requested but the milestone plan does not reach release readiness.", "docs/MILESTONES.md")
+            if (proto && "Prototype acceptance" !in m) out += ReviewFinding(ReviewLevel.ERROR, "milestones_ignore_prototype", "A prototype was requested but the milestone plan does not stop for the owner's acceptance.", "docs/MILESTONES.md")
+        }
+
         // Prototype handoff reform: lifecycle marker, platform priority, multiplayer, requirement-driven updates, stack compatibility.
         val tr = com.hotattic.gamedesigner.core.schema.Traits(p)
         docs["CLAUDE.md"]?.let { md ->

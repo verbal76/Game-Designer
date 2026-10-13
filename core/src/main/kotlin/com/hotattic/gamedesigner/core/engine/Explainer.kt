@@ -36,7 +36,7 @@ object Explainer {
     )
 
     private fun game(t: Traits) = t.genres.firstOrNull()?.label?.substringBefore(" (")?.substringBefore(" /")?.lowercase()?.let { "your $it game" } ?: "your game"
-    private fun plat(t: Traits) = t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "your chosen platforms" }
+    private fun plat(t: Traits) = t.platforms.map { Platforms.labels[it] ?: it }.let { l -> when (l.size) { 0 -> "your chosen platforms"; 1 -> l[0]; else -> l.dropLast(1).joinToString(", ") + " and " + l.last() } }
 
     val topics: Map<String, Topic> = listOf(
         Topic("dimension", "2D, 2.5D and 3D",
@@ -136,7 +136,7 @@ object Explainer {
 
         Topic("ota", "Over-the-air updates",
             "Over-the-air (OTA) updates let the game change on players' devices without a new install.",
-            "There are two kinds of change. Content updates replace data the game loads, like text, levels, models, textures, audio and menus. Executable-code updates change software that runs, like scripts and gameplay logic. Stores restrict the second kind, and compiled native code and engine behavior can never be changed this way; they always need a new APK or store update.",
+            "There are two kinds of change. Content updates replace data the game loads, like text, levels, models, textures, audio and menus. Executable-code updates change software that runs, like scripts and gameplay logic. Stores restrict the second kind, and compiled native code and engine behavior can never be changed this way; they always need a new APK (the Android install file), a new installer or a store update.",
             { t -> "For ${game(t)} on ${plat(t)}, what you want to update decides the engine and how the game is built, so it is decided before development starts." },
             { listOf("Fix problems and add content without asking players to reinstall.") },
             { listOf("A content-only updater is not a complete OTA solution if you also want to change gameplay code.", "Apple and Google restrict downloading executable code.", "It needs signing, version checks and a way to roll back a bad update.") },
@@ -248,7 +248,7 @@ object Explainer {
         topic.cons(t).takeIf { it.isNotEmpty() }?.let { append("Disadvantages: ${it.joinToString(" ")}\n") }
         append("Bob recommends: ${topic.recommend(t)}\n")
         append("If you choose something else: ${topic.ifElse(t)}\n")
-        append("Long-term: ${topic.longTerm}${if (topic.hardToReverse) " This is hard to change later." else ""}\n")
+        append("Long-term: ${topic.longTerm}${if (topic.hardToReverse && "hard" !in topic.longTerm) " This is hard to change later." else ""}\n")
         if (depth == Depth.MORE && topic.more.isNotBlank()) append("More detail: ${topic.more}\n")
         if (depth != Depth.MORE) append("($MARKER for more detail on any of this.)")
     }.trimEnd()

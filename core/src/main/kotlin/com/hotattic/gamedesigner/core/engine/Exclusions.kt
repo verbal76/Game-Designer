@@ -27,7 +27,7 @@ object Exclusions {
 
     private fun sources(p: Project): List<String> = buildList {
         add(p.originalConcept)
-        p.activeFacts().sortedBy { it.at }.forEach { add(it.text) }
+        p.activeFacts().forEach { add(it.text) }
         p.decision(Keys.MUST_NOT_CHANGE)?.takeIf { it.ownerAuthored }?.let { add(it.value) }
         p.decision(Keys.EXCLUSIONS)?.takeIf { it.ownerAuthored }?.let { add(it.value) }
     }

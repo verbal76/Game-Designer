@@ -234,6 +234,50 @@ object ConflictEngine {
             else null
         },
         { t ->
+            val owner = t.project.decision(Keys.NETWORK_POLICY)?.ownerAuthored == true
+            if (t.onlineMultiplayer && owner && t.network == "fully_offline")
+                Conflict("online_vs_offline_only", Severity.BLOCKER, "Online multiplayer needs a connection", "You chose online multiplayer and also a fully offline game. Those describe incompatible architectures: online play needs networking built in.",
+                    "Choose offline play with optional online extras (the game still works without a connection) or make the game require the internet.", listOf(Keys.NETWORK_POLICY, Keys.MULTIPLAYER_INTENT),
+                    listOf(Alternative("Offline play with optional online play", mapOf(Keys.NETWORK_POLICY to "optional_online")), Alternative("Requires internet", mapOf(Keys.NETWORK_POLICY to "online_required"))), overridable = false)
+            else null
+        },
+        { t ->
+            val e = t.engine
+            if (e != null && t.wantsCodeOta && com.hotattic.gamedesigner.core.schema.EngineCatalog.codeOta(e) == com.hotattic.gamedesigner.core.schema.EngineCatalog.CodeOta.NONE) {
+                val alt = EngineRecommender.best(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags, true, t.onlineMultiplayer)
+                Conflict("ota_code_vs_engine", Severity.WARNING, "${e.name} cannot update gameplay code after install", "You want gameplay logic updated over the air, but in ${e.name} gameplay logic is compiled into the app. A content-only updater would not deliver what you asked for.",
+                    alt?.let { "Switch to ${it.engine.name}, where gameplay logic can live in scripts that ship as updates, or accept that code changes need a new install." } ?: "Keep gameplay in a data layer, or accept that code changes need a new install.", listOf(Keys.ENGINE, Keys.OTA_CONTENT),
+                    listOfNotNull(alt?.let { Alternative("Use ${it.engine.name}", mapOf(Keys.ENGINE to it.engine.id)) }))
+            } else null
+        },
+        { t ->
+            val owner = t.project.decision(Keys.INPUT_METHODS)?.ownerAuthored == true
+            val primaryMobile = t.primaryPlatform in Platforms.mobile
+            if (owner && primaryMobile && t.inputs.isNotEmpty() && "touch" !in t.inputs)
+                Conflict("mobile_without_touch", Severity.WARNING, "A phone game with no touch controls", "Your primary platform is a phone, but the controls you picked do not include touch.", "Add touch controls (the screen is how most players will play).", listOf(Keys.INPUT_METHODS, Keys.PRIMARY_PLATFORM),
+                    listOf(Alternative("Touch plus ${t.inputs.joinToString(" and ").replace('_', ' ')}", mapOf(Keys.INPUT_METHODS to (t.inputs + "touch").joinToString("|")))))
+            else null
+        },
+        { t ->
+            val owner = t.project.decision(Keys.INPUT_METHODS)?.ownerAuthored == true
+            if (Platforms.STEAM_DECK in t.platforms && owner && "gamepad" !in t.inputs)
+                Conflict("deck_without_controller", Severity.WARNING, "Steam Deck needs full controller support", "The Steam Deck is played with its built-in controller. Menus that need a mouse or keyboard are awkward or unusable there.", "Add gamepad controls and make every menu navigable with the controller.", listOf(Keys.INPUT_METHODS, Keys.PLATFORMS),
+                    listOf(Alternative("Add gamepad", mapOf(Keys.INPUT_METHODS to (t.inputs + "gamepad").joinToString("|")))))
+            else null
+        },
+        { t ->
+            if (t.value(Keys.BUDGET) == "free_only" && t.value(Keys.MP_HOSTING) == "dedicated_servers")
+                Conflict("budget_vs_servers", Severity.WARNING, "Dedicated servers cost money", "You have no budget for paid services, but dedicated servers have ongoing hosting costs.", "Use player-hosted sessions (no server bill) or raise the budget.", listOf(Keys.BUDGET, Keys.MP_HOSTING),
+                    listOf(Alternative("Players host", mapOf(Keys.MP_HOSTING to "player_hosted"))))
+            else null
+        },
+        { t ->
+            if (t.wantsCodeOta && t.value(Keys.STORE_PLAN) in setOf("play_store", "app_store"))
+                Conflict("ota_code_vs_store", Severity.NOTE, "Stores restrict downloading code", "You want gameplay logic updated after install and plan to publish through a store. Google Play and Apple limit downloaded executable code, so only data and interpreted scripts can be updated that way.",
+                    "Keep gameplay in scripts or data the app already knows how to run, and ship native changes as store updates.", listOf(Keys.OTA_CONTENT, Keys.STORE_PLAN))
+            else null
+        },
+        { t ->
             val q = t.genres.firstOrNull { it.id in setOf("factory_automation", "city_builder", "colony_sim", "fantasy_city_builder") }
             if (q != null && t.beginner && t.engine?.id in setOf("bevy"))
                 Conflict("beginner_bevy", Severity.WARNING, "Bevy is very hard for beginners to inspect or tweak", "Rust and a pre-1.0 engine make small hands-on changes difficult.",

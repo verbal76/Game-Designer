@@ -65,6 +65,8 @@ class Traits(val project: Project) {
             procedural && sys.id == "level_set" -> SystemReq("stage_generator", "Procedural stage generator", "Seeded generator that composes the obstacle types into coherent, readable, fair routes; every generated stage is completable, deliberate hard jumps are allowed, and difficulty rises. Authored components, patterns and rules are allowed ingredients.")
             procedural && sys.id == "level_select_progress" -> SystemReq("run_progress_save", "Checkpoint and run progress save", "Persist checkpoint, best height and settings; there is no stage menu.")
             noPower && Regex("(?i)unlock|upgrade|skill|power").containsMatchIn(sys.id + " " + sys.name) -> null
+            // A checklist item that offers two styles must not offer the one the design is not (a real-time game is not turn based).
+            !has(Tag.TURN_BASED) && "Real-time or turn-based" in sys.detail -> sys.copy(detail = sys.detail.replace("Real-time or turn-based", "Real-time"))
             else -> sys
         }
     }

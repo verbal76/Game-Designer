@@ -121,7 +121,7 @@ class Director(private val deps: DirectorDeps) {
         return when (project.mode) {
             ProjectMode.NEW_GAME -> {
                 val f = Fields.get(Keys.CONCEPT)!!
-                val msg = "Hi, I'm ${name(settings)}. " + f.prompt
+                val msg = "Hi, I'm ${name(settings)}. " + f.prompt + "\n\nI'll explain every choice in plain English as we go. Say \"explain more\" any time, and say \"advanced mode\" if you want the technical controls (or \"beginner mode\" to go back)."
                 ProjectOps.setPending(ProjectOps.addMessage(project, Role.DIRECTOR, msg, now, f.key, question = QuestionSpec(f.key, "TEXT")), f.key)
             }
             ProjectMode.EXISTING_GAME -> {

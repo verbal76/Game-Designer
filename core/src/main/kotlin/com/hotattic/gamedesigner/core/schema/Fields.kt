@@ -577,6 +577,7 @@ object Fields {
                 val v = buildList {
                     if (t.isMobile) add("touch")
                     if (t.platforms.any { it in setOf(Platforms.WINDOWS, Platforms.MAC, Platforms.LINUX, Platforms.WEB) }) { add("keyboard_mouse"); add("gamepad") }
+                    if (Platforms.STEAM_DECK in t.platforms && "gamepad" !in this) add("gamepad")
                 }
                 Suggestion(Decision_join(v.ifEmpty { listOf("keyboard_mouse") }), "Matches the chosen platforms.")
             }),
@@ -712,7 +713,9 @@ object Fields {
             },
             suggest = { t ->
                 EngineRecommender.best(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags, t.wantsCodeOta, t.onlineMultiplayer)?.let { Suggestion(it.engine.id, "${it.engine.name}: ${it.rationale}") }
-            }),
+            },
+            // The engine follows the whole requirement set, not only genre and platforms: what must be updateable, multiplayer and the art style all change the best fit.
+            derivedFrom = setOf(Keys.GENRE, Keys.DIMENSION, Keys.PLATFORMS, Dependencies.TAG, Keys.OTA_UPDATES, Keys.OTA_CONTENT, Keys.MULTIPLAYER_INTENT, Keys.ART_DIRECTION)),
 
         Field(Keys.TOOLCHAIN_PREFS, Category.TECHNICAL, FieldKind.TEXT, "Toolchain preferences",
             "Any IDE, language, library or pipeline constraints I should respect?",
