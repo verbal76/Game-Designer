@@ -155,6 +155,12 @@ object OptionResolver {
         // Declared aliases are whole-phrase matches; the longest (most specific) alias wins, a tie is ambiguous.
         val aliasHits = options.mapNotNull { o -> o.aliases.map { norm(it).replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() && padded.contains(" $it ") }.maxOfOrNull { it.length }?.let { o.id to it } }
         if (aliasHits.isNotEmpty()) {
+            if (multi) {
+                // Several things can be named at once ("scripts, audio and data"): keep every option whose phrase was said, except phrases that are only part of a longer phrase another option matched ("co-op" inside "local co-op").
+                val phrases = options.associate { o -> o.id to o.aliases.map { norm(it).replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim() }.filter { it.isNotEmpty() && padded.contains(" $it ") } }
+                val kept = aliasHits.filter { (id, _) -> phrases.getValue(id).any { a -> phrases.any { (other, ps) -> other != id && ps.any { b -> b.length > a.length && b.contains(a) } }.not() } }
+                if (kept.isNotEmpty()) return kept.map { it.first } to true
+            }
             val longest = aliasHits.maxOf { it.second }
             val winners = aliasHits.filter { it.second == longest }
             if (!multi || winners.size == 1) return if (winners.size == 1) listOf(winners.first().first) to true else emptyList<String>() to false

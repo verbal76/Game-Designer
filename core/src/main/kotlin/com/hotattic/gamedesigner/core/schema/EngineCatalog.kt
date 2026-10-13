@@ -7,6 +7,7 @@ object Platforms {
     const val MAC = "mac"
     const val LINUX = "linux"
     const val WEB = "web"
+    const val STEAM_DECK = "steam_deck"
 
     val labels = linkedMapOf(
         ANDROID to "Android",
@@ -15,6 +16,7 @@ object Platforms {
         MAC to "macOS",
         LINUX to "Linux",
         WEB to "Web browser",
+        STEAM_DECK to "Steam Deck (handheld PC)",
     )
     val mobile = setOf(ANDROID, IOS)
 }
@@ -155,8 +157,19 @@ object EngineCatalog {
     val byId = all.associateBy { it.id }
     fun get(id: String): EngineProfile? = byId[id]
 
-    fun supports(engine: EngineProfile, platform: String) = platform in engine.platforms
-    fun supportsWrapped(engine: EngineProfile, platform: String) = platform in engine.platforms || platform in engine.wrappedPlatforms
+    /** The Steam Deck runs Linux builds, so it is supported exactly where Linux is. */
+    private fun base(platform: String) = if (platform == Platforms.STEAM_DECK) Platforms.LINUX else platform
+    fun supports(engine: EngineProfile, platform: String) = base(platform) in engine.platforms
+    fun supportsWrapped(engine: EngineProfile, platform: String) = base(platform) in engine.platforms || base(platform) in engine.wrappedPlatforms
+
+    /** How well each engine lets gameplay LOGIC be updated after install. This is technical capability only; store policy is separate (see UpdateStrategy). */
+    enum class CodeOta(val label: String) { GOOD("gameplay logic can live in scripts or data that ship as updatable packages"), LIMITED("gameplay logic is compiled into the app; updating it needs an added scripting layer or a new build"), NONE("gameplay logic is compiled native code; it cannot be updated after install") }
+
+    fun codeOta(engine: EngineProfile): CodeOta = when (engine.id) {
+        "godot", "web_phaser", "web_three" -> CodeOta.GOOD
+        "unity", "libgdx", "android_native" -> CodeOta.LIMITED
+        else -> CodeOta.NONE
+    }
 }
 
 data class EngineRecommendation(val engine: EngineProfile, val score: Int, val rationale: String, val notes: List<String>)
@@ -170,6 +183,8 @@ object EngineRecommender {
         complexity: Int,
         beginner: Boolean,
         tags: Set<Tag> = emptySet(),
+        wantsCodeOta: Boolean = false,
+        onlineMultiplayer: Boolean = false,
     ): List<EngineRecommendation> {
         val wants3D = dimension == "3D"
         return EngineCatalog.all.mapNotNull { e ->
@@ -190,6 +205,12 @@ object EngineRecommender {
             if (wants3D && e.id in setOf("unreal", "unity") && Platforms.ANDROID in platforms) {
                 notes += "Heavy for phones and hard for an autonomous agent to verify headlessly."
             }
+            if (wantsCodeOta) when (EngineCatalog.codeOta(e)) {
+                EngineCatalog.CodeOta.GOOD -> score += 4
+                EngineCatalog.CodeOta.LIMITED -> { score -= 2; notes += "Updating gameplay code after install needs an added scripting layer." }
+                EngineCatalog.CodeOta.NONE -> { score -= 8; notes += "Gameplay code cannot be updated after install." }
+            }
+            if (onlineMultiplayer && e.id in setOf("unity", "godot", "unreal")) score += 1
             if (Tag.BUILDING in tags || Tag.SIMULATION in tags) {
                 if (e.id in setOf("bevy", "libgdx", "godot", "unity")) score += 2
             }
@@ -197,6 +218,6 @@ object EngineRecommender {
         }.sortedByDescending { it.score }
     }
 
-    fun best(platforms: Set<String>, dimension: String?, complexity: Int, beginner: Boolean, tags: Set<Tag> = emptySet()): EngineRecommendation? =
-        rank(platforms, dimension, complexity, beginner, tags).firstOrNull()
+    fun best(platforms: Set<String>, dimension: String?, complexity: Int, beginner: Boolean, tags: Set<Tag> = emptySet(), wantsCodeOta: Boolean = false, onlineMultiplayer: Boolean = false): EngineRecommendation? =
+        rank(platforms, dimension, complexity, beginner, tags, wantsCodeOta, onlineMultiplayer).firstOrNull()
 }

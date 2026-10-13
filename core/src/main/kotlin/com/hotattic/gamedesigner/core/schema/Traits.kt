@@ -90,6 +90,9 @@ class Traits(val project: Project) {
     val primaryPlatform: String? get() = if (platforms.size == 1) platforms.first() else project.value(Keys.PRIMARY_PLATFORM)?.takeIf { it in platforms }
     val multiplayer: String? get() = project.value(Keys.MULTIPLAYER_INTENT)
     val onlineMultiplayer: Boolean get() = multiplayer == "online" || multiplayer == "both"
+    /** Gameplay logic must be updateable after install (scripts or gameplay logic requested, or the legacy gameplay_code / features ids). */
+    val wantsCodeOta: Boolean get() = value(Keys.OTA_UPDATES) == "content_ota" && list(Keys.OTA_CONTENT).any { it in setOf("scripts", "gameplay_logic", "gameplay_code", "features") }
+    val advanced: Boolean get() = experience != Experience.BEGINNER
     val isMobile: Boolean = platforms.any { it in Platforms.mobile }
     val mobileOnly: Boolean = platforms.isNotEmpty() && platforms.all { it in Platforms.mobile }
     val inputs: Set<String> = project.list(Keys.INPUT_METHODS).toSet()

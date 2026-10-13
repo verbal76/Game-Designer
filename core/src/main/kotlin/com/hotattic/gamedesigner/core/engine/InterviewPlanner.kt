@@ -50,7 +50,19 @@ object InterviewPlanner {
         val open2 = ConflictEngine.open(project)
         if (open2.isNotEmpty()) return NextStep.ResolveConflicts(open2)
 
+        // Advanced mode: put the technical controls in front of the owner (once each) before the review. Beginner mode lets Bob decide them.
+        if (com.hotattic.gamedesigner.core.schema.Traits(project).advanced && !ReviewGate.approved(project)) advancedControl(project)?.let { return NextStep.Ask(it) }
+
         return if (ReviewGate.approved(project)) NextStep.Ready else NextStep.Review
+    }
+
+    /** Technical decisions Bob normally makes alone; Advanced mode asks about them. */
+    val advancedControls = listOf(Keys.ENGINE, Keys.SAVE_SYSTEM, Keys.NETWORK_POLICY, Keys.PERFORMANCE, Keys.STORE_PLAN, Keys.CI_BUILD, Keys.TESTING, Keys.SIGNING, Keys.VERSION_STRATEGY, Keys.TOOLCHAIN_PREFS)
+
+    fun advancedControl(project: Project): Field? {
+        val t = com.hotattic.gamedesigner.core.schema.Traits(project)
+        return advancedControls.mapNotNull { Fields.get(it) }.sortedBy { it.priority }
+            .firstOrNull { f -> f.isRelevant(t) && f.key !in project.postponed && (project.decision(f.key)?.let { d -> d.prov.rank < com.hotattic.gamedesigner.core.model.Provenance.OWNER_ACCEPTED_RECOMMENDATION.rank && d.status != com.hotattic.gamedesigner.core.model.DecisionStatus.DEFERRED } ?: true) }
     }
 
     /** Next optional refinement question, if any (never blocks generation). */

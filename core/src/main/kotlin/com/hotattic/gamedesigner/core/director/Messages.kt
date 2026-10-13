@@ -53,8 +53,16 @@ object Messages {
         else "I didn't quite catch that - pick one of the options, or say \"choose for me\" and I'll pick the best fit."
     }
 
-    fun explain(field: Field, t: Traits): String {
-        val sb = StringBuilder(field.why)
+    private val explainMore = Regex("(?i)\\b(explain more|more detail|tell me more|go deeper|in more depth|elaborate)\\b")
+    fun wantsMore(question: String) = explainMore.containsMatchIn(question)
+
+    /** The teaching card for a field's topic, at the depth that suits the owner. Null when the field has no topic. */
+    fun lesson(field: Field, t: Traits, more: Boolean = false): String? = com.hotattic.gamedesigner.core.engine.Explainer.topicFor(field.key)?.let {
+        com.hotattic.gamedesigner.core.engine.Explainer.card(it, t, if (more) com.hotattic.gamedesigner.core.engine.Explainer.Depth.MORE else if (t.beginner) com.hotattic.gamedesigner.core.engine.Explainer.Depth.BEGINNER else com.hotattic.gamedesigner.core.engine.Explainer.Depth.ADVANCED)
+    }
+
+    fun explain(field: Field, t: Traits, more: Boolean = false): String {
+        val sb = StringBuilder(lesson(field, t, more) ?: field.why)
         val opts = field.options(t)
         if (opts.isNotEmpty()) {
             sb.append("\n\nOptions:")
@@ -86,7 +94,7 @@ object Messages {
         }
         Keys.ENGINE -> {
             val t = Traits(p)
-            val ranked = EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags).take(3)
+            val ranked = EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags, t.wantsCodeOta, t.onlineMultiplayer).take(3)
             if (ranked.isEmpty()) null
             else "Engine options for your game: " + ranked.joinToString("; ") { it.engine.name } + ". The first is my recommendation: " + ranked.first().engine.strengths
         }

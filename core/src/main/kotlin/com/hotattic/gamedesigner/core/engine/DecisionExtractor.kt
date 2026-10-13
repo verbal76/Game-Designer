@@ -32,7 +32,8 @@ object DecisionExtractor {
         Platforms.IOS to listOf("iphone", "ios", "ipad", "app store", "apple"),
         Platforms.WINDOWS to listOf("windows", "pc game", "on pc", "steam", "desktop"),
         Platforms.MAC to listOf("macos", "mac os", "on mac", "macbook"),
-        Platforms.LINUX to listOf("linux", "steam deck"),
+        Platforms.LINUX to listOf("linux"),
+        Platforms.STEAM_DECK to listOf("steam deck"),
         Platforms.WEB to listOf("web browser", "in the browser", "browser game", "webgl", "html5", "web game"),
     )
 

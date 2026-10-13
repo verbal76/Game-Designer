@@ -32,6 +32,17 @@ object Keys {
     const val MULTIPLAYER_MODE = "multiplayer_mode"
     const val OTA_CONTENT = "ota_content"
     const val OTA_BEHAVIOR = "ota_behavior"
+    const val MP_PLAYERS = "mp_players"
+    const val MP_DEVICES = "mp_devices"
+    const val MP_HOSTING = "mp_hosting"
+    const val MP_SESSION = "mp_session"
+    const val MP_CONNECT = "mp_connect"
+    const val MP_CROSSPLAY = "mp_crossplay"
+    const val MP_OFFLINE = "mp_offline"
+    const val AUDIENCE = "audience"
+    const val GAME_LENGTH = "game_length"
+    const val BUDGET = "budget"
+    const val TEST_DELIVERY = "test_delivery"
     const val CHARACTERS = "characters_classes"
     const val PROGRESSION = "progression"
     const val ECONOMY = "economy_systems"
@@ -696,11 +707,11 @@ object Fields {
             "The engine decides how easily Claude can build, test and package the game without manual editor work.",
             150, modes = Field.ALL_MODES, relevant = { it.platformsKnown && it.dimension != null },
             options = { t ->
-                val ranked = EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags).map { Option(it.engine.id, it.engine.name, it.engine.strengths) }
+                val ranked = EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags, t.wantsCodeOta, t.onlineMultiplayer).map { Option(it.engine.id, it.engine.name, it.engine.strengths) }
                 if (ranked.isEmpty()) EngineCatalog.all.map { Option(it.id, it.name, it.strengths) } else ranked
             },
             suggest = { t ->
-                EngineRecommender.best(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags)?.let { Suggestion(it.engine.id, "${it.engine.name}: ${it.rationale}") }
+                EngineRecommender.best(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags, t.wantsCodeOta, t.onlineMultiplayer)?.let { Suggestion(it.engine.id, "${it.engine.name}: ${it.rationale}") }
             }),
 
         Field(Keys.TOOLCHAIN_PREFS, Category.TECHNICAL, FieldKind.TEXT, "Toolchain preferences",
@@ -741,6 +752,55 @@ object Fields {
             options = { listOf(o("coop", "Cooperative", "", "co-op", "coop", "cooperative", "together"), o("competitive", "Competitive", "", "pvp", "versus", "competitive", "against each other"), o("both", "Both", "", "both")) },
             suggest = { Suggestion("coop", "Cooperative play is the simplest to make fair and the usual starting point.") }),
 
+        Field(Keys.MP_PLAYERS, Category.GAMEPLAY, FieldKind.SINGLE, "Number of players",
+            "How many players at the same time?",
+            "Player count decides how the game is networked and how much the screen has to show.",
+            38, relevant = { it.multiplayer in setOf("local", "online", "both") },
+            options = { listOf(o("two", "2 players"), o("three_four", "3-4 players"), o("five_eight", "5-8 players"), o("nine_plus", "9 or more players")) },
+            suggest = { Suggestion("three_four", "Small groups are the simplest to make fair and fun, and they work for most local and online setups.") }),
+
+        Field(Keys.MP_DEVICES, Category.GAMEPLAY, FieldKind.SINGLE, "Shared screen or separate devices",
+            "For people in the same room: one shared screen, or each player on their own device?",
+            "A shared screen needs a camera that keeps everyone visible; separate devices need a way for the devices to find each other.",
+            38, relevant = { it.multiplayer in setOf("local", "both") },
+            options = { listOf(o("shared_screen", "Everyone on one screen", "One camera or split screen; one device runs everything."), o("separate_devices", "Each player on their own device", "Devices connect to each other over the local network.")) },
+            suggest = { Suggestion("shared_screen", "It needs no networking and is the easiest local mode to make feel good.") }),
+
+        Field(Keys.MP_HOSTING, Category.GAMEPLAY, FieldKind.SINGLE, "Who runs the game session",
+            "For online play: servers you pay for, or one of the players hosts the session?",
+            "Dedicated servers keep the game consistent but cost money to run; player-hosted sessions cost nothing to host but depend on the host's connection.",
+            38, relevant = { it.onlineMultiplayer },
+            options = { listOf(o("dedicated_servers", "Dedicated servers", "A computer online runs the game and referees it. Costs money and needs upkeep."), o("player_hosted", "A player hosts", "One player's device runs the session and the others join it. No server bill."), o("undecided", "Let Bob decide")) },
+            suggest = { t -> if (t.value(Keys.MP_PLAYERS) in setOf("two", "three_four") && t.value(Keys.MULTIPLAYER_MODE) != "competitive" && t.value(Keys.BUDGET) != "flexible") Suggestion("player_hosted", "For a small cooperative group it avoids server costs.") else Suggestion("dedicated_servers", "Competitive or larger games need a neutral referee to stay fair.") }),
+
+        Field(Keys.MP_SESSION, Category.GAMEPLAY, FieldKind.SINGLE, "Matches or a persistent world",
+            "Do players join separate matches, or one world that keeps going?",
+            "A persistent world needs always-on servers and a database; matches can start and end on demand.",
+            38, relevant = { it.onlineMultiplayer },
+            options = { listOf(o("matches", "Individual matches or runs"), o("persistent_world", "A persistent online world")) },
+            suggest = { Suggestion("matches", "Matches are far cheaper and simpler to build and test than an always-on world.") }),
+
+        Field(Keys.MP_CONNECT, Category.GAMEPLAY, FieldKind.SINGLE, "How players find each other",
+            "How do players get into a game together?",
+            "Matchmaking pairs strangers automatically and needs a service; invitations let friends join with a code or link.",
+            38, relevant = { it.onlineMultiplayer },
+            options = { listOf(o("invitations", "Invitations", "A friend code or link."), o("matchmaking", "Matchmaking", "The game pairs players automatically."), o("both", "Both")) },
+            suggest = { Suggestion("invitations", "Friend codes or links are the cheapest and need no matchmaking service.") }),
+
+        Field(Keys.MP_CROSSPLAY, Category.GAMEPLAY, FieldKind.SINGLE, "Cross-platform play",
+            "Should players on different platforms be able to play together?",
+            "Cross-platform play means one networking design must work on every selected platform, and store rules may apply.",
+            38, relevant = { it.onlineMultiplayer && it.platforms.size >= 2 },
+            options = { listOf(o("yes", "Yes, across platforms"), o("no", "No, each platform separately")) },
+            suggest = { Suggestion("no", "Keeping platforms separate removes a large amount of testing; it can be added later if the design allows it.") }),
+
+        Field(Keys.MP_OFFLINE, Category.GAMEPLAY, FieldKind.SINGLE, "Offline play",
+            "Does the game also need to be playable offline?",
+            "If yes, there must be a mode that never needs a connection, which affects how the game is built.",
+            38, relevant = { it.onlineMultiplayer },
+            options = { listOf(o("yes", "Yes, an offline mode is needed"), o("no", "No, online only")) },
+            suggest = { Suggestion("yes", "An offline mode keeps the game playable for testing, travel and when servers are down.") }),
+
         Field(Keys.NETWORK_POLICY, Category.TECHNICAL, FieldKind.SINGLE, "Network use",
             "Should the game work fully offline?",
             "Offline games avoid servers, ongoing costs and privacy obligations. Online play needs a backend and a privacy policy.",
@@ -775,15 +835,21 @@ object Fields {
 
         Field(Keys.OTA_CONTENT, Category.TECHNICAL, FieldKind.MULTI, "What must be updateable after install",
             "What should be updateable after the game is installed? Pick everything that applies.",
-            "This decides the update architecture. Updating gameplay logic needs a different design than updating only art and data, and some stores restrict it.",
+            "Content (text, levels, art, sound) is just data the game loads, so it is easy to replace. Executable code (scripts, gameplay logic, native code) is software that runs, and stores restrict downloading it. This choice decides the architecture, so it is made before the engine.",
             157, relevant = { Fields.otaWanted(it) },
             options = { listOf(
-                o("gameplay_code", "Gameplay fixes and new gameplay logic"),
-                o("assets", "Art, models and other visual assets"),
-                o("audio", "Audio and music"),
-                o("data", "Text, levels and tuning data"),
-                o("features", "Whole new features and content")) },
-            suggest = { Suggestion("gameplay_code|assets|audio|data|features", "You want the game to keep improving after install, so everything that makes up the game should be updateable where the platform allows it.") }),
+                o("text", "Text and translations", "", "text", "translations", "strings", "data", "tuning data"),
+                o("levels", "Levels and level data", "", "levels", "level data", "new levels", "data", "features", "new features", "complete features", "whole features"),
+                o("scenes", "Scenes", "", "scenes", "assets", "features", "new features", "complete features", "whole features"),
+                o("models", "3D models", "", "models", "3d models", "art", "assets"),
+                o("textures", "Textures and images", "", "textures", "images", "art", "assets"),
+                o("audio", "Audio and music", "", "audio", "music", "sound", "sounds"),
+                o("ui", "Menus and interface", "", "ui", "menus", "interface", "assets"),
+                o("scripts", "Scripts", "Small programs the game's own interpreter runs.", "scripts", "gameplay code", "game code", "features", "new features", "complete features", "whole features"),
+                o("gameplay_logic", "Gameplay logic", "The rules of how the game plays.", "gameplay logic", "gameplay code", "game logic", "gameplay fixes", "rules", "features", "new features", "complete features", "whole features"),
+                o("engine_behavior", "Engine behavior", "How the engine itself works. Always needs a new install.", "engine behavior", "engine behaviour", "engine changes"),
+                o("native_code", "Native code", "Compiled platform code. Always needs a new install.", "native code", "native")) },
+            suggest = { Suggestion("text|levels|scenes|models|textures|audio|ui|scripts|gameplay_logic", "Everything that can safely change after install, without the parts that always need a new install.") }),
 
         Field(Keys.OTA_BEHAVIOR, Category.TECHNICAL, FieldKind.SINGLE, "How automatic updates are",
             "How hands-off should updates be?",
@@ -794,6 +860,37 @@ object Fields {
                 o("next_launch", "Automatic download, applied next launch"),
                 o("ask", "Tell me and let me choose")) },
             suggest = { Suggestion("auto_apply", "Least effort for the player: updates arrive and apply themselves at a safe point, saves protected.") }),
+
+        Field(Keys.AUDIENCE, Category.GAMEPLAY, FieldKind.SINGLE, "Intended audience",
+            "Who is this game for?",
+            "The audience decides difficulty, how much explaining the game does, and the tone of the content.",
+            34, required = false, relevant = { it.genresKnown },
+            options = { listOf(o("just_me", "Me and people I know"), o("family", "Kids and families"), o("general", "A general audience"), o("core", "Experienced players who want a challenge")) },
+            suggest = { Suggestion("general", "A general audience is the safe default; difficulty and tone can be tuned later.") }),
+
+        Field(Keys.GAME_LENGTH, Category.GAMEPLAY, FieldKind.SINGLE, "Expected game length",
+            "How long should the finished game take to play?",
+            "Length decides how much content has to be built, which is the biggest driver of effort.",
+            35, relevant = { it.genresKnown },
+            options = { listOf(o("quick", "Quick sessions", "A few minutes at a time; replayed again and again."), o("short", "Short game", "About 1-2 hours start to finish."), o("medium", "Medium game", "About 5-10 hours."), o("long", "Long game", "20 hours or more."), o("endless", "Endless", "No fixed end; play as long as you like.")) },
+            suggest = { t -> if (t.value(Keys.SESSION_STRUCTURE) == "short_runs") Suggestion("quick", "Your session length suggests short, replayable runs.") else Suggestion("short", "A short game is the most reliable thing to finish and polish.") }),
+
+        Field(Keys.BUDGET, Category.RELEASE, FieldKind.SINGLE, "Budget",
+            "What is your budget for paid tools, assets or services?",
+            "The budget decides whether we stay on free tools and assets only, and whether things like servers are affordable.",
+            151, relevant = { it.genresKnown },
+            options = { listOf(o("free_only", "Nothing - free tools and assets only"), o("small", "A small budget if it clearly helps"), o("flexible", "Flexible")) },
+            suggest = { Suggestion("free_only", "Free engines, free assets and free hosting are enough to finish a good game.") }),
+
+        Field(Keys.TEST_DELIVERY, Category.RELEASE, FieldKind.SINGLE, "How test builds reach you",
+            "When a test build is ready, how do you want to get it?",
+            "A private download only you can reach is safest. A GitHub pre-release puts the file on the repository's Releases page, which is publicly downloadable if the repository is public. Neither is the same as publishing to a store.",
+            161, relevant = { it.genresKnown },
+            options = { listOf(
+                o("private_artifact", "Private download", "A zipped download from the build system, visible to you only."),
+                o("github_prerelease", "GitHub pre-release with the file attached", "The APK or program is attached directly on the Releases page. Public if the repository is public."),
+                o("local_only", "I build it myself on my computer")) },
+            suggest = { Suggestion("private_artifact", "Nothing becomes public without your say-so; you can switch to a pre-release any time.") }),
 
         Field(Keys.CI_BUILD, Category.TECHNICAL, FieldKind.SINGLE, "Build pipeline",
             "How should the installable build get produced?",

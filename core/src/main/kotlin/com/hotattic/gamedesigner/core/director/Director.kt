@@ -299,6 +299,12 @@ class Director(private val deps: DirectorDeps) {
 
         // Global commands
         if (isStatusCommand(lower)) return DirectorTurn(reply(p, Messages.status(p, name(settings))))
+        modeSwitch(lower)?.let { return DirectorTurn(switchMode(p, settings, it)) }
+        run {
+            val f = p.pendingFieldKey?.takeUnless { it.startsWith("__") }?.let { Fields.get(it) } ?: return@run
+            if (Messages.wantsMore(lower) && lower.split(' ').size <= 6 && Messages.lesson(f, Traits(p)) != null)
+                return DirectorTurn(reply(p, Messages.explain(f, Traits(p), true), p.pendingFieldKey, quickFor(f, Traits(p)), specFor(f, Traits(p))))
+        }
         if (isGenerateCommand(lower)) return generateRequest(p, settings)
         if (isBulkDelegate(lower)) return bulkDelegate(p, settings)
         if (lower in setOf("refine", "refine details", "more questions", "polish details")) {
@@ -842,8 +848,9 @@ class Director(private val deps: DirectorDeps) {
 
     private suspend fun answerQuestion(p: Project, settings: AppSettings, field: Field, question: String): Pair<String, String?> {
         val provider = readyProvider()?.first
-        val base = Messages.explain(field, Traits(p))
-        if (provider != null) {
+        val deep = Messages.wantsMore(question)
+        val base = Messages.explain(field, Traits(p), deep)
+        if (provider != null && !(deep && Messages.lesson(field, Traits(p)) != null)) {
             val ctx = "Current question: ${field.prompt}\nWhy it matters: ${field.why}\nOptions: ${field.options(Traits(p)).joinToString { it.label }}\nProject concept: ${p.originalConcept.ifBlank { p.value(Keys.CONCEPT) ?: "(none yet)" }}"
             val r = timed { provider.complete(LlmRequest(DirectorPrompts.answerSystem(name(settings), p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER),
                 listOf(LlmMessage("user", "$ctx\n\nOwner asks: $question")), maxTokens = 220)) }
@@ -1037,6 +1044,26 @@ class Director(private val deps: DirectorDeps) {
 
     // ---- Commands ----------------------------------------------------------------------------------------------
 
+    private fun modeSwitch(l: String): com.hotattic.gamedesigner.core.model.Experience? = when {
+        Regex("^(?:switch to |go to |use |turn on |enable )?(?:advanced|expert) mode$|^advanced mode please$").matches(l) -> com.hotattic.gamedesigner.core.model.Experience.EXPERT
+        Regex("^(?:switch to |go to |use |turn on |enable )?intermediate mode$").matches(l) -> com.hotattic.gamedesigner.core.model.Experience.INTERMEDIATE
+        Regex("^(?:switch to |go to |use |turn on |enable |back to )?beginner mode$|^(?:switch to |go to )?simple mode$").matches(l) -> com.hotattic.gamedesigner.core.model.Experience.BEGINNER
+        else -> null
+    }
+
+    /** Beginner and Advanced share one design engine; switching only changes how much Bob asks and shows. Answers and approved decisions are untouched. */
+    private fun switchMode(p: Project, settings: AppSettings, to: com.hotattic.gamedesigner.core.model.Experience): Project {
+        val label = if (to == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) "Beginner" else "Advanced"
+        val what = if (to == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) "I'll explain each choice in full and make routine technical decisions for you."
+            else "I'll also ask about the technical choices (engine, saving, builds, signing, distribution, performance) before the final review, and keep explaining every term."
+        val switched = p.copy(prefs = p.prefs.copy(experience = to))
+        val msg = "Switched to $label mode. $what All your answers and approved decisions stay exactly as they are."
+        val pending = p.pendingFieldKey
+        val f = pending?.takeUnless { it.startsWith("__") }?.let { Fields.get(it) }
+        return if (f != null) ProjectOps.setPending(ProjectOps.addMessage(ProjectOps.addMessage(switched, Role.DIRECTOR, msg, deps.clock()), Role.DIRECTOR, Messages.promptFor(f, Traits(switched)), deps.clock(), f.key, quickFor(f, Traits(switched)), specFor(f, Traits(switched))), pending)
+        else reply(switched, msg)
+    }
+
     private fun isStatusCommand(l: String) = l in setOf("status", "progress", "how complete", "how far along are we", "what's left", "whats left", "what is left", "show status")
     private fun isGenerateCommand(l: String) = l == "generate" || l.startsWith("generate ") && l.length < 60 || l in setOf("create the spec", "make the spec", "build the spec", "generate spec", "generate the spec", "generate claude.md", "generate it")
     private fun isBulkDelegate(l: String) = l in setOf("choose everything for me", "choose all for me", "choose the rest for me", "choose everything remaining for me", "you decide everything", "pick everything for me", "choose all remaining", "decide the rest")
@@ -1153,6 +1180,7 @@ class Director(private val deps: DirectorDeps) {
         val opts = field.options(t)
         if (field.kind != FieldKind.TEXT) opts.take(8).forEach { add(QuickReply(it.label, it.label)) }
         if (field.suggest(t) != null) add(QuickReply("Choose for me", "choose for me"))
+        if (com.hotattic.gamedesigner.core.engine.Explainer.topicFor(field.key) != null) add(QuickReply("Explain more", "explain more"))
         if (!field.required) add(QuickReply("Skip", "skip"))
         else if (field.key != Keys.CONCEPT) add(QuickReply("Ask me later", "ask me later"))
     }
@@ -1328,6 +1356,10 @@ class Director(private val deps: DirectorDeps) {
         val sb = StringBuilder()
         Messages.preface(p, field)?.let { sb.append(it).append("\n\n") }
         sb.append(Messages.promptFor(field, t))
+        // Teach before asking: the lesson for a topic appears the first time it comes up, so the owner understands the choice before making it.
+        com.hotattic.gamedesigner.core.engine.Explainer.topicFor(field.key)?.let { topic ->
+            if (p.messages.none { it.role == Role.DIRECTOR && "**${topic.term}.**" in it.text }) Messages.lesson(field, t)?.let { sb.append("\n\n").append(it) }
+        }
         val opts = field.options(t)
         if (field.kind == FieldKind.MULTI) sb.append("\n(Pick every one that applies, then tap Continue. Or say \"all\" / \"all except ...\".)")
         if (field.kind != FieldKind.TEXT && opts.isNotEmpty() && p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) {

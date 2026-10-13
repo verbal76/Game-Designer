@@ -74,7 +74,7 @@ class IntegrationValidationTest {
             assertTrue(q.options.size >= 2 && q.options.all { it.id.isNotBlank() && it.label.isNotBlank() }, key)
         }
         assertEquals(setOf("android", "ios", "windows"), r.specs.getValue(Keys.PRIMARY_PLATFORM).options.map { it.id }.toSet(), "options come from the selected platforms only")
-        assertEquals(listOf("gameplay_code", "assets", "audio", "data", "features"), r.specs.getValue(Keys.OTA_CONTENT).options.map { it.id })
+        assertEquals(listOf("text", "levels", "scenes", "models", "textures", "audio", "ui", "scripts", "gameplay_logic", "engine_behavior", "native_code"), r.specs.getValue(Keys.OTA_CONTENT).options.map { it.id })
         assertTrue(r.asked.indexOf(Keys.MULTIPLAYER_INTENT) < r.asked.indexOf(Keys.MULTIPLAYER_TIMING) && r.asked.indexOf(Keys.MULTIPLAYER_TIMING) < r.asked.indexOf(Keys.MULTIPLAYER_MODE), "order ${r.asked}")
         assertTrue(r.asked.indexOf(Keys.OTA_UPDATES) < r.asked.indexOf(Keys.OTA_CONTENT) && r.asked.indexOf(Keys.OTA_CONTENT) < r.asked.indexOf(Keys.OTA_BEHAVIOR), "order ${r.asked}")
         // dependencies suppress questions
@@ -114,11 +114,12 @@ class IntegrationValidationTest {
     @Test fun realisticConfigurationYieldsACompleteHonestPackage() = runBlocking {
         val r = run(owner); val p = r.project; val md = spec(p); val mp = prompt(p)
         assertEquals("3D", p.value(Keys.DIMENSION)); assertEquals(Platforms.ANDROID, Traits(p).primaryPlatform)
-        assertEquals(setOf("gameplay_code", "assets", "audio", "data", "features"), p.list(Keys.OTA_CONTENT).toSet())
+        assertTrue(setOf("scripts", "gameplay_logic", "models", "textures", "audio", "text", "levels", "scenes").all { it in UpdateStrategy.content(p) }, UpdateStrategy.content(p).toString())
+        assertFalse("native_code" in UpdateStrategy.content(p) || "engine_behavior" in UpdateStrategy.content(p))
         assertEquals("later", p.value(Keys.MULTIPLAYER_TIMING)); assertEquals("online", p.value(Keys.MULTIPLAYER_INTENT))
         assertTrue("prototype first and then a full game" in md, "the owner's phased plan is preserved")
         assertTrue("Android is built and tested first" in md && "implement no networking now" in md)
-        for (c in listOf("gameplay fixes and new gameplay logic", "art, models and other visual assets", "audio and music", "text, levels and tuning data", "whole new features and content")) assertTrue(c in md, c)
+        for (c in listOf("scripts", "gameplay logic", "3D models", "textures and images", "audio and music", "text and translations", "levels and level data", "scenes")) assertTrue(c in md, c)
         assertFalse(StackAdvisor.incompatibilities(p).isNotEmpty()); assertTrue("Closest viable alternative" in md)
         assertTrue("Why this stack" in md && "Mac with Xcode" in md)
         val review = DesignReview.compose(p)

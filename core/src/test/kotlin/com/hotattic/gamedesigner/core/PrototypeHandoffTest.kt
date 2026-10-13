@@ -70,7 +70,7 @@ class PrototypeHandoffTest {
         var p = run(multi).project
         p = ProjectOps.setDecision(p, Keys.OTA_CONTENT, "gameplay_code|assets|audio", Provenance.OWNER_EXPLICIT, 1L, DecisionStatus.CONFIRMED, "test")
         val md = spec(p)
-        assertTrue("gameplay fixes and new gameplay logic" in md, "gameplay code is part of the requirement")
+        assertTrue("gameplay logic" in md, "gameplay code is part of the requirement")
         assertTrue("Never reduce the requirement to data-only updates" in md)
         assertTrue("Always needs a new package" in md && "Do not promise unrestricted dynamic code loading" in md)
         assertTrue(UpdateStrategy.perPlatform(p).any { it.platform == Platforms.IOS && it.code == com.hotattic.gamedesigner.core.engine.CodeUpdates.INTERPRETED_ONLY })

@@ -25,14 +25,28 @@ data class PlatformUpdate(val platform: String, val channel: String, val mechani
  */
 object UpdateStrategy {
     private val labels = mapOf(
-        "gameplay_code" to "gameplay fixes and new gameplay logic", "assets" to "art, models and other visual assets", "audio" to "audio and music",
-        "data" to "text, levels and tuning data", "features" to "whole new features and content",
+        "text" to "text and translations", "levels" to "levels and level data", "scenes" to "scenes", "models" to "3D models", "textures" to "textures and images",
+        "audio" to "audio and music", "ui" to "menus and interface", "scripts" to "scripts", "gameplay_logic" to "gameplay logic",
+        "engine_behavior" to "engine behavior", "native_code" to "native code",
     )
+    /** Executable content: software that runs. Stores restrict downloading it, and it needs an interpreter that ships inside the app. */
+    val executable = setOf("scripts", "gameplay_logic")
+    /** Never deliverable over the air on any platform. */
+    val neverOta = setOf("engine_behavior", "native_code")
+    private val legacy = mapOf(
+        "gameplay_code" to listOf("scripts", "gameplay_logic"), "assets" to listOf("scenes", "models", "textures", "ui"),
+        "data" to listOf("text", "levels"), "features" to listOf("scenes", "levels", "scripts", "gameplay_logic"),
+    )
+    /** Older projects stored five coarse ids; they expand to the finer ones so nothing the owner chose is lost. */
+    fun normalize(ids: List<String>): List<String> = ids.flatMap { legacy[it] ?: listOf(it) }.distinct()
 
     fun wanted(p: Project): Boolean = PlatformPolicy.otaState(p) == SystemState.PRESENT
-    fun content(p: Project): List<String> = p.list(Keys.OTA_CONTENT)
+    fun content(p: Project): List<String> = normalize(p.list(Keys.OTA_CONTENT))
     fun contentLabels(p: Project): String = content(p).map { labels[it] ?: it }.joinToString(", ")
-    val wantsCode: (Project) -> Boolean = { content(it).any { c -> c == "gameplay_code" || c == "features" } }
+    val wantsCode: (Project) -> Boolean = { content(it).any { c -> c in executable } }
+    fun wantsNative(p: Project): Boolean = content(p).any { it in neverOta }
+    /** What the owner asked for that is content only (no executable code). */
+    fun contentOnly(p: Project): Boolean = wanted(p) && !wantsCode(p) && !wantsNative(p)
 
     fun behavior(p: Project): String = when (p.value(Keys.OTA_BEHAVIOR)) {
         "next_launch" -> "Automatic: check at launch, download in the background, apply the next time the game starts."
@@ -67,11 +81,22 @@ object UpdateStrategy {
 
     /** Requested content that a selected platform/channel cannot deliver as asked. Never downgraded silently: the spec and the review state each one. */
     fun unmet(p: Project): List<String> {
-        if (!wanted(p) || !wantsCode(p)) return emptyList()
-        val asked = content(p).filter { it == "gameplay_code" || it == "features" }.map { labels[it] ?: it }.joinToString(" and ")
-        return perPlatform(p).filter { it.code == CodeUpdates.INTERPRETED_ONLY }.map {
-            "${Platforms.labels[it.platform] ?: it.platform} (${it.channel}): updating $asked as downloaded native code cannot be satisfied there. ${it.policy} What can be delivered: data and interpreted scripts the app already knows how to run; anything needing new native code ships as a new build."
+        if (!wanted(p)) return emptyList()
+        val out = mutableListOf<String>()
+        if (wantsCode(p)) {
+            val asked = content(p).filter { it in executable }.map { labels[it] ?: it }.joinToString(" and ")
+            perPlatform(p).filter { it.code == CodeUpdates.INTERPRETED_ONLY }.forEach {
+                out += "${Platforms.labels[it.platform] ?: it.platform} (${it.channel}): updating $asked as downloaded native code cannot be satisfied there. ${it.policy} What can be delivered: data and interpreted scripts the app already knows how to run; anything needing new native code ships as a new build."
+            }
+            val e = Traits(p).engine
+            if (e != null) when (EngineCatalog.codeOta(e)) {
+                EngineCatalog.CodeOta.NONE -> out += "${e.name}: ${EngineCatalog.CodeOta.NONE.label}, so updating $asked cannot be satisfied with this engine. Either keep gameplay in a data layer, or choose an engine such as Godot where scripts ship as updatable packages."
+                EngineCatalog.CodeOta.LIMITED -> out += "${e.name}: ${EngineCatalog.CodeOta.LIMITED.label}. Updating $asked therefore means building a scripting or data layer into the game from the start."
+                EngineCatalog.CodeOta.GOOD -> Unit
+            }
         }
+        if (wantsNative(p)) out += "Native code and engine behavior cannot be updated over the air on any platform: those changes ship as a new APK, installer or store update."
+        return out
     }
 
     /** Meaningful limits the owner should hear before the package is generated. */
@@ -113,7 +138,7 @@ object StackAdvisor {
         return out
     }
 
-    fun ranked(p: Project) = Traits(p).let { t -> EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags) }
+    fun ranked(p: Project) = Traits(p).let { t -> EngineRecommender.rank(t.platforms, t.engineDimension, t.complexity, t.beginner, t.tags, t.wantsCodeOta, t.onlineMultiplayer) }
 
     /** Concise comparison of the chosen engine and the closest alternative that also meets every platform and dimension requirement, with a concrete tradeoff. */
     fun comparison(p: Project): List<String> {
