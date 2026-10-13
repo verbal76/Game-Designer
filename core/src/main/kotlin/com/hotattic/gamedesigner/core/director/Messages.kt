@@ -75,12 +75,23 @@ object Messages {
 
     fun reask(field: Field) = "Back to the question: ${field.prompt}"
 
+    const val CONFLICT_SOFT = "Worth a look: "
+    const val CONFLICT_HARD = "This needs a decision: "
+
+    /** A design disagreement, not an error: what clashes, why it matters, what it touches, what Bob suggests. Only real technical impossibilities are worded as blocking. */
     fun conflict(c: Conflict): String = buildString {
-        append(when (c.severity) { Severity.BLOCKER -> "That won't work: "; else -> "Heads up: " }).append(c.title).append("\n")
+        append(if (c.severity == Severity.BLOCKER) CONFLICT_HARD else CONFLICT_SOFT).append(c.title).append("\n")
         append(c.message).append("\n\n")
+        val touched = c.affectedKeys.mapNotNull { Fields.get(it)?.title }.distinct()
+        if (touched.isNotEmpty()) append("This touches: ").append(touched.joinToString(", ")).append(". Your other answers stay exactly as they are.\n\n")
         append("My recommendation: ").append(c.recommendation)
         if (c.overridable) append("\nIt's your call - if you know the tradeoff and still want it, say \"keep my choice\" and I'll build it that way.")
+        else append("\nThis one can't be kept as it is, so pick one of the options below or tell me what to change.")
     }
+
+    /** How a Director message should look: ordinary, a soft design disagreement, or a hard technical stop. */
+    enum class Tone { NORMAL, CONFLICT_SOFT, CONFLICT_HARD }
+    fun toneOf(text: String): Tone = when { text.startsWith(CONFLICT_HARD) -> Tone.CONFLICT_HARD; text.startsWith(CONFLICT_SOFT) -> Tone.CONFLICT_SOFT; else -> Tone.NORMAL }
 
     /** Extra context before specific questions (scope recommendation, engine recommendation). */
     fun preface(p: Project, field: Field): String? = when (field.key) {

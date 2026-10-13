@@ -5,7 +5,11 @@ import com.hotattic.gamedesigner.core.model.Project
 import com.hotattic.gamedesigner.core.model.ProjectMode
 import java.io.File
 
-data class ProjectSummary(val id: String, val name: String, val mode: ProjectMode, val updatedAt: Long, val versionCount: Int, val corrupt: Boolean = false)
+data class ProjectSummary(
+    val id: String, val name: String, val mode: ProjectMode, val updatedAt: Long, val versionCount: Int, val corrupt: Boolean = false,
+    /** What a project card shows. All optional and derived from the project when it is listed; never stored separately. */
+    val genre: String? = null, val primaryPlatform: String? = null, val artStyle: String? = null, val stage: String? = null, val openStages: Int = 0, val stageCount: Int = 0, val openDecisions: Int = 0,
+)
 
 /**
  * Local-first, file-based project storage. One directory per project:
@@ -27,11 +31,23 @@ class FileProjectStore(private val root: File) {
             val id = dir.name
             try {
                 val p = load(id) ?: return@mapNotNull null
-                ProjectSummary(p.id, p.name, p.mode, p.updatedAt, p.versions.size)
+                runCatching { card(p) }.getOrElse { ProjectSummary(p.id, p.name, p.mode, p.updatedAt, p.versions.size) }
             } catch (e: Exception) {
                 ProjectSummary(id, id, ProjectMode.NEW_GAME, dir.lastModified(), 0, corrupt = true)
             }
         }.sortedByDescending { it.updatedAt }
+
+    private fun card(p: com.hotattic.gamedesigner.core.model.Project): ProjectSummary {
+        val t = com.hotattic.gamedesigner.core.schema.Traits(p)
+        val progress = com.hotattic.gamedesigner.core.engine.DesignStages.of(p)
+        val c = com.hotattic.gamedesigner.core.engine.CompletenessEngine.compute(p)
+        val f = com.hotattic.gamedesigner.core.schema.Fields
+        fun label(k: String) = p.value(k)?.let { v -> com.hotattic.gamedesigner.core.generate.PlainLabels.of(p, k) ?: v }
+        return ProjectSummary(p.id, p.name, p.mode, p.updatedAt, p.versions.size, false,
+            genre = t.genres.firstOrNull()?.label?.substringBefore(" (")?.substringBefore(" /"), primaryPlatform = t.primaryPlatform?.let { com.hotattic.gamedesigner.core.schema.Platforms.labels[it] },
+            artStyle = label(com.hotattic.gamedesigner.core.schema.Keys.ART_DIRECTION), stage = progress.current?.title ?: progress.stages.lastOrNull()?.takeIf { p.versions.isNotEmpty() }?.let { "Handoff generated" },
+            openStages = progress.stages.size - progress.completed, stageCount = progress.stages.size, openDecisions = c.missingRequired.size + c.proposed.count { it.required })
+    }
 
     fun load(id: String): Project? {
         val f = projectFile(id)

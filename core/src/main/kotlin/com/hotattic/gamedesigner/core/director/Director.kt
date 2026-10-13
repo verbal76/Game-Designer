@@ -1352,9 +1352,15 @@ class Director(private val deps: DirectorDeps) {
         return ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now, quick = quick), PENDING_READY)
     }
 
-    private fun askField(p: Project, field: Field, now: Long): Project {
-        val t = Traits(p)
+    private fun askField(p0: Project, field: Field, now: Long): Project {
+        // Bob says what the previous meaningful answer changes, once, ahead of the next question (never praise, never a claim that anything was built).
+        var p = p0
         val sb = StringBuilder()
+        p0.answerTrail.lastOrNull()?.let { last ->
+            val mark = "ack:$last=${p0.value(last)}"
+            if (last != field.key && mark !in p0.announcedConflicts) com.hotattic.gamedesigner.core.engine.Acknowledgements.forDecision(p0, last)?.let { sb.append(it).append("\n\n"); p = p0.copy(announcedConflicts = p0.announcedConflicts + mark) }
+        }
+        val t = Traits(p)
         Messages.preface(p, field)?.let { sb.append(it).append("\n\n") }
         sb.append(Messages.promptFor(field, t))
         // Teach before asking: the lesson for a topic appears the first time it comes up, so the owner understands the choice before making it.
