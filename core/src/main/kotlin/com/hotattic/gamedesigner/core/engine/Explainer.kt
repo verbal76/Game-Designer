@@ -154,6 +154,16 @@ object Explainer {
             { "No saving is fine for very short games, but players expect to keep progress." },
             "Save formats must stay readable after updates, so they are designed early.", true),
 
+        Topic("controls", "Controls",
+            "Controls are how the player tells the game what to do: touching the screen, a gamepad, or a keyboard and mouse.",
+            "The game turns each button, tap or key into an action such as move or jump. Every kind of control needs its own layout and testing.",
+            { t -> "On ${plat(t)}, the controls decide how ${game(t)} feels in the hands; on a phone the buttons must be big enough for thumbs." },
+            { listOf("Touch is always there on a phone.", "A gamepad or keyboard makes action games more precise on a computer.") },
+            { listOf("Each extra input method adds layout work and testing.", "Touch buttons can cover the screen if they are not designed carefully.") },
+            { t -> "I recommend ${if (t.isMobile && t.platforms.any { it !in Platforms.mobile }) "touch on the phone and keyboard with gamepad on the computer" else if (t.isMobile) "touch controls" else "keyboard and mouse with gamepad support"}, because they match the devices you chose." },
+            { "You can add or remove a control method later, but every screen that has buttons has to be redone for it." },
+            "Controls are tuned together with the camera and then protected as part of the game's feel.", false),
+
         Topic("store_plan", "Distribution",
             "Distribution is how players get the game: a private file, a GitHub release, Google Play, the Apple App Store or Steam.",
             "Private files and GitHub releases need no approval. Stores have rules, review times and fees, and some restrict updating code after install.",
@@ -230,7 +240,7 @@ object Explainer {
         Keys.MULTIPLAYER_INTENT to "multiplayer", Keys.MULTIPLAYER_TIMING to "multiplayer", Keys.MULTIPLAYER_MODE to "multiplayer",
         Keys.MP_PLAYERS to "multiplayer", Keys.MP_DEVICES to "multiplayer", Keys.MP_HOSTING to "netcode", Keys.MP_SESSION to "netcode", Keys.MP_CONNECT to "netcode", Keys.MP_CROSSPLAY to "netcode", Keys.MP_OFFLINE to "network_policy",
         Keys.OTA_UPDATES to "ota", Keys.OTA_CONTENT to "ota", Keys.OTA_BEHAVIOR to "ota",
-        Keys.SAVE_SYSTEM to "save_system", Keys.STORE_PLAN to "store_plan", Keys.TEST_DELIVERY to "test_delivery", Keys.CI_BUILD to "ci_build",
+        Keys.SAVE_SYSTEM to "save_system", Keys.INPUT_METHODS to "controls", Keys.STORE_PLAN to "store_plan", Keys.TEST_DELIVERY to "test_delivery", Keys.CI_BUILD to "ci_build",
         Keys.ASSET_POLICY to "asset_policy", Keys.BUDGET to "budget", Keys.GAME_LENGTH to "game_length", Keys.AUDIENCE to "audience", Keys.NETWORK_POLICY to "network_policy",
     )
 

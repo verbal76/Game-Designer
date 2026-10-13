@@ -235,8 +235,8 @@ object ConflictEngine {
         },
         { t ->
             val owner = t.project.decision(Keys.NETWORK_POLICY)?.ownerAuthored == true
-            if (t.onlineMultiplayer && owner && t.network == "fully_offline")
-                Conflict("online_vs_offline_only", Severity.BLOCKER, "Online multiplayer needs a connection", "You chose online multiplayer and also a fully offline game. Those describe incompatible architectures: online play needs networking built in.",
+            if (t.onlineMultiplayer && t.value(Keys.MULTIPLAYER_TIMING) == "prototype" && owner && t.network == "fully_offline")
+                Conflict("online_vs_offline_only", Severity.BLOCKER, "Online multiplayer needs a connection", "You need online multiplayer in the first build and also chose a fully offline game. Those describe incompatible architectures: online play needs networking built in.",
                     "Choose offline play with optional online extras (the game still works without a connection) or make the game require the internet.", listOf(Keys.NETWORK_POLICY, Keys.MULTIPLAYER_INTENT),
                     listOf(Alternative("Offline play with optional online play", mapOf(Keys.NETWORK_POLICY to "optional_online")), Alternative("Requires internet", mapOf(Keys.NETWORK_POLICY to "online_required"))), overridable = false)
             else null

@@ -15,6 +15,7 @@ object DesignReview {
 
     /** Words an owner uses to name a part of the review, mapped to the question that edits it. */
     val sections: List<Pair<Regex, String>> = listOf(
+        Regex("(?i)\\bchange (?:the |my )?controls\\b|\\b(touch|gamepad|keyboard)\\b") to Keys.INPUT_METHODS,
         Regex("(?i)\\b(world|topology|structure|shaft|map)\\b") to Keys.WORLD_STRUCTURE,
         Regex("(?i)\\b(loop|core)\\b") to Keys.CORE_LOOP,
         Regex("(?i)\\b(fail|failure|death|dying|checkpoint|respawn|challenge)\\b") to Keys.DIFFICULTY_FAILURE,
@@ -27,6 +28,8 @@ object DesignReview {
         Regex("(?i)\\b(feel|feeling|mood)\\b") to Keys.PLAYER_FEELING,
         Regex("(?i)\\b(movement|controls?|camera)\\b") to Keys.MOVEMENT_CAMERA,
         Regex("(?i)\\b(fantasy|vision|idea)\\b") to Keys.CORE_FANTASY,
+        Regex("(?i)\\b(saving|saves?)\\b") to Keys.SAVE_SYSTEM,
+        Regex("(?i)\\b(input|touch|gamepad|keyboard)\\b") to Keys.INPUT_METHODS,
     )
 
     fun sectionKeyFor(text: String): String? = sections.firstOrNull { it.first.containsMatchIn(text) }?.second
@@ -79,6 +82,14 @@ object DesignReview {
         out += "**Platform.** ${t.platforms.joinToString { Platforms.labels[it] ?: it }.ifEmpty { "not set yet" }}."
         val stack = com.hotattic.gamedesigner.core.engine.StackAdvisor
         t.engine?.let { e -> out += "**Technology I'd use.** ${e.name}: ${clean(e.strengths)}. ${stack.comparison(p).getOrNull(1)?.replace("Closest viable alternative:", "The closest alternative that also reaches all your platforms is")?.let { "$it" } ?: ""}".trim() }
+        // The engine is Bob's call in Beginner mode (it is not asked), so the review teaches what it is before the owner approves.
+        if (t.beginner) t.engine?.let { out += com.hotattic.gamedesigner.core.engine.Explainer.card(com.hotattic.gamedesigner.core.engine.Explainer.topics.getValue("engine"), t, com.hotattic.gamedesigner.core.engine.Explainer.Depth.BEGINNER) }
+        // Technical calls Bob makes for a beginner are still said out loud, in plain words, with a way to change them.
+        if (t.beginner) {
+            val saving = label(p, Keys.SAVE_SYSTEM); val controls = label(p, Keys.INPUT_METHODS)
+            if (saving != null || controls != null) out += "**Saving and controls (my call; say \"change saving\" or \"change controls\" if you want something else).** " +
+                listOfNotNull(saving?.let { "Saving: ${clean(it)}. Saving means your progress is stored on the device so it is still there when you close and reopen the game; I make sure it is written safely so a crash cannot lose it." }, controls?.let { "Controls: ${clean(it)}. These are the ways players will steer the game on the devices you chose." }).joinToString(" ")
+        }
         val notes = com.hotattic.gamedesigner.core.engine.PlatformCompat.notes(p)
         if (notes.isNotEmpty()) out += "**Things to know before I generate anything.** ${notes.joinToString(" ")}"
         t.multiplayer?.let { m -> out += "**Multiplayer.** " + when (m) { "single_player" -> "Single-player only."; "undecided" -> "Undecided; I'll keep the design ready for it without building networking."; else -> "${m.replace('_', ' ')}${p.value(Keys.MULTIPLAYER_TIMING)?.let { ", $it" } ?: ""}." } }

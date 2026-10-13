@@ -867,7 +867,7 @@ object Fields {
         Field(Keys.AUDIENCE, Category.GAMEPLAY, FieldKind.SINGLE, "Intended audience",
             "Who is this game for?",
             "The audience decides difficulty, how much explaining the game does, and the tone of the content.",
-            34, required = false, relevant = { it.genresKnown },
+            34, relevant = { it.genresKnown },
             options = { listOf(o("just_me", "Me and people I know"), o("family", "Kids and families"), o("general", "A general audience"), o("core", "Experienced players who want a challenge")) },
             suggest = { Suggestion("general", "A general audience is the safe default; difficulty and tone can be tuned later.") }),
 
@@ -1071,12 +1071,13 @@ object TitleSuggester {
         "play", "player", "players", "you", "your", "they", "their", "can", "will", "would", "should", "could", "about", "into", "over",
         "defending", "defend", "crossed", "vampire", "survivors", "risk", "rain", "2",
         // Planning words are not part of a title: "prototype first, then a full game, with multiplayer later".
-        "prototype", "full", "then", "first", "later", "phase", "multiplayer", "singleplayer", "online", "local", "coop", "android", "ios", "windows", "iphone", "ipad", "mac", "linux", "web", "updates", "update", "ota", "platform", "platforms", "production", "version",
+        "inventory", "currency", "currencies", "skill", "skills", "trees", "tree", "quests", "quest", "equipment", "crafting", "prototype", "full", "then", "first", "later", "phase", "multiplayer", "singleplayer", "online", "local", "coop", "android", "ios", "windows", "iphone", "ipad", "mac", "linux", "web", "updates", "update", "ota", "platform", "platforms", "production", "version",
     )
 
     fun suggest(t: Traits): String {
         val concept = t.value(Keys.CONCEPT) ?: return fallback(t)
-        var text = ConceptText.fantasy(concept)
+        // What the owner ruled out ("no inventory, no currencies and no skill trees") is never part of a title.
+        var text = ConceptText.fantasy(concept).replace(Regex("(?i)\\b(?:no|without|never)\\b[^.;!?]*"), " ")
         t.project.references.forEach { r -> text = text.replace(r.name, " ", ignoreCase = true) }
         val words = text.split(Regex("[^A-Za-z']+")).map { it.trim('\'') }.filter { it.length > 2 && it.lowercase() !in stop }
         val picked = words.takeLast(2)

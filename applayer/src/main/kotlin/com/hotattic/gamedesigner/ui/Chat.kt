@@ -71,6 +71,8 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.hotattic.gamedesigner.AppViewModel
 import com.hotattic.gamedesigner.UiEvent
+import com.hotattic.gamedesigner.core.director.DesignMode
+import com.hotattic.gamedesigner.core.director.LessonParser
 import com.hotattic.gamedesigner.core.engine.CompletenessEngine
 import com.hotattic.gamedesigner.core.model.ChatMessage
 import com.hotattic.gamedesigner.core.model.ClaudePlan
@@ -143,6 +145,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
         val dockMax = (maxHeight * 0.38f).coerceAtLeast(96.dp)
         Column(Modifier.fillMaxSize()) {
             if (completeness != null && p?.mode == ProjectMode.NEW_GAME) LinearProgressIndicator(progress = { completeness.percent / 100f }, modifier = Modifier.fillMaxWidth())
+            if (p != null && p.mode == ProjectMode.NEW_GAME) ModeSelector(DesignMode.of(p.prefs.experience), { vm.setDesignMode(it) }, showCaption = imeBottom == 0)
             if (interpreter == InterpreterKind.RULES && p?.mode != ProjectMode.PLAYTEST_CONTINUE) {
                 Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -156,7 +159,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
             }
             val msgs = p?.messages.orEmpty()
             LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(msgs, key = { it.id }) { m -> Bubble(m, settings.directorName) }
+                items(msgs, key = { it.id }) { m -> Bubble(m, settings.directorName, onExplainMore = if (m.id == msgs.lastOrNull()?.id && busy == null) ({ vm.send("explain more") }) else null) }
                 p?.pendingTurn?.let { pt -> item(key = "pending-${pt.id}") {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         Column(Modifier.widthIn(max = 520.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(16.dp)).padding(12.dp)) {
@@ -227,9 +230,11 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
 }
 
 @Composable
-private fun Bubble(m: ChatMessage, directorName: String) {
+private fun Bubble(m: ChatMessage, directorName: String, onExplainMore: (() -> Unit)? = null) {
     val mine = m.role == Role.USER
     val system = m.role == Role.SYSTEM
+    // Bob's teaching cards arrive inside his message; they are drawn as a card so a long lesson stays readable on a phone.
+    val parts = remember(m.id, m.text) { if (m.role == Role.DIRECTOR) LessonParser.split(m.text) else null }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Column(
             Modifier.widthIn(max = 520.dp)
@@ -237,7 +242,12 @@ private fun Bubble(m: ChatMessage, directorName: String) {
                 .padding(12.dp),
         ) {
             if (!mine) Text(if (system) "Research / notes" else directorName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-            SelectionContainer { Text(m.text, style = if (system) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium) }
+            val lesson = parts?.lesson
+            if (parts != null && lesson != null) {
+                if (parts.before.isNotBlank()) SelectionContainer { Text(parts.before, style = MaterialTheme.typography.bodyMedium) }
+                LessonCard(lesson, m.id, onExplainMore)
+                if (parts.after.isNotBlank()) SelectionContainer { Text(parts.after, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium) }
+            } else SelectionContainer { Text(m.text, style = if (system) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium) }
         }
     }
 }

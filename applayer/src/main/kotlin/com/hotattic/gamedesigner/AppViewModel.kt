@@ -129,6 +129,11 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
 
     fun setProjectPrefs(prefs: ProjectPrefs) = viewModelScope.launch { session.update { it.copy(prefs = prefs) } }
 
+    /** Beginner / Advanced from the visible selector. Same core path as the chat commands, so nothing the owner decided changes. */
+    fun setDesignMode(mode: com.hotattic.gamedesigner.core.director.DesignMode) = viewModelScope.launch {
+        session.update { p -> c.director().switchMode(p, c.settings.value, mode.experience) }
+    }
+
     fun setMode(mode: ProjectMode) = viewModelScope.launch {
         session.update { p -> c.director().enterMode(p, c.settings.value, mode) }
     }
