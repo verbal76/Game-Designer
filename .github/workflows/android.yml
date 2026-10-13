@@ -44,6 +44,14 @@ jobs:
           { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
       - name: 16 KB page-size qualification of every native library in the debug APK
         run: python3 tools/check-16kb.py app/build/outputs/apk/debug/app-debug.apk
+      # Private test APK for the owner's phone: a build-system artifact only (zipped by GitHub, visible to repository collaborators), never a release.
+      - name: Upload private debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-designer-debug-apk-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
