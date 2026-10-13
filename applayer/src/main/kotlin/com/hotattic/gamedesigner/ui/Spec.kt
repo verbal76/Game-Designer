@@ -51,14 +51,17 @@ import androidx.navigation.NavController
 import com.hotattic.gamedesigner.AppViewModel
 import com.hotattic.gamedesigner.core.engine.AuditLevel
 import com.hotattic.gamedesigner.core.engine.CompletenessEngine
+import com.hotattic.gamedesigner.core.generate.HandoffPackage
 import com.hotattic.gamedesigner.core.generate.SpecVersioning
 import com.hotattic.gamedesigner.core.schema.Fields
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
     val project by vm.current.collectAsState()
     val busy by vm.busy.collectAsState()
+    val handoff by vm.handoff.collectAsState()
+    var docIndex by remember { mutableIntStateOf(0) }
     val ctx = LocalContext.current
     LaunchedEffect(id) { if (vm.current.value?.id != id) vm.open(id) }
     val p = project?.takeIf { it.id == id }
@@ -88,7 +91,9 @@ fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
                     items(p.versions.reversed()) { ver -> FilterChip(selected == ver.number, { selected = ver.number }, { Text("v${ver.number} ${ver.kind.label}") }) }
                 }
             }
-            val tabs = listOf("CLAUDE.md", "Master prompt", "Changes", "Audit")
+            handoff?.let { h -> HandoffPanel(h, onDismiss = { vm.dismissHandoff() }, onOpenDocuments = { tab = 4; vm.dismissHandoff() }, onRetry = { vm.generate() }) }
+            val docs = remember(p, v) { if (v != null) HandoffPackage.documents(p, v) else emptyList() }
+            val tabs = listOf("CLAUDE.md", "Master prompt", "Changes", "Audit", "Documents")
             PrimaryScrollableTabRow(tab, edgePadding = 0.dp) { tabs.forEachIndexed { i, t -> Tab(tab == i, { tab = i }, text = { Text(t) }) } }
             Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
                 when {
@@ -100,6 +105,16 @@ fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
                         Text(if (older == null) "Initial version - ${diff.size} decisions recorded." else "Changes since v${older.number}:", style = MaterialTheme.typography.titleSmall)
                         diff.take(80).forEach { d -> Text("- ${d.title}: ${d.before?.take(60) ?: "(none)"} -> ${d.after?.take(60) ?: "(removed)"}", style = MaterialTheme.typography.bodySmall) }
                     }
+                    tab == 4 && v != null -> {
+                        Text("${docs.size} documents in this package. Tap one to read it, then copy, share or save it.", style = MaterialTheme.typography.bodySmall)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            docs.forEachIndexed { i, d -> FilterChip(docIndex == i, { docIndex = i }, { Text(d.title) }) }
+                        }
+                        docs.getOrNull(docIndex)?.let { d ->
+                            Text(d.path, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 8.dp))
+                            SelectionContainer { Text(d.text, fontFamily = FontFamily.Monospace, fontSize = 12.sp) }
+                        }
+                    }
                     tab == 3 || v == null -> {
                         Text(audit.summary(), style = MaterialTheme.typography.titleSmall)
                         audit.findings.forEach { f -> Text("[${f.level.name}] ${f.message}", style = MaterialTheme.typography.bodySmall, color = if (f.level == AuditLevel.ERROR) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(vertical = 2.dp)) }
@@ -109,12 +124,12 @@ fun SpecScreen(vm: AppViewModel, nav: NavController, id: String) {
                     }
                 }
             }
-            val text = when (tab) { 1 -> v?.masterPrompt; else -> v?.claudeMd }
-            if (v != null && tab <= 1 && text != null) {
+            val text = when (tab) { 1 -> v?.masterPrompt; 4 -> docs.getOrNull(docIndex)?.text; else -> v?.claudeMd }
+            if (v != null && (tab <= 1 || tab == 4) && text != null) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton({ copy(ctx, text) }) { Text("Copy") }
                     OutlinedButton({ share(ctx, text) }) { Text("Share") }
-                    OutlinedButton({ pendingSave = text; naming = false to (if (tab == 1) "MASTER_PROMPT.md" else "CLAUDE.md") }) { Text("Save") }
+                    OutlinedButton({ pendingSave = text; naming = false to (if (tab == 1) "MASTER_PROMPT.md" else if (tab == 4) (docs.getOrNull(docIndex)?.path?.substringAfterLast('/') ?: "document.md") else "CLAUDE.md") }) { Text("Save") }
                 }
                 if (p.versions.size >= 2) OutlinedButton({ nav.navigate("compare/${p.id}/${(p.versions.lastOrNull { it.number < v.number } ?: p.versions.first()).number}/${v.number}") }, Modifier.fillMaxWidth()) { Text("Compare with the previous version (side by side)") }
                 OutlinedButton({ exportVersion = v.number; naming = true to "${(p.value("display_name") ?: "game").replace(' ', '_')}_spec_v${v.number}.zip" }, Modifier.fillMaxWidth()) { Text("Export full package (.zip)") }

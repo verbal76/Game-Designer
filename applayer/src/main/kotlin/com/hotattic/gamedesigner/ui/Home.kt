@@ -71,6 +71,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavController) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(p.name.ifBlank { "Untitled game" }, style = MaterialTheme.typography.titleMedium)
+                            val facts = listOfNotNull(p.genre, p.primaryPlatform?.let { "$it first" }, p.artStyle).joinToString(" \u00B7 ")
+                            if (facts.isNotEmpty()) Text(facts, style = MaterialTheme.typography.bodyMedium)
+                            p.stage?.let { st -> Text(st + if (p.openDecisions > 0) " \u00B7 ${p.openDecisions} decision${if (p.openDecisions == 1) "" else "s"} to make" else "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
                             Text("${modeLabel(p.mode)} - ${p.versionCount} spec version(s) - ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(p.updatedAt))}" + if (p.corrupt) " - needs recovery" else "",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }

@@ -8,7 +8,7 @@ data class HandoffDoc(val path: String, val title: String, val text: String)
 
 /** The stages of producing the package. The UI shows exactly these, in this order, with no invented percentages. */
 enum class HandoffStage(val label: String) {
-    PREPARING("Preparing documents"), VALIDATING("Checking the design for contradictions"), GENERATING("Writing the files"), COMPLETED("Package ready"), FAILED("Could not finish");
+    PREPARING("Preparing documents"), GENERATING("Writing the files"), VALIDATING("Checking the design for contradictions"), COMPLETED("Package ready"), FAILED("Could not finish");
 }
 
 object HandoffPackage {

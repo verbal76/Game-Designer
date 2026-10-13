@@ -55,7 +55,12 @@ sealed class UiEvent {
     data class PickImage(val slot: String) : UiEvent()
     data class OpenSpec(val projectId: String) : UiEvent()
     data class OpenChat(val projectId: String) : UiEvent()
+    /** The owner's text could not be saved; put it back in the box so nothing they typed is lost. */
+    data class RestoreInput(val text: String) : UiEvent()
 }
+
+/** Where handoff generation really is. Only ever set from real steps; there is no invented percentage. */
+data class HandoffStatus(val stage: com.hotattic.gamedesigner.core.generate.HandoffStage, val detail: String = "")
 
 /** Single ViewModel for the whole app: owns settings, the project list, the open project and long-running work. */
 class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewModel(app) {
@@ -74,6 +79,9 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
     private val _busy = MutableStateFlow<String?>(null)
     /** Non-null text while something is running ("Bob is thinking..."). */
     val busy = _busy.asStateFlow()
+    private val _handoff = MutableStateFlow<HandoffStatus?>(null)
+    val handoff = _handoff.asStateFlow()
+    fun dismissHandoff() { _handoff.value = null }
     private val _events = MutableSharedFlow<UiEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<UiEvent> = _events.asSharedFlow()
 
@@ -148,7 +156,9 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         viewModelScope.launch {
-            val queued = session.mutate { p -> val q = c.director().queueTurn(p, trimmed, turnId); (q ?: p) to (q != null) }
+            val queued = try { session.mutate { p -> val q = c.director().queueTurn(p, trimmed, turnId); (q ?: p) to (q != null) } }
+            catch (t: kotlinx.coroutines.CancellationException) { throw t }
+            catch (t: Throwable) { _events.tryEmit(UiEvent.RestoreInput(trimmed)); toast("Couldn't save your message (${t.message ?: t.javaClass.simpleName}). It's back in the box; nothing was lost."); return@launch }
             if (queued == false) { toast("I'm still working on your last message."); return@launch }
             runTurn(trimmed, turnId)
         }
@@ -166,6 +176,7 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
         } catch (t: kotlinx.coroutines.CancellationException) {
             throw t   // the message stays queued on disk; it is resumed on the next open or Retry
         } catch (t: Throwable) {
+            failHandoffIfRunning(t)
             toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}. Your message is saved - tap Retry.")
         } finally { _busy.value = null }
     }
@@ -246,9 +257,17 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
                 }
                 dispatch(action)
             } catch (t: Throwable) {
+                failHandoffIfRunning(t)
                 toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
             } finally { _busy.value = null }
         }
+    }
+
+    /** A generation that was interrupted must not keep saying "writing the files". */
+    private fun failHandoffIfRunning(t: Throwable) {
+        val cur = _handoff.value ?: return
+        if (cur.stage != com.hotattic.gamedesigner.core.generate.HandoffStage.COMPLETED && cur.stage != com.hotattic.gamedesigner.core.generate.HandoffStage.FAILED)
+            _handoff.value = HandoffStatus(com.hotattic.gamedesigner.core.generate.HandoffStage.FAILED, "${t.message ?: t.javaClass.simpleName}. Your design is unchanged; ask Bob to generate again.")
     }
 
     private suspend fun dispatch(a: DirectorAction?) {
@@ -261,9 +280,17 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
 
     // ---- Spec generation ----
 
-    fun generate() = viewModelScope.launch { _busy.value = "Generating spec..."; try { generateNow() } finally { _busy.value = null } }
+    fun generate() = viewModelScope.launch {
+        _busy.value = "Preparing documents..."
+        try { generateNow() }
+        catch (t: kotlinx.coroutines.CancellationException) { throw t }
+        catch (t: Throwable) { _handoff.value = HandoffStatus(com.hotattic.gamedesigner.core.generate.HandoffStage.FAILED, "${t.message ?: t.javaClass.simpleName}. Your design is unchanged; tap Generate to try again.") }
+        finally { _busy.value = null }
+    }
 
     private suspend fun generateNow() {
+        fun at(s: com.hotattic.gamedesigner.core.generate.HandoffStage) { _handoff.value = HandoffStatus(s); _busy.value = s.label + "..." }
+        at(com.hotattic.gamedesigner.core.generate.HandoffStage.PREPARING)
         val opened = session.mutate { p0 ->
             var p = p0
             val s = c.settings.value
@@ -275,10 +302,9 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
                     is ResearchOutcome.Found -> p = p.copy(research = p.research.filter { n -> r.value.none { it.topic == n.topic } || n.kind != ResearchKind.TOOLCHAIN_VERSION } + r.value)
                     else -> Unit
                 }
-                _busy.value = "Generating spec..."
             }
             val now = System.currentTimeMillis()
-            val gen = SpecVersioning.generate(p, SpecVersioning.suggestedKind(p), now, LocalDate.now().toString())
+            val gen = SpecVersioning.generate(p, SpecVersioning.suggestedKind(p), now, LocalDate.now().toString(), onStage = { at(it) })
             if (gen.blocked) {
                 val msg = "I can't export yet - the consistency review found contradictions:\n" + gen.review.errors.take(6).joinToString("\n") { "- ${it.message}" } + "\n\nTell me which way each should go; your latest word wins."
                 ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, msg, now), null) to false
@@ -288,7 +314,16 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
                 ProjectOps.addMessage(next, Role.DIRECTOR, "Generated spec v${v.number} (${v.kind.label}). ${v.auditSummary} Open the Spec screen to copy, share or export it.", now) to true
             }
         }
-        if (opened == true) current.value?.id?.let { _events.tryEmit(UiEvent.OpenSpec(it)) }
+        // Success is reported only now: the version was validated and persisted inside the session transaction above.
+        when (opened) {
+            true -> {
+                val n = current.value?.versions?.lastOrNull()?.number
+                _handoff.value = HandoffStatus(com.hotattic.gamedesigner.core.generate.HandoffStage.COMPLETED, "Version ${n ?: ""} is saved with ${current.value?.let { p -> p.versions.lastOrNull()?.let { v -> com.hotattic.gamedesigner.core.generate.HandoffPackage.documents(p, v).size } } ?: 0} documents, checked for contradictions.")
+                current.value?.id?.let { _events.tryEmit(UiEvent.OpenSpec(it)) }
+            }
+            false -> _handoff.value = HandoffStatus(com.hotattic.gamedesigner.core.generate.HandoffStage.FAILED, "The check found contradictions that need your decision. Nothing was exported and your design is unchanged. Bob has listed them in the chat.")
+            null -> _handoff.value = null
+        }
     }
 
     /** Optional cloud review of a generated spec (needs a configured provider). */

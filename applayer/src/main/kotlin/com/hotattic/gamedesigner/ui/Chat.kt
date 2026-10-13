@@ -60,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -69,11 +70,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.hotattic.gamedesigner.AppViewModel
 import com.hotattic.gamedesigner.UiEvent
 import com.hotattic.gamedesigner.core.director.DesignMode
 import com.hotattic.gamedesigner.core.director.LessonParser
+import com.hotattic.gamedesigner.core.director.Messages
 import com.hotattic.gamedesigner.core.engine.CompletenessEngine
+import com.hotattic.gamedesigner.core.engine.DesignStages
+import com.hotattic.gamedesigner.core.engine.StageProgress
 import com.hotattic.gamedesigner.core.model.ChatMessage
 import com.hotattic.gamedesigner.core.model.ClaudePlan
 import com.hotattic.gamedesigner.core.engine.InterpreterKind
@@ -93,6 +99,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     var input by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf(false) }
     var showStatus by remember { mutableStateOf(false) }
+    var showStages by remember { mutableStateOf(false) }
     var showPrefs by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
@@ -101,11 +108,14 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     // The ViewModel remembers which slot the picker is for (it survives activity recreation while Files is open), ingests the bytes
     // durably, and only then advances the conversation. A cancelled picker leaves the question open.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> vm.onImagePicked(uri) }
-    LaunchedEffect(Unit) { vm.events.collect { e -> if (e is UiEvent.PickImage) picker.launch("image/*") } }
+    LaunchedEffect(Unit) { vm.events.collect { e -> if (e is UiEvent.PickImage) picker.launch("image/*") else if (e is UiEvent.RestoreInput && input.isBlank()) input = e.text } }
     val p = project?.takeIf { it.id == id }
     LaunchedEffect(p?.messages?.size, busy) { p?.messages?.size?.let { if (it > 0) listState.animateScrollToItem(it - 1 + if (busy != null) 1 else 0) } }
 
     val completeness = remember(p) { p?.let { CompletenessEngine.compute(it) } }
+    // Stage progress is worked out off the main thread, so a long project never delays a tap or the keyboard.
+    val stages by produceState<StageProgress?>(null, p) { value = p?.let { withContext(Dispatchers.Default) { DesignStages.of(it) } } }
+    val tick = rememberTick()
     // When the keyboard opens, closes or changes height, keep the latest message in view above the composer.
     val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
     LaunchedEffect(imeBottom > 0) { p?.messages?.size?.let { if (it > 0) listState.scrollToItem(it - 1) } }
@@ -117,7 +127,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
             title = {
                 Column {
                     Text(p?.value("display_name") ?: p?.name?.ifBlank { null } ?: "New game", maxLines = 1)
-                    if (completeness != null && p?.mode == ProjectMode.NEW_GAME) Text("${completeness.percent}% designed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                    if (p?.mode == ProjectMode.NEW_GAME) stages?.takeIf { it.stages.isNotEmpty() }?.let { Text(it.summary, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary, maxLines = 1) }
                     else if (p != null) Text(modeLabel(p.mode), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 }
             },
@@ -144,7 +154,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
         val dockMax = (maxHeight * 0.38f).coerceAtLeast(96.dp)
         Column(Modifier.fillMaxSize()) {
-            if (completeness != null && p?.mode == ProjectMode.NEW_GAME) LinearProgressIndicator(progress = { completeness.percent / 100f }, modifier = Modifier.fillMaxWidth())
+            if (p?.mode == ProjectMode.NEW_GAME) stages?.let { StageStrip(it) { showStages = true } }
             if (p != null && p.mode == ProjectMode.NEW_GAME) ModeSelector(DesignMode.of(p.prefs.experience), { vm.setDesignMode(it) }, showCaption = imeBottom == 0)
             if (interpreter == InterpreterKind.RULES && p?.mode != ProjectMode.PLAYTEST_CONTINUE) {
                 Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -195,7 +205,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     shape = RoundedCornerShape(20.dp),
                 )
-                FilledIconButton({ val t = input; input = ""; vm.send(t) }, Modifier.padding(start = 8.dp), enabled = input.isNotBlank() && busy == null) { Icon(Icons.AutoMirrored.Filled.Send, "Send") }
+                FilledIconButton({ val t = input; input = ""; tick(); vm.send(t) }, Modifier.padding(start = 8.dp), enabled = input.isNotBlank() && busy == null) { Icon(Icons.AutoMirrored.Filled.Send, "Send your answer") }
             }
         }
         }
@@ -203,7 +213,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
 
     if (showStatus && completeness != null && p != null) {
         val dims = remember(p) { com.hotattic.gamedesigner.core.engine.DesignDimensions.status(p).filter { it.state != com.hotattic.gamedesigner.core.engine.DimState.NOT_APPLICABLE } }
-        AlertDialog({ showStatus = false }, confirmButton = { TextButton({ showStatus = false }) { Text("Close") } }, title = { Text("${completeness.percent}% designed") }, text = {
+        AlertDialog({ showStatus = false }, confirmButton = { TextButton({ showStatus = false }) { Text("Close") } }, title = { Text(stages?.summary ?: "Design status") }, text = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 Text("Completeness counts the decisions that could change your game, not the number of questions asked.", style = MaterialTheme.typography.bodySmall)
                 dims.forEach { d ->
@@ -215,6 +225,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
             }
         })
     }
+    if (showStages) stages?.let { StageDialog(it) { showStages = false } }
     if (showRename && p != null) {
         var name by remember { mutableStateOf(p.name) }
         AlertDialog({ showRename = false }, title = { Text("Rename project") }, text = { OutlinedTextField(name, { name = it }, singleLine = true) },
@@ -235,13 +246,15 @@ private fun Bubble(m: ChatMessage, directorName: String, onExplainMore: (() -> U
     val system = m.role == Role.SYSTEM
     // Bob's teaching cards arrive inside his message; they are drawn as a card so a long lesson stays readable on a phone.
     val parts = remember(m.id, m.text) { if (m.role == Role.DIRECTOR) LessonParser.split(m.text) else null }
+    // A design disagreement is a conversation, not an error: it gets a calm tone. Only a real technical stop uses the error colours.
+    val tone = remember(m.id, m.text) { if (m.role == Role.DIRECTOR) Messages.toneOf(m.text) else Messages.Tone.NORMAL }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = if (mine) Arrangement.End else Arrangement.Start) {
         Column(
             Modifier.widthIn(max = 520.dp)
-                .background(when { mine -> MaterialTheme.colorScheme.primaryContainer; system -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f); else -> MaterialTheme.colorScheme.surfaceVariant }, RoundedCornerShape(16.dp))
+                .background(when { mine -> MaterialTheme.colorScheme.primaryContainer; system -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f); tone == Messages.Tone.CONFLICT_HARD -> MaterialTheme.colorScheme.errorContainer; tone == Messages.Tone.CONFLICT_SOFT -> MaterialTheme.colorScheme.secondaryContainer; else -> MaterialTheme.colorScheme.surfaceVariant }, RoundedCornerShape(16.dp))
                 .padding(12.dp),
         ) {
-            if (!mine) Text(if (system) "Research / notes" else directorName, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+            if (!mine) Text(if (system) "Research / notes" else when (tone) { Messages.Tone.CONFLICT_SOFT -> "$directorName - design check"; Messages.Tone.CONFLICT_HARD -> "$directorName - needs a decision"; else -> directorName }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             val lesson = parts?.lesson
             if (parts != null && lesson != null) {
                 if (parts.before.isNotBlank()) SelectionContainer { Text(parts.before, style = MaterialTheme.typography.bodyMedium) }
@@ -271,8 +284,8 @@ private fun QuestionCard(q: QuestionSpec, messageId: String, onSelect: (List<Str
                             SuggestionChip({ onSend("yes") }, { Text("Yes") })
                             SuggestionChip({ onSend("no") }, { Text("No") })
                         }
-                        "MULTI" -> q.options.forEach { o -> FilterChip(o.id in selected, { selected = if (o.id in selected) selected - o.id else selected + o.id }, { Text(o.label) }) }
-                        else -> q.options.forEach { o -> SuggestionChip({ onSelect(listOf(o.id)) }, { Text(o.label) }) }
+                        "MULTI" -> q.options.forEach { o -> OptionChip(o.label, o.id in q.recommended, o.id in selected) { selected = if (o.id in selected) selected - o.id else selected + o.id } }
+                        else -> q.options.forEach { o -> OptionChip(o.label, o.id in q.recommended, null) { onSelect(listOf(o.id)) } }
                     }
                 }
             }

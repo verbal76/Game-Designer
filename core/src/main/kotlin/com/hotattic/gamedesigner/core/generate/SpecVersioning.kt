@@ -36,7 +36,8 @@ object SpecVersioning {
      * The only path to an export: revalidate dependencies, settle contradictions by owner precedence, generate, then run the
      * mandatory consistency review. If errors remain the project is returned unchanged (no version appended) with the findings.
      */
-    fun generate(project: Project, kind: VersionKind, nowMillis: Long, nowIso: String, label: String? = null, requireApproval: Boolean = true): Generation {
+    fun generate(project: Project, kind: VersionKind, nowMillis: Long, nowIso: String, label: String? = null, requireApproval: Boolean = true, onStage: (HandoffStage) -> Unit = {}): Generation {
+        onStage(HandoffStage.PREPARING)
         val notes = mutableListOf<String>()
         // The authoritative spec is only generated from a design the owner approved (or delegated approval of).
         val approval = project.designApproval
@@ -52,9 +53,11 @@ object SpecVersioning {
         val reevalOpen = project.reeval?.status == "OPEN"
         val lbl = label ?: if (reevalOpen) "Reevaluation" else kind.label
         val audit = AuditEngine.audit(withAssets)
+        onStage(HandoffStage.GENERATING)
         val md = ClaudeMdGenerator.generate(withAssets, number, lbl, nowIso, audit)
         val prompt = MasterPromptGenerator.generate(withAssets, number)
         val assetsMd = ExportPackage.assetsMarkdown(withAssets)
+        onStage(HandoffStage.VALIDATING)
         // Every authoritative document is checked against the structured state and against each other's claims.
         val review = ConsistencyReview.reviewAll(withAssets, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to prompt, "ASSETS.md" to assetsMd))
         // Contradictory conflicts that remain are also blocking.

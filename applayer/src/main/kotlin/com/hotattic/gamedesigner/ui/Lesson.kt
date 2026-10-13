@@ -1,5 +1,7 @@
 package com.hotattic.gamedesigner.ui
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,6 +23,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hotattic.gamedesigner.core.director.DesignMode
@@ -35,6 +40,10 @@ import com.hotattic.gamedesigner.core.director.LessonView
 @Composable
 fun LessonCard(lesson: LessonView, messageId: String, onExplainMore: (() -> Unit)?) {
     var open by remember(messageId) { mutableStateOf(false) }
+    val reduced = rememberReducedMotion()
+    val tick = rememberTick()
+    // The folded part fades in when opened (instantly when the system has animations turned off).
+    val reveal by animateFloatAsState(if (open) 1f else 0f, tween(if (reduced) 0 else 180), label = "reveal")
     Surface(Modifier.fillMaxWidth().padding(top = 8.dp), color = MaterialTheme.colorScheme.surface, tonalElevation = 3.dp, shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(lesson.term, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
@@ -55,17 +64,19 @@ fun LessonCard(lesson: LessonView, messageId: String, onExplainMore: (() -> Unit
                     lesson.advantages?.let { LessonLine("Good", it) }
                     lesson.disadvantages?.let { LessonLine("Watch out", it) }
                     if (open) {
-                        lesson.how?.let { LessonLine("How it works", it) }
-                        lesson.ifElse?.let { LessonLine("If you choose something else", it) }
-                        lesson.longTerm?.let { LessonLine("Long-term", it) }
-                        lesson.more?.let { LessonLine("More detail", it) }
+                        Column(Modifier.graphicsLayer { alpha = reveal }, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            lesson.how?.let { LessonLine("How it works", it) }
+                            lesson.ifElse?.let { LessonLine("If you choose something else", it) }
+                            lesson.longTerm?.let { LessonLine("Long-term", it) }
+                            lesson.more?.let { LessonLine("More detail", it) }
+                        }
                     }
                 }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (lesson.hasDetails) TextButton({ open = !open }) { Text(if (open) "Show less" else "Show details") }
+                if (lesson.hasDetails) TextButton({ tick(); open = !open }, Modifier.semantics { contentDescription = if (open) "Show less of the explanation for ${lesson.term}" else "Show the full explanation for ${lesson.term}" }) { Text(if (open) "Show less" else "Show details") }
             }
-            if (onExplainMore != null && lesson.more == null) OutlinedButton(onExplainMore) { Text("Explain more") }
+            if (onExplainMore != null && lesson.more == null) OutlinedButton({ tick(); onExplainMore() }) { Text("Explain more") }
         }
     }
 }
@@ -87,7 +98,8 @@ fun ModeSelector(current: DesignMode, onSelect: (DesignMode) -> Unit, showCaptio
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Mode", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.secondary)
-            DesignMode.values().forEach { m -> FilterChip(m == current, { if (m != current) onSelect(m) }, { Text(m.label) }) }
+            val tick = rememberTick()
+            DesignMode.values().forEach { m -> FilterChip(m == current, { if (m != current) { tick(); onSelect(m) } }, { Text(m.label) }, modifier = Modifier.semantics { contentDescription = "${m.label} mode. ${m.blurb}" }) }
         }
         if (showCaption) Text("${current.blurb} ${DesignMode.BOTH_MODES_NOTE}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
     }

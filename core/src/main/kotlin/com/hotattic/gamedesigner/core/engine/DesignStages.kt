@@ -43,7 +43,8 @@ object DesignStages {
         val rows = mutableListOf<Triple<String, String, Pair<Int, Int>>>()
         for (d in defs) {
             val relevant = d.keys.mapNotNull { Fields.get(it) }.filter { it.required && it.isRelevant(t) && !(it.expertOnly && t.beginner) }
-            if (relevant.isEmpty()) continue
+            // Before the genre is known most decisions do not apply yet; the stage still exists (so the strip shows the whole journey) and simply has not started.
+            if (relevant.isEmpty()) { if (!t.genresKnown) rows += Triple(d.id, d.title, 1 to 1); continue }
             rows += Triple(d.id, d.title, relevant.count { it.key in open } to relevant.size)
         }
         val conflictsOpen = ConflictEngine.open(p).isNotEmpty()

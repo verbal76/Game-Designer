@@ -134,6 +134,8 @@ data class QuestionSpec(
     val options: List<ChoiceOption> = emptyList(),
     val canDelegate: Boolean = false,
     val canSkip: Boolean = false,
+    /** Option ids Bob recommends, so the screen can mark them. Additive: older readers ignore it. */
+    val recommended: List<String> = emptyList(),
 )
 
 @Serializable

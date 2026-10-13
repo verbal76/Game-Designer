@@ -1237,6 +1237,7 @@ class Director(private val deps: DirectorDeps) {
     private fun specFor(field: Field, t: Traits): QuestionSpec = QuestionSpec(
         field.key, if (field.key in Keys.brandingKeyForSlot.values) "ASSET_UPLOAD" else field.kind.name, if (field.kind.isSelect) field.options(t).map { ChoiceOption(it.id, it.label, it.description) } else emptyList(),
         canDelegate = field.suggest(t) != null, canSkip = !field.required,
+        recommended = if (field.kind.isSelect) field.suggest(t)?.value?.split(Decision.LIST_SEPARATOR)?.filter { id -> field.options(t).any { it.id == id } }.orEmpty() else emptyList(),
     )
 
     /** Chooses the next thing to say. Announces at most one new conflict per turn, before the next question. */

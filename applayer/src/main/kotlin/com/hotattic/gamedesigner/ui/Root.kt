@@ -86,6 +86,7 @@ fun AppNav(vm: AppViewModel, shell: ShellServices) {
                 is UiEvent.OpenSpec -> nav.navigate("spec/${e.projectId}")
                 is UiEvent.OpenChat -> nav.navigate("chat/${e.projectId}")
                 is UiEvent.PickImage -> Unit // handled by the chat screen's picker
+                is UiEvent.RestoreInput -> Unit // handled by the chat screen (puts the text back in the box)
             }
         }
     }
