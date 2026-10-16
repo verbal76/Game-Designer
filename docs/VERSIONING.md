@@ -21,7 +21,9 @@ An OTA never creates a new native major version.
 | **v3** (`-s2` fingerprint, shell API 2) | **v3.0** | bundled | 5 (`VersionIdentity.GENERATION_BASE_SEQ`) |
 | v3 | v3.1, ... | OTA | 6, 7, ... (not published; superseded by v4) |
 | **v4** (`-s3` fingerprint, shell API 3) | **v4.0** | bundled | 7 (`VersionIdentity.GENERATION_BASE_SEQ`) |
-| v4 | v4.1, ... | OTA | 8, 9, ... |
+| v4 | v4.1 ... v4.8 | OTA | 8 ... 15 (the last published OTA, #15) |
+| **v5** (`-s3` fingerprint, shell API 3, same signing key) | **v5.0** | bundled | 16 (`VersionIdentity.GENERATION_BASE_SEQ`; newer than every published v4-line OTA so an install over v4 runs the bundled layer) |
+| v5 | v5.1, ... | OTA | 17, 18, ... |
 
 ## Why v3 is a new APK
 

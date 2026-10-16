@@ -5,9 +5,9 @@ plugins {
 
 // Build-time identity of the application layer. The v3 APK ships layer sequence 5 (application layer v3.0) as the known-good fallback; OTA bundles
 // are built with -PlayerVersion=<n> -PlayerLabel=<name> and must have a higher version.
-val layerVersion = providers.gradleProperty("layerVersion").orElse("7").get()
+val layerVersion = providers.gradleProperty("layerVersion").orElse("16").get()
 val sourceSha = providers.gradleProperty("sourceSha").orElse("local").get()
-val layerLabel = providers.gradleProperty("layerLabel").orElse("v4-bundled").get()
+val layerLabel = providers.gradleProperty("layerLabel").orElse("v5-bundled").get()
 
 android {
     namespace = "com.hotattic.gamedesigner.applayer"

@@ -12,8 +12,8 @@ import com.hotattic.gamedesigner.shellapi.OtaDiagnostics
  * generation started from ([GENERATION_BASE_SEQ]); see docs/VERSIONING.md for the full history.
  */
 object VersionIdentity {
-    /** OTA sequence of the layer built into the current native generation (v4 APK ships sequence 7 as application layer v4.0). */
-    const val GENERATION_BASE_SEQ = 7
+    /** OTA sequence of the layer built into the current native generation (the v5 APK ships sequence 16 as application layer v5.0). */
+    const val GENERATION_BASE_SEQ = 16
 
     fun nativeMajor(nativeVersionName: String) = nativeVersionName.substringBefore('.').ifBlank { "?" }
 
