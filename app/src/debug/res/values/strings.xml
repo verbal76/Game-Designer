@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Side-by-side test build: a different label so it cannot be mistaken for the production app on the launcher. -->
+    <string name="app_name">Game Designer TEST</string>
+</resources>

@@ -41,16 +41,16 @@ private class DocumentProviderStream(private val data: ByteArray, private val ch
 }
 
 /**
- * The owner's physical Either Character test as a durable regression: natural-language concept, corrections and meta-talk, the
+ * A synthetic two-sided-descent project (modelled on a real device test) as a durable regression: natural-language concept, corrections and meta-talk, the
  * studio-logo upload through both a plain file stream and a Browse -> Files document-provider stream, duplicate callbacks,
  * restart, "A fully functional prototype game", "CC0 only", the review gate, and the exported ZIP.
  */
-class EitherCharacterRegressionTest {
+class TwinDescentRegressionTest {
 
-    private val concept = "I want to make a game called Either Character. The whole game is one enormous vertical shaft that goes from the surface deep underground. " +
-        "You choose which side to play. You can descend from the surface as a military explorer investigating what is below, or you can ascend from the depths as an underground humanoid creature attacking toward the surface. " +
-        "It's a 2D side-view action platformer for my Android phone. The mood is claustrophobic and tense, with a sense of dread the deeper you go. " +
-        "You fight with a rifle and flares as the explorer, and with claws and ambushes as the creature."
+    private val concept = "I want to make a game called Twin Descent. The whole game is one enormous vertical shaft that goes from a mountain top deep into a flooded cavern. " +
+        "You choose which side to play. You can descend from the top as a salvage diver investigating what is below, or you can ascend from the depths as a cave creature rising toward the light. " +
+        "It's a 2D side-view action platformer for my Android phone. The mood is eerie and tense, with a sense of dread the deeper you go. " +
+        "You fight with a harpoon gun and glow sticks as the diver, and with tentacles and ambushes as the creature."
 
     private val logo = File("../Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png")
     private val canonical = "e3d9bb5653eafb783eede827606e7ac73a4e45564a1c25b1ed13ad1429f48c4e"
@@ -172,8 +172,8 @@ class EitherCharacterRegressionTest {
         assertEquals(canonical, AttachmentIngest.sha256(masterEntry.value))
         assertTrue(entries.keys.containsAll(listOf("CLAUDE.md", "MASTER_PROMPT.md", "ASSETS.md", "game-designer/project.json")))
         java.io.File("build/sample").also { it.mkdirs() }.let { dir ->
-            dir.resolve("either-character-CLAUDE.md").writeText(md); dir.resolve("either-character-MASTER_PROMPT.md").writeText(prompt); dir.resolve("either-character-ASSETS.md").writeText(assetsMd)
-            dir.resolve("either-character-conversation.txt").writeText(p.messages.joinToString("\n\n") { "[${it.role}] ${it.text}" })
+            dir.resolve("twin-descent-CLAUDE.md").writeText(md); dir.resolve("twin-descent-MASTER_PROMPT.md").writeText(prompt); dir.resolve("twin-descent-ASSETS.md").writeText(assetsMd)
+            dir.resolve("twin-descent-conversation.txt").writeText(p.messages.joinToString("\n\n") { "[${it.role}] ${it.text}" })
         }
     }
 

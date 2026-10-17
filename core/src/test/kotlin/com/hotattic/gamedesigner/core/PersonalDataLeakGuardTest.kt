@@ -59,4 +59,27 @@ class PersonalDataLeakGuardTest {
         val src = File(root, "core/src/main/kotlin/com/hotattic/gamedesigner/core/persist/ProjectTransfer.kt").readText()
         for (forbidden in listOf("getResource", "classLoader", "System.getenv", "URL(", "openConnection", "HttpURLConnection", "Environment.getExternal")) assertTrue(!src.contains(forbidden), "importer must not read from anywhere but its input: $forbidden")
     }
+
+    private fun block(text: String, header: String): String {
+        val start = text.indexOf(header); require(start >= 0) { "no $header block" }
+        var depth = 0; var i = text.indexOf('{', start); val begin = i
+        while (i < text.length) { if (text[i] == '{') depth++ else if (text[i] == '}') { depth--; if (depth == 0) return text.substring(begin, i + 1) }; i++ }
+        error("unbalanced $header")
+    }
+
+    @Test fun theDebugBuildIsASeparateTestAppAndProductionIsUnchanged() {
+        val gradle = File(root, "app/build.gradle.kts").readText()
+        val debug = block(gradle, "debug {"); val release = block(gradle, "release {")
+        assertTrue(debug.contains("applicationIdSuffix = \".test\""), "the test build needs its own application id")
+        assertTrue(!release.contains("applicationIdSuffix"), "production keeps its application id")
+        assertTrue(gradle.contains("applicationId = \"com.hotatticgames.gamedesigner\""), "the production application id is unchanged")
+        assertTrue(File(root, "app/src/debug/res/values/strings.xml").readText().contains("Game Designer TEST"), "the test app has a distinguishable label")
+        for (wf in listOf("release-v4.yml", "release-v5.yml")) assertTrue(File(root, ".github/workflows/$wf").readText().contains("package: name='com.hotatticgames.gamedesigner'"), "$wf still insists on the production id")
+    }
+
+    @Test fun ciInspectsTheActualApkAndOtaBundleForPersonalData() {
+        val ci = File(root, ".github/workflows/android.yml").readText()
+        assertTrue(ci.contains("check-distribution-privacy.py") && ci.contains("otabundle-debug.apk") && ci.contains("gd-test-debug-keystore"), "privacy audit and stable test key are wired into CI")
+        assertTrue(File(root, "tools/check-distribution-privacy.py").readText().contains("originalConcept"))
+    }
 }

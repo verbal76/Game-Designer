@@ -66,7 +66,11 @@ class FileProjectStore(val root: File) {
     fun save(p: Project) {
         val f = projectFile(p.id)
         val tmp = File(f.path + ".tmp")
-        tmp.writeText(ProjectCodec.encodePreserving(p, if (f.exists()) runCatching { f.readText() }.getOrNull() else null))
+        val previous = if (f.exists()) runCatching { f.readText() }.getOrNull() else null
+        val out = ProjectCodec.encodePreservingDetailed(p, previous)
+        // Stored fields from a newer layer that could not be placed back are never dropped silently: the original text is kept beside the project.
+        if (previous != null && out.unplaced.isNotEmpty()) File(f.path + ".preserved").writeText(previous)
+        tmp.writeText(out.text)
         // Keep the previous good copy before replacing.
         if (f.exists()) f.copyTo(File(f.path + ".bak"), overwrite = true)
         if (!tmp.renameTo(f)) {

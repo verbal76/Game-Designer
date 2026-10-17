@@ -32,6 +32,13 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false   # feature branches may save the Gradle cache so later runs are not cold
+      # The side-by-side test build is signed with the runner's debug key. Caching that key makes successive TEST builds updatable in place; it is a
+      # throw-away key for the test application id only and is never the release key. If the cache is evicted the test app (synthetic data only) is reinstalled.
+      - name: Stable debug key for the test build
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: gd-test-debug-keystore-v1
       - name: Monotonic version code
         run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
       - name: Android lint, debug APK, layer unit tests (incl. theme contrast)
@@ -42,6 +49,22 @@ jobs:
         if: failure()
         run: |
           { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
+      - name: Side-by-side identity of the test APK (must not be the production application id)
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/aapt2" dump badging app/build/outputs/apk/debug/app-debug.apk | tee badging-test.txt | head -4
+          grep -q "package: name='com.hotatticgames.gamedesigner.test'" badging-test.txt
+          grep -q "versionName='5.0.0-test'" badging-test.txt
+          grep -q "application-label:'Game Designer TEST'" badging-test.txt
+          "$BT/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -E "certificate SHA-256 digest|Signer #1 certificate DN" | head -3
+      - name: Distribution privacy audit (test APK and the OTA application-layer bundle)
+        run: |
+          set -euo pipefail
+          python3 tools/check-distribution-privacy.py --selftest
+          ./gradlew :otabundle:assembleDebug -q -PlayerVersion=0 -PlayerLabel=privacy-audit -PsourceSha=audit --console=plain
+          W=$(mktemp -d); unzip -q -o otabundle/build/outputs/apk/debug/otabundle-debug.apk 'classes*.dex' -d "$W"; (cd "$W" && zip -X -q bundle.zip classes*.dex)
+          python3 tools/check-distribution-privacy.py app/build/outputs/apk/debug/app-debug.apk "$W/bundle.zip"
       - name: 16 KB page-size qualification of every native library in the debug APK
         run: python3 tools/check-16kb.py app/build/outputs/apk/debug/app-debug.apk
       # Private test APK for the owner's phone: a build-system artifact only (zipped by GitHub, visible to repository collaborators), never a release.

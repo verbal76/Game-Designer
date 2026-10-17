@@ -143,7 +143,7 @@ object DecisionExtractor {
         }
         if (Regex("\\b(touch ?screen|touch controls?)\\b").containsMatchIn(t)) out[Keys.INPUT_METHODS] = "touch"
 
-        // "a game called Surface Think": the owner's own title is a name decision, never a reference game.
+        // "a game called Deep Echo": the owner's own title is a name decision, never a reference game.
         val title = titleName(text)
         if (title != null) out[Keys.DISPLAY_NAME] = title
         val refs = referenceGames(text).filter { r -> title == null || !r.equals(title, true) && !title.contains(r, true) }

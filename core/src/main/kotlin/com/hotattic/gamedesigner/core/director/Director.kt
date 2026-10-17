@@ -186,7 +186,8 @@ class Director(private val deps: DirectorDeps) {
             if (r.newQuestions > 0) append("I need ${r.newQuestions} more decision(s) from you; I'll ask only those.") else append("No new questions. Review the design, then approve it to create the next spec version.")
         }
         p = ProjectOps.addMessage(p, Role.DIRECTOR, Reevaluation.summary(r) + tail, now)
-        return DirectorTurn(askNext(p, settings))
+        val next = askNext(p, settings)
+        return DirectorTurn(Reevaluation.retainUnchanged(next, listOf(project, base)))
     }
 
     /** Owner discards a reevaluation: the design returns to exactly what it was; the old spec versions were never touched. */

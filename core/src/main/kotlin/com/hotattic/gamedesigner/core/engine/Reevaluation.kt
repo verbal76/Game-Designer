@@ -53,6 +53,18 @@ object Reevaluation {
         )
     }
 
+    /**
+     * A reevaluation recomputes what old Bob inferred or defaulted, which re-stamps every such decision with the time of the run. A decision whose
+     * content did not change is the same decision, so it keeps the object it already had (including when it was decided). [priors] are searched in
+     * order: the state the owner last saw, then the state before an earlier open reevaluation. Only a real change is a new record.
+     */
+    fun retainUnchanged(result: Project, priors: List<Project>): Project {
+        fun same(a: Decision, b: Decision) = a.value == b.value && a.source == b.source && a.status == b.status && a.note == b.note && a.overrides == b.overrides && a.prov == b.prov && a.rawAnswer == b.rawAnswer
+        val decisions = result.decisions.mapValues { (k, d) -> priors.firstNotNullOfOrNull { pr -> pr.decisions[k]?.takeIf { same(it, d) } } ?: d }
+        val facts = result.facts.map { f -> priors.firstNotNullOfOrNull { pr -> pr.facts.firstOrNull { it.id == f.id && it.text == f.text && it.status == f.status && it.provenance == f.provenance }?.takeIf { it.category == f.category } } ?: f }
+        return if (decisions == result.decisions && facts == result.facts) result else result.copy(decisions = decisions, facts = facts)
+    }
+
     private fun baselineOf(p: Project) = ReevalBaseline(p.decisions, p.facts, p.rejected, p.references, p.originalConcept, p.designApproval, p.pendingFieldKey, p.announcedConflicts, p.mode.name)
 
     /** Puts the project back exactly as it was before the reevaluation began. Spec versions were never touched. */

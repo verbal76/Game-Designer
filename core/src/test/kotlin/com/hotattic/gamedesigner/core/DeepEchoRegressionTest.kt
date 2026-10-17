@@ -22,12 +22,12 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * The owner's physical test of v2 ("Surface Think"): a 2D vertical-scroller pit game with two characters, one descending
+ * A synthetic project modelled on a real device test of v2 ("Deep Echo"): a 2D vertical-scroller trench game with two characters, one descending
  * and one climbing. v2 exported turn-based/squad/grid requirements the owner had explicitly refused.
  */
-class SurfaceThinkRegressionTest {
+class DeepEchoRegressionTest {
 
-    private val concept = "I want to make a game called Surface Think. It is a 2D vertical scroller set in a deep pit. There are two characters: one is descending to the bottom and the other is climbing to the surface. I'll play it on my Android phone."
+    private val concept = "I want to make a game called Deep Echo. It is a 2D vertical scroller set in a deep trench. There are two characters: one is descending to the bottom and the other is climbing to the surface. I'll play it on my Android phone."
 
     /** Recreates the v2 failure: the system inferred and the owner accepted a turn-based tactics reading. */
     private suspend fun staleProject(d: Director): Project {
@@ -84,7 +84,7 @@ class SurfaceThinkRegressionTest {
         java.io.File("build/sample").resolve("surface-think-MASTER_PROMPT.md").writeText(gen.project.versions.single().masterPrompt)
         val lower = md.lowercase()
         for (bad in listOf("squad units", "plan each turn", "grid-based tactical", "tactical grid", "grid tactics", "turn order")) assertFalse(bad in lower, "stale text '$bad' leaked into the spec")
-        for (section in listOf("PART A - OWNER REQUIREMENTS", "PART B - ACCEPTED RECOMMENDATIONS", "PART C - IMPLEMENTATION GUIDANCE", "PART D - UNRESOLVED AND DELEGATED DECISIONS", "PART E - MUST NOT CHANGE", "Surface Think")) assertTrue(section in md, "missing $section")
+        for (section in listOf("PART A - OWNER REQUIREMENTS", "PART B - ACCEPTED RECOMMENDATIONS", "PART C - IMPLEMENTATION GUIDANCE", "PART D - UNRESOLVED AND DELEGATED DECISIONS", "PART E - MUST NOT CHANGE", "Deep Echo")) assertTrue(section in md, "missing $section")
         assertTrue(ConsistencyReview.review(gen.project, md).clean)
         assertTrue("two characters" in lower)
     }

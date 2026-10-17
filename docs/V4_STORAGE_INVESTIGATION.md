@@ -31,7 +31,7 @@ Method: git history (tags v1..v4, HEAD), manifests, Gradle files, `FileProjectSt
 |---|---|
 | `Climb_up_spec_v1.zip` (uploaded in this session, sha256 `3b18d6ca...3b54`, 2,886,005 bytes) | **Inspected read-only on a copy.** Contains `game-designer/project.json` for project "Climb up" (schema 1, 45 decisions of which 22 owner-authored, 28 facts, 67 messages / 28 owner messages, 1 spec version) plus CLAUDE.md, MASTER_PROMPT.md, ASSETS.md and the studio splash master. It decodes with the current code and round-trips equal. **Climb Up appears fully recoverable** by import. |
 | Songs of Syx | No export in this environment (git history, uploads, /tmp searched). Only synthetic regression fixtures exist, which are not the owner's data. |
-| Either Character | Same: no export. Only `EitherCharacterRegressionTest` fixtures (synthetic, derived from the owner's description). |
+| Either Character | Same: no export. Only a synthetic regression fixture (since replaced with an invented project). |
 | Untitled Game | Nothing found. |
 | Device files, Android backup, shared storage, other copies | Not accessible from this session. Owner action needed: check Downloads / Files app / Drive / email / chat for any `*_spec_*.zip`, `*.zip` exported from Bob, or a "Backup all" ZIP; check whether another phone/profile still has the app installed. |
 

@@ -120,7 +120,10 @@ class DataArchitectureAuditTest {
         fun shape(x: Project) = x.decisions.mapValues { Triple(it.value.value, it.value.prov, it.value.status) }
         assertEquals(owner(p), owner(r1)); assertEquals(owner(r1), owner(r2)); assertEquals(owner(r2), owner(r3))
         assertEquals(p.decisions.filterValues { it.ownerAuthored }.mapValues { it.value.value }, r3.decisions.filterValues { it.ownerAuthored }.mapValues { it.value.value }.filterKeys { it in p.decisions })
-        assertEquals(shape(r1), shape(r2), "no new input, no new decisions"); assertEquals(shape(r2), shape(r3))
+        assertEquals(r1.decisions, r2.decisions, "no new input: the stored decisions are identical, timestamps included"); assertEquals(r2.decisions, r3.decisions)
+        assertEquals(r1.facts, r2.facts); assertEquals(r2.facts, r3.facts)
+        for ((k, d) in p.decisions) { val n = r3.decisions[k] ?: continue; if (n.value == d.value && n.prov == d.prov && n.status == d.status) assertEquals(d, n, "$k keeps its original record and timestamp") }
+        assertEquals(shape(r1), shape(r3))
         assertEquals(p.rejected, r3.rejected); assertEquals(p.references, r3.references)
         assertEquals(p.facts.filter { it.status == FactStatus.ACTIVE }.map { it.text }, r3.facts.filter { it.status == FactStatus.ACTIVE }.map { it.text })
         assertEquals(p.versions, r3.versions, "earlier specification versions are untouched")
@@ -165,14 +168,53 @@ class DataArchitectureAuditTest {
         assertEquals(emptyList(), ProjectCodec.decode(old.toString()).decisionHistory); assertTrue(legacy.isNotBlank())
     }
 
-    @Test fun fieldsThatThisBuildDoesNotKnowSurviveASaveAfterAnRollback() {
-        val root = Files.createTempDirectory("gd-audit6").toFile(); val store = FileProjectStore(root)
-        val p = newProject(); store.save(p)
+    @Test fun fieldsThatThisBuildDoesNotKnowSurviveASaveAtAnyDepthAfterARollback() = runBlocking {
+        val (p, _) = rich()
+        val root = Files.createTempDirectory("gd-audit6").toFile(); val store = FileProjectStore(root); store.save(p)
         val f = File(store.projectDir(p.id), "project.json")
-        f.writeText(f.readText().replaceFirst("{", "{\n  \"fieldFromANewerLayer\": {\"keep\": [1, 2, 3]},"))
-        val loaded = store.load(p.id)!!; store.save(loaded.copy(name = "Renamed"))
+        val j = kotlinx.serialization.json.Json
+        val top = j.parseToJsonElement(f.readText()) as kotlinx.serialization.json.JsonObject
+        fun obj(vararg kv: Pair<String, kotlinx.serialization.json.JsonElement>) = kotlinx.serialization.json.JsonObject(mapOf(*kv))
+        val marker = kotlinx.serialization.json.JsonPrimitive("from-a-newer-layer")
+        val decisions = top["decisions"] as kotlinx.serialization.json.JsonObject
+        val firstKey = decisions.keys.first()
+        val newDecisions = kotlinx.serialization.json.JsonObject(decisions.mapValues { (k, v) -> if (k == firstKey) kotlinx.serialization.json.JsonObject((v as kotlinx.serialization.json.JsonObject) + ("futureDecisionNote" to marker)) else v })
+        val messages = top["messages"] as kotlinx.serialization.json.JsonArray
+        val newMessages = kotlinx.serialization.json.JsonArray(messages.mapIndexed { i, m -> if (i == 0) kotlinx.serialization.json.JsonObject((m as kotlinx.serialization.json.JsonObject) + ("futureMessageFlag" to marker)) else m })
+        val refs = top["references"] as kotlinx.serialization.json.JsonArray
+        val newRefs = kotlinx.serialization.json.JsonArray(refs.map { r -> kotlinx.serialization.json.JsonObject((r as kotlinx.serialization.json.JsonObject) + ("futureRefField" to obj("deep" to marker))) })
+        val versions = top["versions"] as kotlinx.serialization.json.JsonArray
+        val newVersions = kotlinx.serialization.json.JsonArray(versions.map { v -> kotlinx.serialization.json.JsonObject((v as kotlinx.serialization.json.JsonObject) + ("futureVersionField" to marker)) })
+        f.writeText(j.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), kotlinx.serialization.json.JsonObject(top + ("futureTop" to marker) + ("decisions" to newDecisions) + ("messages" to newMessages) + ("references" to newRefs) + ("versions" to newVersions))))
+        val loaded = store.load(p.id)!!
+        store.save(loaded.copy(name = "Renamed by an older layer", updatedAt = loaded.updatedAt + 1))
         val onDisk = f.readText()
-        assertTrue(onDisk.contains("fieldFromANewerLayer") && onDisk.contains("\"keep\""), "an older layer saving the project must not erase a newer layer's field")
-        assertEquals("Renamed", store.load(p.id)!!.name)
+        for (field in listOf("futureTop", "futureDecisionNote", "futureMessageFlag", "futureRefField", "futureVersionField", "\"deep\""))
+            assertTrue(onDisk.contains(field), "$field was erased by an older layer's save")
+        assertEquals("Renamed by an older layer", store.load(p.id)!!.name)
+        assertFalse(File(f.path + ".preserved").exists(), "everything could be placed back, so no sidecar is needed")
+        // an owner-removed decision is not revived by the preservation
+        val without = store.load(p.id)!!.let { it.copy(decisions = it.decisions - firstKey, updatedAt = it.updatedAt + 1) }
+        store.save(without)
+        assertFalse(store.load(p.id)!!.decisions.containsKey(firstKey), "a deliberately removed decision stays removed")
+        assertFalse(f.readText().contains("futureDecisionNote"), "its newer-layer note goes with it")
+        assertTrue(f.readText().contains("futureTop"))
+    }
+
+    @Test fun anUnknownFieldThatCannotBePlacedBackIsKeptInASidecarInsteadOfBeingLost() = runBlocking {
+        val (p, _) = rich()
+        val store = FileProjectStore(Files.createTempDirectory("gd-audit7").toFile()); store.save(p)
+        val f = File(store.projectDir(p.id), "project.json")
+        val j = kotlinx.serialization.json.Json
+        val top = j.parseToJsonElement(f.readText()) as kotlinx.serialization.json.JsonObject
+        val refs = (top["references"] as kotlinx.serialization.json.JsonArray)
+        // reference entries have no identity field; this build then inserts one in front, so the unknown field cannot be matched to a parent with certainty
+        val tagged = kotlinx.serialization.json.JsonArray(refs.map { x -> kotlinx.serialization.json.JsonObject((x as kotlinx.serialization.json.JsonObject) + ("futureRefField" to kotlinx.serialization.json.JsonPrimitive("x"))) })
+        f.writeText(j.encodeToString(kotlinx.serialization.json.JsonObject.serializer(), kotlinx.serialization.json.JsonObject(top + ("references" to tagged))))
+        val before = f.readText()
+        val loaded = store.load(p.id)!!
+        store.save(loaded.copy(references = listOf(com.hotattic.gamedesigner.core.model.ReferenceGame("Another game")) + loaded.references, updatedAt = 9L))
+        val sidecar = File(f.path + ".preserved")
+        assertTrue(sidecar.exists() && sidecar.readText() == before, "the original text with the unknown fields is kept, not discarded")
     }
 }

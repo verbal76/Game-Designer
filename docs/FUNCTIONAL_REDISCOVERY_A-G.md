@@ -30,7 +30,7 @@ Intent evidence: README (one sentence: collect aggregated input, build a `claude
 
 | Intended | Implemented (code) | Verified |
 |---|---|---|
-| Conversation, not a form; Bob infers, asks only what is unresolved | `Director`, `InterviewPlanner`, `DesignSeeder`, `applyInferences`, `LlmInterpreter` | JVM tests with scripted answers/providers (`AdaptiveQuestionsTest`, `DesignerIntelligenceTest`, `ClimbUpRegressionTest`); no real model, no device |
+| Conversation, not a form; Bob infers, asks only what is unresolved | `Director`, `InterviewPlanner`, `DesignSeeder`, `applyInferences`, `LlmInterpreter` | JVM tests with scripted answers/providers (`AdaptiveQuestionsTest`, `DesignerIntelligenceTest`, `TowerClimbRegressionTest`); no real model, no device |
 | Suggest choices, explain tradeoffs | `Field.suggest`, `Explainer`, `Acknowledgements`, `ConflictEngine` | tests; card rendering on device unverified |
 | Identify missing requirements and contradictions | `CompletenessEngine`, `ConflictEngine`, `ConsistencyReview`, `DesignCoherence` | tests, **but only for contradictions between decisions and systems, not between owner facts and decisions** (finding 2) |
 | Apply the owner's later corrections | partially: option answers and gate/tag/genre corrections apply; free-text decision changes do not (finding 1) | no test for platform/decision changes by chat |
@@ -187,7 +187,7 @@ F1, after G6. Build the dialog as a stateless view over `pendingFieldKey` + `Que
 4. Fact/decision coherence: a spec whose Part A contradicts "Target platforms" must be blocked; same for a city-builder economy with combat requirements when combat is not applicable and not described.
 5. Readiness: 100% impossible while an unapplied instruction or coherence error exists; approval invalidates when references change.
 6. Reevaluation: re-run after an unapplied instruction keeps owner decisions, reports the instruction as pending, and never researches fragments.
-7. Back semantics unchanged (existing `AdaptiveQuestionsTest`, `ClimbUpRegressionTest`) plus Back after a confirmed free-text correction.
+7. Back semantics unchanged (existing `AdaptiveQuestionsTest`, `TowerClimbRegressionTest`) plus Back after a confirmed free-text correction.
 8. Turn handling: duplicate CONFIRM (same turn id) is a no-op; CONFIRM then process death resumes once; Retry after a model timeout.
 9. Each pending state accepts exactly the texts the quick replies send (contract test over `QuickReply.send`).
 10. NEXT enablement rule as a pure function over `Project` + `busy`, tested for: committed, model timeout, ambiguity question, follow-up, conflict interleave.

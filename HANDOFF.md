@@ -9,10 +9,10 @@ Branch `ccr-6330e20f-dm7zhm` (PR #1, draft). Spec: `CLAUDE.md`. Decisions: `docs
 - `gd-signing-keys` is a PRIVATE DRAFT release holding the OTA signing key + APK keystore. Never publish or delete it (deleting = new signing identity: reinstall + new APK for OTA trust).
 
 ## v4 (design intelligence, OTA-delivered)
-See `docs/CONVERSATION.md` (v4 section). Regression: `EitherCharacterRegressionTest`, `DesignerIntelligenceTest`, `SurfaceThinkRegressionTest`. Dev OTA only; stable untouched.
+See `docs/CONVERSATION.md` (v4 section). Regression: `TwinDescentRegressionTest`, `DesignerIntelligenceTest`, `DeepEchoRegressionTest`. Dev OTA only; stable untouched.
 
 ## v3 (conversation overhaul, OTA-delivered)
-See `docs/CONVERSATION.md`. Interpreter + provenance + reconciler + consistency review + A/B/C/D spec + question cards + provider registry. Regression: `SurfaceThinkRegressionTest`, `OptionResolverTest`, `CompatAndProviderTest`. Delivered as OTA bundle v3 on the dev channel (no new APK needed: shellapi/runtime fingerprint unchanged).
+See `docs/CONVERSATION.md`. Interpreter + provenance + reconciler + consistency review + A/B/C/D spec + question cards + provider registry. Regression: `DeepEchoRegressionTest`, `OptionResolverTest`, `CompatAndProviderTest`. Delivered as OTA bundle v3 on the dev channel (no new APK needed: shellapi/runtime fingerprint unchanged).
 
 ## Structure
 `:core` (logic, OTA-able) / `:applayer` (UI+ViewModel, OTA-able) / `:shellapi` (stable contract) / `:otakit` (update engine, JVM) / `:app` (native shell: LiteRT-LM, secrets, loader, OTA manager) / `:otabundle` (packaging only). Fallback layer is compiled into the APK.

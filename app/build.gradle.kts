@@ -38,6 +38,12 @@ android {
     }
 
     buildTypes {
+        // The debug build is the SIDE-BY-SIDE TEST build: its own application id, so it installs next to the production app and has its own private
+        // storage (projects, secrets, OTA state). It can never touch, update or replace the installed production app. Release is unchanged.
+        debug {
+            applicationIdSuffix = ".test"
+            versionNameSuffix = "-test"
+        }
         release {
             isMinifyEnabled = false
             signingConfig = if (ksPath != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
