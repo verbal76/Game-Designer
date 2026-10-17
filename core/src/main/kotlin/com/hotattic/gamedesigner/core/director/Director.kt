@@ -1,5 +1,7 @@
 package com.hotattic.gamedesigner.core.director
 
+import com.hotattic.gamedesigner.core.knowledge.KnowledgeAdvisor
+import com.hotattic.gamedesigner.core.knowledge.KnowledgeLibrary
 import com.hotattic.gamedesigner.core.engine.Alternative
 import com.hotattic.gamedesigner.core.engine.Answer
 import com.hotattic.gamedesigner.core.engine.AnswerIntent
@@ -255,7 +257,10 @@ class Director(private val deps: DirectorDeps) {
         if (turnId != null && turnId in project.processedTurns) {
             return DirectorTurn(if (project.pendingTurn?.id == turnId) project.copy(pendingTurn = null) else project, duplicate = true)
         }
-        val t = handleUserMessageOnce(project, settings, text)
+        val aspectOf = project.messages.lastOrNull()?.takeIf { it.role == Role.DIRECTOR && it.knowledgeStage == KnowledgeAdvisor.ASPECT }?.knowledgeEntryIds?.firstOrNull()
+        var t = handleUserMessageOnce(project, settings, text)
+        // The owner answered "which part do you want?" in their own words and the normal decision workflow changed something: only now is the entry applied.
+        if (aspectOf != null && t.project.decisions != project.decisions) t = t.copy(project = KnowledgeAdvisor.markApplied(t.project, aspectOf, deps.clock()))
         val done = if (turnId == null) t.project else t.project.withTurn(turnId)
         return t.copy(project = if (done.pendingTurn?.id == turnId) done.copy(pendingTurn = null) else done)
     }
@@ -272,10 +277,48 @@ class Director(private val deps: DirectorDeps) {
         return project.copy(pendingTurn = com.hotattic.gamedesigner.core.model.PendingTurn(turnId, text.trim(), deps.clock()))
     }
 
+    private fun knowledgeMessage(p: Project, text: String, now: Long, stage: String, ids: List<String>, quick: List<QuickReply> = emptyList()): Project {
+        val added = ProjectOps.addMessage(p, Role.DIRECTOR, text, now, null, quick)
+        return added.copy(messages = added.messages.dropLast(1) + added.messages.last().copy(knowledgeStage = stage, knowledgeEntryIds = ids))
+    }
+
+    private suspend fun backToQuestion(p: Project, settings: AppSettings, note: String, now: Long): DirectorTurn {
+        val said = ProjectOps.addMessage(p, Role.DIRECTOR, note, now)
+        val field = said.pendingFieldKey?.takeUnless { it.startsWith("__") }?.let { Fields.get(it) }?.takeIf { it.isRelevant(Traits(said)) }
+        return DirectorTurn(if (field != null) askField(said, field, now) else askNext(ProjectOps.setPending(said, null), settings))
+    }
+
+    /**
+     * Reference examples are advisory. This handles only (a) the owner asking for advice, examples or alternatives, (b) the owner's reply to a
+     * reference card, and (c) their answer to "which part do you want?" when it declines. Nothing here writes a decision: wanting a principle
+     * is recorded as interest, and the owner's specific choice then goes through the ordinary answer pipeline in their own words.
+     */
+    private suspend fun knowledgeTurn(p: Project, settings: AppSettings, text: String, now: Long): DirectorTurn? {
+        if (p.mode != ProjectMode.NEW_GAME) return null
+        val prev = p.messages.getOrNull(p.messages.size - 2)?.takeIf { it.role == Role.DIRECTOR }
+        val ids = prev?.knowledgeEntryIds.orEmpty()
+        if (prev?.knowledgeStage == KnowledgeAdvisor.CARD) when (val r = KnowledgeAdvisor.parseCardReply(text, ids)) {
+            is KnowledgeAdvisor.Reply.Interested ->
+                return DirectorTurn(knowledgeMessage(KnowledgeAdvisor.markInterested(p, r.entry.id, now), KnowledgeAdvisor.aspectText(r.entry), now, KnowledgeAdvisor.ASPECT, listOf(r.entry.id)))
+            KnowledgeAdvisor.Reply.None -> return backToQuestion(KnowledgeAdvisor.markRejected(p, ids, now), settings, "Understood. I won't suggest those again. Back to your question.", now)
+            KnowledgeAdvisor.Reply.Back -> return backToQuestion(p, settings, "Back to your question.", now)
+            null -> {}
+        }
+        if (prev?.knowledgeStage == KnowledgeAdvisor.ASPECT && KnowledgeAdvisor.declinesAspect(text))
+            return backToQuestion(KnowledgeAdvisor.markRejected(p, ids, now), settings, "Understood. I won't suggest that again. Back to your question.", now)
+        if (!KnowledgeAdvisor.isRequest(text)) return null
+        val field = p.pendingFieldKey?.takeUnless { it.startsWith("__") }
+        val matches = KnowledgeLibrary.retrieve(p, if (text.trim().equals(KnowledgeAdvisor.EXAMPLE_COMMAND, true)) "" else text, field)
+        if (matches.isEmpty()) return DirectorTurn(ProjectOps.addMessage(p, Role.DIRECTOR, KnowledgeAdvisor.noMatchText(), now).let { it })
+        val entries = matches.map { it.entry }
+        return DirectorTurn(knowledgeMessage(KnowledgeAdvisor.markShown(p, entries, now), KnowledgeAdvisor.cardText(matches), now, KnowledgeAdvisor.CARD, entries.map { it.id }, KnowledgeAdvisor.quickReplies(entries)))
+    }
+
     private suspend fun handleUserMessageOnce(project: Project, settings: AppSettings, text: String): DirectorTurn {
         val now = deps.clock()
         var p = ProjectOps.addMessage(project, Role.USER, text.trim(), now)
         val lower = text.trim().lowercase()
+        knowledgeTurn(p, settings, text.trim(), now)?.let { return it }
 
         // The owner ruling a system in or out in passing ("no combat", "actually add enemies") settles its gate whenever they say it.
         val pendingBefore = p.pendingFieldKey

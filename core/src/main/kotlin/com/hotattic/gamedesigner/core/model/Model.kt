@@ -148,7 +148,17 @@ data class ChatMessage(
     val fieldKey: String? = null,
     val quickReplies: List<QuickReply> = emptyList(),
     val question: QuestionSpec? = null,
+    /** Reference-library entries this message presents (CARD) or follows up on (ASPECT). Additive; display only, never a decision. */
+    val knowledgeEntryIds: List<String> = emptyList(),
+    val knowledgeStage: String? = null,
 )
+
+@Serializable
+enum class KnowledgeStatus { SHOWN, INTERESTED, REJECTED, APPLIED }
+
+/** What happened to one reference-library entry in this project. Advisory history only: it is never a decision and never reaches the spec. */
+@Serializable
+data class KnowledgeNote(val entryId: String, val status: KnowledgeStatus, val at: Long)
 
 @Serializable
 data class SourceRef(
@@ -466,6 +476,8 @@ data class Project(
     val answerTrail: List<String> = emptyList(),
     /** The latest reevaluation of this design by the current design intelligence, if any. Additive. */
     val reeval: ReevalRecord? = null,
+    /** Reference-library history (shown / interested / rejected / applied), separate from decisions. Additive. */
+    val knowledge: List<KnowledgeNote> = emptyList(),
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }

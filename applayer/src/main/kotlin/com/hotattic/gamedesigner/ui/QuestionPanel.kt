@@ -131,6 +131,7 @@ fun QuestionPanel(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (model.canDelegate) OutlinedButton({ tick(); onAction(GuidedPanel.delegate(model), listOf("Bob's choice")) }) { Text("Choose for me") }
+                    if (model.exampleAvailable) TextButton({ tick(); onAction(GuidedPanel.example(model), emptyList()) }) { Text("Show an example") }
                     if (model.kind == PanelKind.SINGLE || model.kind == PanelKind.MULTI || model.kind == PanelKind.TEXT || model.kind == PanelKind.UPLOAD || model.kind == PanelKind.OTHER)
                         TextButton({ tick(); onAction(GuidedPanel.skip(model), listOf("Skipped")) }) { Text(if (model.canSkip) "Skip" else "Ask me later") }
                 }

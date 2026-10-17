@@ -21,7 +21,7 @@ object MetaConversation {
         Regex("(?i)\\b(?:it|that)\\s+(?:didn't|did not)\\s+(?:work|upload|attach|save)\\b"),
     )
 
-    fun isMeta(sentence: String): Boolean = patterns.any { it.containsMatchIn(sentence) }
+    fun isMeta(sentence: String): Boolean = patterns.any { it.containsMatchIn(sentence) } || com.hotattic.gamedesigner.core.knowledge.KnowledgeAdvisor.isRequest(sentence)
 
     /** The sentences of [text] that describe the game, in order. */
     fun designSentences(text: String, minLen: Int = 12): List<String> =

@@ -155,7 +155,8 @@ object ProjectOps {
 
     fun addReferences(p: Project, names: List<String>, now: Long): Project {
         val have = p.references.map { it.name.lowercase() }.toSet()
-        val added = names.filter { it.lowercase() !in have && ReferenceGuard.isPlausibleTitle(it) }.distinctBy { it.lowercase() }.map { ReferenceGame(name = it) }
+        // "Pac-Man's role reversal": the possessive is not part of the game's name.
+        val added = names.map { it.trim().replace(Regex("(?:'s|’s)$"), "") }.filter { it.lowercase() !in have && ReferenceGuard.isPlausibleTitle(it) }.distinctBy { it.lowercase() }.map { ReferenceGame(name = it) }
         if (added.isEmpty()) return p
         val all = p.references + added
         val existing = p.decision(Keys.REFERENCES)

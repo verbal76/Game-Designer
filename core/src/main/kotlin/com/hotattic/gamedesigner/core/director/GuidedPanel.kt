@@ -34,6 +34,8 @@ data class PanelModel(
     val allowsText: Boolean,
     /** What the engine already holds for this question (a revisit shows it, but it is never selected for the owner). */
     val currentLabel: String?,
+    /** A reference example exists for this question (advisory; offered, never injected). */
+    val exampleAvailable: Boolean = false,
 ) {
     val multi get() = kind == PanelKind.MULTI
     val structured get() = options.isNotEmpty() && options.all { it.send == null }
@@ -112,6 +114,7 @@ object GuidedPanel {
             canSkip = spec?.canSkip == true || quick.any { it.send.trim().lowercase() == "skip" },
             allowsText = kind in setOf(PanelKind.TEXT, PanelKind.SINGLE, PanelKind.MULTI, PanelKind.OTHER, PanelKind.UPLOAD, PanelKind.CONFLICT, PanelKind.REVIEW, PanelKind.PROPOSALS),
             currentLabel = current,
+            exampleAvailable = field != null && last.knowledgeStage == null && com.hotattic.gamedesigner.core.knowledge.KnowledgeLibrary.hasExampleFor(p, key),
         )
     }
 
@@ -137,6 +140,8 @@ object GuidedPanel {
 
     /** Choose-for-me and skip are explicit actions with their own stable id; they are the same texts the old quick replies sent. */
     fun delegate(model: PanelModel) = PanelAction.Say("choose for me", "panel:${model.messageId}:delegate")
+    /** The optional "Show an example" action: an explicit request, same pipeline as typing it. */
+    fun example(model: PanelModel) = PanelAction.Say(com.hotattic.gamedesigner.core.knowledge.KnowledgeAdvisor.EXAMPLE_COMMAND, "panel:${model.messageId}:example")
     fun skip(model: PanelModel) = PanelAction.Say(if (model.canSkip) "skip" else "ask me later", "panel:${model.messageId}:skip")
 
     /** BACK is the engine's undo of the last answer, and it is only offered when there is something to undo. */
