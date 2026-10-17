@@ -49,6 +49,9 @@ object DesignReview {
         val title = p.value(Keys.DISPLAY_NAME) ?: p.name.ifBlank { "Your game" }
         val out = mutableListOf<String>()
         out += "**Here's the game I think we're making: $title.**"
+        com.hotattic.gamedesigner.core.engine.FactCoherence.platformFindings(p).takeIf { it.isNotEmpty() }?.let { found ->
+            out += "**Not applied yet.** " + found.joinToString(" ") { it.unapplied } + " Tell me which platforms you want and I'll fix it before you approve."
+        }
         val fantasy = p.value(Keys.CORE_FANTASY) ?: com.hotattic.gamedesigner.core.schema.ConceptText.fantasy(p.originalConcept)
         if (fantasy.isNotBlank()) out += "**The idea.** ${clean(fantasy)}."
         val roleFacts = p.activeFacts().map { it.text }.filter { Regex("(?i)\\b(you (play|are|control|choose|can (play|descend|ascend))|as an? |as the )").containsMatchIn(it) && !Regex("(?i)\\b(called|named|titled)\\b").containsMatchIn(it) }

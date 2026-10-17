@@ -122,6 +122,12 @@ object DecisionExtractor {
 
         val plats = platformWords.filter { (_, ws) -> ws.any { GenreKnowledge.containsWord(t, it) } }.keys
         if (plats.isNotEmpty()) out[Keys.PLATFORMS] = Decision.joinList(plats)
+        // An instruction about platforms ("add PC as the primary platform", "forget Android") says what the list becomes, not just what was mentioned.
+        PlatformInstructions.parse(text)?.let { instruction ->
+            val o = instruction.applyTo(plats.toList(), null)
+            if (o.platforms.isEmpty()) out.remove(Keys.PLATFORMS) else out[Keys.PLATFORMS] = Decision.joinList(o.platforms)
+            o.primaryRequested?.let { out[Keys.PRIMARY_PLATFORM] = it }
+        }
 
         artWords.entries.firstOrNull { (_, ws) -> ws.any { it in t } }?.let { out[Keys.ART_DIRECTION] = it.key }
         perspectiveWords.entries.firstOrNull { (_, ws) -> ws.any { it in t } }?.let { out[Keys.PERSPECTIVE] = it.key }
@@ -158,6 +164,7 @@ object DecisionExtractor {
             // Sentence openers and tech tags are not titles: "It's a 2D", "You can", "3D".
             if (first.lowercase().replace("’", "'") in nonTitleOpeners) return
             if (Regex("(?i)^(\\d\\.?\\d?d|android|ios|pc|2d|3d)$").matches(s.split(' ').last()) && s.split(' ').size <= 3) return
+            if (!ReferenceGuard.isPlausibleTitle(s)) return
             val words = s.split(' ')
             val multi = words.count { it.firstOrNull()?.let { c -> c.isUpperCase() || c.isDigit() } == true } >= 2
             val single = words.size == 1 && (afterTrigger || s.lowercase() in knownSingleWord)

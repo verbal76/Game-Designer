@@ -290,6 +290,14 @@ object ConflictEngine {
                     "Keep one primary genre and one flavor genre.", listOf(Keys.GENRE))
             else null
         },
+        // What the owner said last must be what the design says: a newer instruction that was recorded but not applied blocks readiness and generation.
+        { t ->
+            FactCoherence.platformFindings(t.project).firstOrNull()?.let { f ->
+                Conflict("fact_contradicts_decision", Severity.BLOCKER, "What you said and what I recorded don't match", f.message,
+                    "Apply what you said so the design matches your latest instruction. If you changed your mind, tell me which platforms you want.",
+                    listOf(Keys.PLATFORMS, Keys.PRIMARY_PLATFORM), listOf(Alternative(f.fixLabel, f.fix)), overridable = false)
+            }
+        },
     )
 
     fun all(project: Project): List<Conflict> {

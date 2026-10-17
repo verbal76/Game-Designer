@@ -30,6 +30,10 @@ import com.hotattic.gamedesigner.core.engine.DecisionExtractor
 import com.hotattic.gamedesigner.core.engine.Extraction
 import com.hotattic.gamedesigner.core.engine.InterviewPlanner
 import com.hotattic.gamedesigner.core.engine.NextStep
+import com.hotattic.gamedesigner.core.engine.OwnerChange
+import com.hotattic.gamedesigner.core.engine.PlatformInstruction
+import com.hotattic.gamedesigner.core.engine.PlatformInstructions
+import com.hotattic.gamedesigner.core.engine.ReferenceGuard
 import com.hotattic.gamedesigner.core.engine.ProjectOps
 import com.hotattic.gamedesigner.core.engine.ScopeEngine
 import com.hotattic.gamedesigner.core.engine.Severity
@@ -316,6 +320,27 @@ class Director(private val deps: DirectorDeps) {
         var action: DirectorAction? = null
         var note: String? = null
         var kind: InterpreterKind? = null
+
+        // An unmistakable platform instruction ("forget Android, it is a PC game now", "add PC as the primary platform") changes the real
+        // decision with owner authority at any point in the conversation, instead of being filed as a fact nobody applies.
+        if (pending != Keys.PLATFORMS) {
+            val instruction = PlatformInstructions.parse(text)
+            if (instruction != null && p.decision(Keys.PLATFORMS)?.let { it.value.isNotBlank() && it.status != DecisionStatus.DEFERRED } == true) {
+                val applied = applyPlatformInstruction(p, instruction, text.trim(), now)
+                p = applied.project
+                val fieldPending = pending?.takeUnless { it.startsWith("__") }?.let { Fields.get(it) }
+                val swallow = pending == PENDING_REVIEW || (instruction.pure && pending != null && pending != PENDING_READY && pending != PENDING_PROPOSALS && pending != PENDING_FOLLOWUP)
+                if (applied.changed || swallow) p = ProjectOps.addMessage(p, Role.DIRECTOR, applied.said, now)
+                if (swallow) {
+                    val conflict = pending?.takeIf { it.startsWith(PENDING_CONFLICT_PREFIX) }?.let { id -> ConflictEngine.all(p).firstOrNull { it.id == id.removePrefix(PENDING_CONFLICT_PREFIX).removeSuffix("__") } }
+                    return DirectorTurn(when {
+                        conflict != null -> reply(p, Messages.conflict(conflict), pending, conflictQuick(conflict))
+                        fieldPending != null && fieldPending.isRelevant(Traits(p)) && p.decision(fieldPending.key)?.value.isNullOrBlank() -> askField(ProjectOps.setPending(p, null), fieldPending, now)
+                        else -> advance(ProjectOps.setPending(p, null), settings)
+                    })
+                }
+            }
+        }
 
         // Conversation repair: talk about the app ("I already uploaded it", "I already answered that") never becomes a requirement.
         if (pending != null && !pending.startsWith("__") && MetaConversation.isMeta(text.trim()) && !LocalInterpreter.interpret(p, null, text).misunderstood) {
@@ -915,6 +940,38 @@ class Director(private val deps: DirectorDeps) {
         return Absorbed(p, interp.by.takeIf { it != InterpreterKind.RULES }?.label, interp.by, interp)
     }
 
+    class PlatformApplied(val project: Project, val changed: Boolean, val said: String)
+
+    /** Records the owner's words and applies the instruction to the platform decisions (OWNER_CORRECTION over an earlier owner choice). Idempotent. */
+    private fun applyPlatformInstruction(p0: Project, instruction: PlatformInstruction, text: String, now: Long): PlatformApplied {
+        var p = ProjectOps.addFacts(p0, sentences(text), "owner", Provenance.OWNER_EXPLICIT, now)
+        val current = p.list(Keys.PLATFORMS)
+        val primary = p.decision(Keys.PRIMARY_PLATFORM)?.value?.takeIf { it.isNotBlank() }
+        val o = instruction.applyTo(current, primary)
+        fun names(ids: List<String>) = ids.joinToString(", ") { com.hotattic.gamedesigner.core.schema.Platforms.labels[it] ?: it }
+        if (!o.valid) return PlatformApplied(p, false, "That would leave the game with no platform at all, so I haven't removed it. Tell me which platform you want instead.")
+        val platformsChanged = o.platforms.toSet() != current.toSet()
+        val primaryChanged = o.primary != primary
+        if (!platformsChanged && !primaryChanged)
+            return PlatformApplied(p, false, "That's already how it is: ${names(current)}" + (primary?.takeIf { current.size >= 2 }?.let { ", built and tested first on ${names(listOf(it))}" } ?: "") + ".")
+        // The owner's sentence is kept as a fact; the decision carries no raw answer, since the sentence is not an answer to the platform question.
+        if (platformsChanged) p = ProjectOps.setDecision(p, Keys.PLATFORMS, Decision.joinList(o.platforms), Provenance.OWNER_EXPLICIT, now)
+        p = when {
+            o.primary != null && o.platforms.size >= 2 -> ProjectOps.setDecision(p, Keys.PRIMARY_PLATFORM, o.primary, Provenance.OWNER_EXPLICIT, now)
+            else -> ProjectOps.clearDecision(p, Keys.PRIMARY_PLATFORM, now).let { cleared -> if (primary == null) p else cleared }
+        }
+        val r = Reconciler.reconcile(p0, p, now)
+        val said = buildString {
+            append("Understood - ")
+            append(if (platformsChanged) "the platforms are now ${names(o.platforms)}" else "the platforms stay ${names(o.platforms)}")
+            if (o.primary != null && o.platforms.size >= 2) append(", and I'll build and test ${names(listOf(o.primary))} first")
+            append(".")
+            if (r.notices.isNotEmpty()) append(" ").append(r.notices.joinToString(" "))
+            append(" Your earlier approval no longer applies, so I'll show you the review again.")
+        }
+        return PlatformApplied(r.project, true, said)
+    }
+
     class Applied(val project: Project, val announcement: String)
 
     private val negationWord = Regex("(?i)(\\bnot\\b|\\bno\\b|n't\\b|\\bnever\\b|\\bwithout\\b|\\bforget\\b)")
@@ -979,11 +1036,22 @@ class Director(private val deps: DirectorDeps) {
         p = ProjectOps.addFacts(p, newFacts, category, Provenance.OWNER_EXPLICIT, now)
 
         // Volunteered decisions: an explicit correction is owner-authored; otherwise they are proposals awaiting confirmation.
+        // Platform instructions are applied (and answered) by the dedicated path in handleUserMessageOnce, so the keyword reading must not override them.
+        val platformsHandled = PlatformInstructions.parse(text) != null
         for ((k, v) in interp.edits) {
+            if (platformsHandled && (k == Keys.PLATFORMS || k == Keys.PRIMARY_PLATFORM)) continue
             val existing = p.decision(k)
+            val confirmed = existing != null && existing.status == DecisionStatus.CONFIRMED && existing.value.isNotBlank()
             if (corrected) p = ProjectOps.setDecision(p, k, v, Provenance.OWNER_EXPLICIT, now)
-            else if (!(existing != null && existing.status == DecisionStatus.CONFIRMED && existing.value.isNotBlank()))
-                p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, ProjectOps.FROM_OWNER_WORDS)
+            else if (!confirmed) p = ProjectOps.setDecision(p, k, v, Provenance.SYSTEM_INFERENCE, now, DecisionStatus.PROPOSED, ProjectOps.FROM_OWNER_WORDS)
+            else if (existing!!.value != v && k != Keys.GENRE && !(Fields.get(k)?.kind == FieldKind.MULTI && existing.list().containsAll(v.split(Decision.LIST_SEPARATOR)))) {
+                // A confirmed decision is never changed by a passing mention, and never ignored in silence either.
+                val title = Fields.get(k)?.title?.lowercase() ?: k
+                if (OwnerChange.isChange(text)) {
+                    p = ProjectOps.setDecision(p, k, v, Provenance.OWNER_EXPLICIT, now, raw = text.take(200))
+                    said += "Changed $title from ${Messages.display(p0, k, existing.value)} to ${Messages.display(p, k, v)}."
+                } else said += "I heard ${Messages.display(p, k, v)} for $title, but you already confirmed ${Messages.display(p0, k, existing.value)}, so I kept that. Say \"change $title to ${Messages.display(p, k, v)}\" if you want it."
+            }
         }
         if (interp.references.isNotEmpty()) p = ProjectOps.addReferences(p, interp.references, now)
         p = applyTypedProposals(p, text, interp, now)
@@ -1028,7 +1096,7 @@ class Director(private val deps: DirectorDeps) {
         if (!settings.internetResearchAllowed) return p0
         val research = deps.research ?: return p0
         var p = p0
-        for (ref in p0.references.filter { it.summary.isBlank() && it.sources.isEmpty() }) {
+        for (ref in p0.references.filter { it.summary.isBlank() && it.sources.isEmpty() && ReferenceGuard.isPlausibleTitle(it.name) }) {
             when (val r = runCatching { research.researchReferenceGame(ref.name) }.getOrElse { ResearchOutcome.Unavailable(it.message ?: "error") }) {
                 is ResearchOutcome.Found -> {
                     val found = r.value

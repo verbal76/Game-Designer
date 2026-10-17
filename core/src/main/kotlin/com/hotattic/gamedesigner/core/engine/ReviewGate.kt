@@ -23,6 +23,8 @@ object ReviewGate {
         p.activeFacts().forEach { sb.append("f:").append(it.text).append(';') }
         p.rejected.toSortedMap().forEach { (k, v) -> sb.append("r:").append(k).append(v.sorted()).append(';') }
         p.branding.toSortedMap().forEach { (k, b) -> sb.append("b:").append(k).append(b.mode).append(b.sha256).append(';') }
+        // The reference games shape the design the owner approved, so adding or removing one makes the approval stale.
+        ReferenceGuard.fingerprintNames(p).takeIf { it.isNotEmpty() }?.let { sb.append("refs:").append(it).append(';') }
         return MessageDigest.getInstance("SHA-256").digest(sb.toString().toByteArray()).joinToString("") { "%02x".format(it) }.take(32)
     }
 

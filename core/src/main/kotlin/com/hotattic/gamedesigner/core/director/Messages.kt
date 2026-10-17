@@ -118,6 +118,7 @@ object Messages {
         c.categories.forEach { sb.append("- ${it.category.label}: ${it.resolved}/${it.total}\n") }
         if (c.missingRequired.isNotEmpty()) sb.append("\nStill open: ").append(c.missingRequired.take(6).joinToString { it.title })
         if (c.proposed.isNotEmpty()) sb.append("\nNeed your confirmation: ").append(c.proposed.joinToString { it.title })
+        com.hotattic.gamedesigner.core.engine.FactCoherence.platformFindings(p).forEach { sb.append("\n").append(it.unapplied) }
         if (c.readyForGeneration) sb.append("\nReady to generate.")
         return sb.toString().trim()
     }

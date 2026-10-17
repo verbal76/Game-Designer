@@ -155,7 +155,7 @@ object ProjectOps {
 
     fun addReferences(p: Project, names: List<String>, now: Long): Project {
         val have = p.references.map { it.name.lowercase() }.toSet()
-        val added = names.filter { it.lowercase() !in have }.map { ReferenceGame(name = it) }
+        val added = names.filter { it.lowercase() !in have && ReferenceGuard.isPlausibleTitle(it) }.distinctBy { it.lowercase() }.map { ReferenceGame(name = it) }
         if (added.isEmpty()) return p
         val all = p.references + added
         val existing = p.decision(Keys.REFERENCES)
