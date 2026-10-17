@@ -192,11 +192,11 @@ class InteractionPolishTest {
         for (f in listOf(polish, lesson, chat, spec, home)) { assertFalse("Thread.sleep" in f || Regex("\\bdelay\\(").containsMatchIn(f), "nothing waits before responding") ; assertFalse("horizontalScroll" in f) }
         assertFalse(Regex("(\\d+)\\.sp").findAll(polish + lesson).any { it.groupValues[1].toInt() < 12 })
         assertTrue("contentDescription" in polish && "mergeDescendants = true" in polish, "the stage strip and handoff panel have spoken descriptions")
-        assertTrue("Send your answer" in chat && "StageStrip(" in chat && "StageDialog(" in chat, "icon buttons are labelled and progress is on screen")
+        assertTrue("Send your message" in chat && "Confirm your typed answer" in chat && "StageStrip(" in chat && "StageDialog(" in chat, "icon buttons are labelled and progress is on screen")
         assertTrue("Dispatchers.Default" in chat, "stage progress is computed off the main thread")
         val panel = ui("ui/QuestionPanel.kt")!!
         assertTrue("o.recommended" in panel && "Bob recommends" in panel, "Bob's recommendation is marked in words, never by colour alone")
-        assertTrue("NavRow(" in panel && "\"Back\"" in panel && "\"Next\"" in panel && "confirmLabel" in panel, "BACK | CONFIRM | NEXT are on screen in every state")
+        assertTrue("fun ActionBar(" in panel && "\"Back\"" in panel && "\"Next\"" in panel && "confirmLabel" in panel, "BACK | CONFIRM | NEXT are on screen in every state")
         assertTrue(Regex("heightIn\\(min = 48\\.dp\\)").findAll(panel).count() >= 4, "touch targets are at least 48dp")
         assertFalse("horizontalScroll" in panel || "Thread.sleep" in panel || Regex("\\bdelay\\(").containsMatchIn(panel))
         assertFalse("Dialog(" in panel || "ModalBottomSheet" in panel || "AlertDialog" in panel, "no nested popups")

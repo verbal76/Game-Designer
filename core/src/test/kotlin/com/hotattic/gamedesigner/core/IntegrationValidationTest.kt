@@ -96,7 +96,7 @@ class IntegrationValidationTest {
         val panel = ui.resolve("QuestionPanel.kt").readText()
         val engine = java.io.File(System.getProperty("user.dir")).resolve("src/main/kotlin/com/hotattic/gamedesigner/core/director/GuidedPanel.kt").readText()
         assertTrue("\"SINGLE\"" in engine && "\"MULTI\"" in engine && "spec.options" in engine)
-        assertTrue("GuidedPanel.model(" in chat && "QuestionPanel(" in chat && "model.options" in panel)
+        assertTrue("GuidedPanel.model(" in chat && "ActiveQuestionCard(" in chat && "model.options" in panel)
         assertFalse(Regex("primary_platform|multiplayer_|ota_content|ota_behavior").containsMatchIn(chat + panel + engine))
     }
 

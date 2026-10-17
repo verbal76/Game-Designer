@@ -150,7 +150,7 @@ class BeginnerUxTest {
         assertTrue("ModeSelector(DesignMode.of(p.prefs.experience)" in chat && "vm.setDesignMode" in chat, "the mode selector is on the chat screen")
         assertTrue("LessonParser.split" in chat && "LessonCard(" in chat)
         assertTrue("FilterChip(m == current" in lesson && "DesignMode.values()" in lesson, "both modes are shown; the current one is selected")
-        assertTrue("imeBottom == 0" in chat, "the mode caption steps aside while the keyboard is open")
+        assertTrue("imeBottom > 0" in chat && "if (!compact)" in chat, "the stage strip and mode selector step aside while the keyboard is open")
     }
 
     // ---- handoff consistency is unchanged by any of this ----
