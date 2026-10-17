@@ -35,7 +35,7 @@ class ReleaseSafetyTest {
 
     @Test fun productionIdentityAndTheSeparateTestIdentityAreBothPreserved() {
         assertTrue(gradle.contains("applicationId = \"com.hotatticgames.gamedesigner\""))
-        assertTrue(block("debug {").contains("applicationIdSuffix = \".test\""))
+        assertTrue(block("debug {").contains("applicationIdSuffix = \".\$testSuffix\""))
         assertFalse(block("release {").contains("applicationIdSuffix"))
     }
 
@@ -76,5 +76,14 @@ class ReleaseSafetyTest {
     @Test fun ciFailsIfTheApkIsNotSignedWithThePersistentTestCertificate() {
         assertTrue(workflow.contains("certificate SHA-256 digest: \${GD_TEST_CERT_SHA256}"), "the built APK is compared with the recorded test certificate")
         assertTrue(workflow.indexOf("ensure-test-key.sh") < workflow.indexOf("assembleDebug"), "the key is loaded before the APK is built")
+    }
+
+    @Test fun theMigrationVariantIsLimitedToTheTestAppAndNeverTouchesProduction() {
+        assertTrue(gradle.contains("require(testSuffix == \"test\" || testSuffix == \"test2\")"), "only the two TEST ids are accepted")
+        assertTrue(gradle.contains("\"Game Designer TEST 2\""), "the migration app is labelled TEST 2")
+        assertFalse(block("release {").contains("testSuffix") || block("release {").contains("gd_variant_label"), "release never uses the TEST variant")
+        assertTrue(gradle.contains("applicationId = \"com.hotatticgames.gamedesigner\""), "production id unchanged")
+        assertTrue(workflow.contains("EXPECT_SUFFIX") && workflow.contains("com.hotatticgames.gamedesigner.\${EXPECT_SUFFIX}"), "CI checks the built APK's id against the requested variant")
+        assertTrue(workflow.contains("unknown test_variant"), "any other variant value stops the build")
     }
 }

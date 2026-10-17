@@ -10,6 +10,11 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths-ignore: ["**.md", "docs/**", "tools/models/**", "ota/publish-request.json", ".github/workflows/release-*.yml", ".github/workflows/model-catalog.yml", ".github/workflows/ota-publish.yml"]
   workflow_dispatch:
+    inputs:
+      test_variant:
+        description: "Leave empty for the normal TEST app. 'test2' builds the one-off side-by-side migration app (com.hotatticgames.gamedesigner.test2, label Game Designer TEST 2)."
+        required: false
+        default: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -48,6 +53,16 @@ jobs:
           echo "GD_TEST_KEY_ALIAS=$(sed -n 's/^alias=//p' "$RUNNER_TEMP/testkey/test.properties")" >> "$GITHUB_ENV"
           echo "GD_TEST_CERT_SHA256=$(cat "$RUNNER_TEMP/testkey/test.sha256")" >> "$GITHUB_ENV"
           [ -n "$(cat "$RUNNER_TEMP/testkey/test.sha256")" ] && [ -n "$(sed -n 's/^password=//p' "$RUNNER_TEMP/testkey/test.properties")" ]
+      - name: Test variant (normal TEST app, or the side-by-side TEST 2 migration app)
+        env:
+          VARIANT: ${{ inputs.test_variant }}
+        run: |
+          set -euo pipefail
+          case "$VARIANT" in
+            "")    echo "GD_TEST_VARIANT=" >> "$GITHUB_ENV"; echo "EXPECT_SUFFIX=test" >> "$GITHUB_ENV"; echo "EXPECT_LABEL=Game Designer TEST" >> "$GITHUB_ENV" ;;
+            test2) echo "GD_TEST_VARIANT=test2" >> "$GITHUB_ENV"; echo "EXPECT_SUFFIX=test2" >> "$GITHUB_ENV"; echo "EXPECT_LABEL=Game Designer TEST 2" >> "$GITHUB_ENV" ;;
+            *) echo "unknown test_variant '$VARIANT'"; exit 1 ;;
+          esac
       - name: Monotonic version code
         run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
       - name: Android lint, debug APK, layer unit tests (incl. theme contrast)
@@ -69,9 +84,9 @@ jobs:
           set -euo pipefail
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/aapt2" dump badging app/build/outputs/apk/debug/app-debug.apk | tee badging-test.txt | head -4
-          grep -q "package: name='com.hotatticgames.gamedesigner.test'" badging-test.txt
-          grep -q "versionName='5.0.0-test'" badging-test.txt
-          grep -q "application-label:'Game Designer TEST'" badging-test.txt
+          grep -q "package: name='com.hotatticgames.gamedesigner.${EXPECT_SUFFIX}'" badging-test.txt
+          grep -q "versionName='5.0.0-${EXPECT_SUFFIX}'" badging-test.txt
+          grep -q "application-label:'${EXPECT_LABEL}'" badging-test.txt
           "$BT/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee certs-test.txt | grep -E "certificate SHA-256 digest|Signer #1 certificate DN" | head -3
           # The APK must carry the persistent test certificate: the same one on every build, so each test APK updates the previous one in place.
           grep -q "certificate SHA-256 digest: ${GD_TEST_CERT_SHA256}" certs-test.txt
@@ -89,7 +104,7 @@ jobs:
       - name: Upload private debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: game-designer-debug-apk-${{ github.sha }}
+          name: game-designer-debug-apk-${{ inputs.test_variant || 'test' }}-${{ github.sha }}
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
           if-no-files-found: error

@@ -70,10 +70,10 @@ class PersonalDataLeakGuardTest {
     @Test fun theDebugBuildIsASeparateTestAppAndProductionIsUnchanged() {
         val gradle = File(root, "app/build.gradle.kts").readText()
         val debug = block(gradle, "debug {"); val release = block(gradle, "release {")
-        assertTrue(debug.contains("applicationIdSuffix = \".test\""), "the test build needs its own application id")
+        assertTrue(debug.contains("applicationIdSuffix = \".\$testSuffix\""), "the test build needs its own application id")
         assertTrue(!release.contains("applicationIdSuffix"), "production keeps its application id")
         assertTrue(gradle.contains("applicationId = \"com.hotatticgames.gamedesigner\""), "the production application id is unchanged")
-        assertTrue(File(root, "app/src/debug/res/values/strings.xml").readText().contains("Game Designer TEST"), "the test app has a distinguishable label")
+        assertTrue(File(root, "app/build.gradle.kts").readText().contains("Game Designer TEST") && File(root, "app/src/debug/res/values/strings.xml").readText().contains("gd_variant_label"), "the test app has a distinguishable label")
         for (wf in listOf("release-v4.yml", "release-v5.yml")) assertTrue(File(root, ".github/workflows/$wf").readText().contains("package: name='com.hotatticgames.gamedesigner'"), "$wf still insists on the production id")
     }
 

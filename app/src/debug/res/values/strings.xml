@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Side-by-side test build: a different label so it cannot be mistaken for the production app on the launcher. -->
-    <string name="app_name">Game Designer TEST</string>
+    <!-- Side-by-side test build: a different label so it cannot be mistaken for the production app on the launcher. gd_variant_label is generated in
+         app/build.gradle.kts ("Game Designer TEST", or "Game Designer TEST 2" for the one-off migration build). -->
+    <string name="app_name">@string/gd_variant_label</string>
 </resources>

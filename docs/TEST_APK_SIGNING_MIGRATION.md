@@ -27,3 +27,19 @@ The installed TEST app is signed with a key that no longer exists. Android only 
 5. After migration, the persistent key makes every later TEST update in place with projects preserved. Production Bob is never touched by any of this.
 
 Not verified: an actual install on a phone (nothing was installed), and the first CI run that creates the persistent key (see the CI results in the completion report).
+
+## Option B in practice: the side-by-side "Game Designer TEST 2" app
+The migration build is `com.hotatticgames.gamedesigner.test2`, label **Game Designer TEST 2**, version `5.0.0-test2`, signed with the persistent TEST key. It is a different application from the installed TEST app (`...gamedesigner.test`) and from production Bob (`...gamedesigner`): its own private storage, nothing shared. Installing it does not touch, update, replace or remove either of them. It is built by dispatching `android.yml` with `test_variant = test2`; the normal run (empty input) still builds the usual TEST app. Only those two values are accepted, and production's id and signing are unchanged.
+
+### Import and compare (you do this; nothing is removed automatically)
+1. **Back up in the old TEST app** (the one that holds your projects): Settings > Your projects: backup and recovery > Back up all projects. Wait for "verified". Save to Downloads and copy the ZIP to Drive or a computer. Then Settings > Check a backup file on it: "This file is intact".
+2. **Install TEST 2.** Download the CI artifact, unzip it, open `app-debug.apk`. It appears as a second icon, "Game Designer TEST 2". The old TEST app stays.
+3. **Import into TEST 2:** open TEST 2 > Home > Import or recover projects > pick the backup ZIP. The preview must say "Complete backup ... checksums verified" and list your projects. Tap Import.
+4. **Compare every project** (old app vs TEST 2), one at a time: the name, the conversation (first and last messages), the decisions and exclusions, the approvals and spec versions, the project count. TEST 2 holds exact copies; imported projects are never renamed unless the same id already exists there.
+5. If a project looks different or missing, stop: the old TEST app still holds the original and the ZIP is intact. Tell me which one and I will investigate from the file.
+6. Only when you are satisfied, remove the old TEST app yourself. TEST 2 then remains your test app; its projects are not affected by removing the other app. Later TEST 2 builds update it in place (same key and id). Removing "TEST 2" at any time deletes only its own data.
+
+### What was verified here
+- Automated (core, JVM, synthetic projects): a backup moves into a completely separate store with every project identical, including a field this build does not know; a damaged project is recovered from its good copy and the backup is reported as INCOMPLETE rather than clean; importing twice never overwrites (`MigrationPortabilityTest`, `TransferControllerTest`, `ProjectTransferTest`, `DataArchitectureAuditTest`).
+- CI: the TEST 2 APK's id, version, label and certificate are checked against the requested variant and the recorded persistent key.
+- Not verified until you try it: installing on a phone, and importing your own backup.

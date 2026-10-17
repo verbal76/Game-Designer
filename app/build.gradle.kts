@@ -30,6 +30,10 @@ android {
     // The TEST app (debug build type) is signed with its own persistent key, never the release key: CI loads it from the private draft release
     // "gd-test-signing-key" (tools/ota/ensure-test-key.sh). Without it (local builds) the default debug key is used, which cannot update a CI-built test app.
     val testKsPath = System.getenv("GD_TEST_KEYSTORE")
+    // The one-off migration build installs NEXT TO the normal TEST app (own application id, own private storage) so a verified backup can be imported and
+    // compared before anything is removed. Only these two values are accepted; production is never affected (release has no suffix).
+    val testSuffix = System.getenv("GD_TEST_VARIANT").orEmpty().ifBlank { "test" }
+    require(testSuffix == "test" || testSuffix == "test2") { "GD_TEST_VARIANT must be empty or 'test2' (got '$testSuffix')" }
     signingConfigs {
         if (testKsPath != null) {
             create("testStable") {
@@ -61,8 +65,9 @@ android {
         // The debug build is the SIDE-BY-SIDE TEST build: its own application id, so it installs next to the production app and has its own private
         // storage (projects, secrets, OTA state). It can never touch, update or replace the installed production app. Release is unchanged.
         debug {
-            applicationIdSuffix = ".test"
-            versionNameSuffix = "-test"
+            applicationIdSuffix = ".$testSuffix"
+            versionNameSuffix = "-$testSuffix"
+            resValue("string", "gd_variant_label", if (testSuffix == "test2") "Game Designer TEST 2" else "Game Designer TEST")
             signingConfig = signingConfigs.findByName("testStable") ?: signingConfigs.getByName("debug")
         }
         release {
@@ -79,6 +84,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true   // the TEST build label comes from a generated string
     }
 
     lint { checkReleaseBuilds = false }
