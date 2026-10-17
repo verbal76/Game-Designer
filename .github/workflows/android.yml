@@ -41,11 +41,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           tools/ota/ensure-test-key.sh "$RUNNER_TEMP/testkey" | tee key.log
           echo "GD_TEST_KEYSTORE=$RUNNER_TEMP/testkey/test.keystore" >> "$GITHUB_ENV"
           echo "GD_TEST_KEYSTORE_PASSWORD=$(sed -n 's/^password=//p' "$RUNNER_TEMP/testkey/test.properties")" >> "$GITHUB_ENV"
           echo "GD_TEST_KEY_ALIAS=$(sed -n 's/^alias=//p' "$RUNNER_TEMP/testkey/test.properties")" >> "$GITHUB_ENV"
           echo "GD_TEST_CERT_SHA256=$(cat "$RUNNER_TEMP/testkey/test.sha256")" >> "$GITHUB_ENV"
+          [ -n "$(cat "$RUNNER_TEMP/testkey/test.sha256")" ] && [ -n "$(sed -n 's/^password=//p' "$RUNNER_TEMP/testkey/test.properties")" ]
       - name: Monotonic version code
         run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
       - name: Android lint, debug APK, layer unit tests (incl. theme contrast)

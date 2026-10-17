@@ -22,7 +22,9 @@ if [ -z "${id:-}" ]; then
   gh release create "$NAME" --draft --title "$NAME" \
     --notes "PRIVATE: signing key of the side-by-side TEST app only (never production). Draft release, visible only to repository writers. Do not publish or delete it: deleting it changes the TEST app's signing identity, and the installed TEST app can then no longer be updated in place." \
     "$OUT/test.keystore" "$OUT/test.properties" "$OUT/test.sha256" --repo "$R"
-  id=$(oldest)
+  # A just-created draft can take a moment to appear in the list.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do id=$(oldest || true); [ -n "${id:-}" ] && break; sleep 3; done
+  [ -n "${id:-}" ] || { echo "created $NAME but cannot see it yet; run again (the key is stored)"; exit 1; }
   rm -f "$OUT"/test.*
 fi
 echo "Loading test signing key (release id $id)"

@@ -69,6 +69,8 @@ class ReleaseSafetyTest {
         assertTrue(testKeyScript.contains("sort_by(.id)"), "concurrent first runs agree on one key")
         assertFalse(workflow.contains("actions/cache@") && workflow.contains("debug.keystore"), "the evictable cache is no longer the key store")
         assertTrue(workflow.contains("tools/ota/ensure-test-key.sh"))
+        val step = workflow.substring(workflow.indexOf("Persistent signing key for the test build"), workflow.indexOf("Monotonic version code"))
+        assertTrue(step.contains("set -euo pipefail"), "a failing key script must fail the step (a pipe to tee would otherwise hide it)")
     }
 
     @Test fun ciFailsIfTheApkIsNotSignedWithThePersistentTestCertificate() {
