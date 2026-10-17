@@ -290,6 +290,18 @@ object ConflictEngine {
                     "Keep one primary genre and one flavor genre.", listOf(Keys.GENRE))
             else null
         },
+        // A remark that contradicts a confirmed yes/no about a system (combat, economy, crafting, progression) is asked about, never settled silently.
+        { t ->
+            FactCoherence.gateFindings(t.project).firstOrNull()?.let { f ->
+                val what = f.gate.noun.substringBefore(" (")
+                val other = if (f.decided == "no") "yes" else "no"
+                Conflict("fact_contradicts_gate", Severity.BLOCKER, "You said something that cuts against an earlier decision",
+                    "You decided ${if (f.decided == "no") "there is no $what" else "the game has $what"}, but you also said \"${f.factText.take(140)}\". I won't change your decision on a passing remark.",
+                    "Tell me which you mean, and I'll make the design match.", listOf(f.gate.key),
+                    listOf(Alternative(if (f.decided == "no") "Keep $what out" else "Keep $what in", mapOf(f.gate.key to f.decided)), Alternative(if (f.decided == "no") "Add $what after all" else "Take $what out", mapOf(f.gate.key to other))),
+                    overridable = false)
+            }
+        },
         // What the owner said last must be what the design says: a newer instruction that was recorded but not applied blocks readiness and generation.
         { t ->
             FactCoherence.platformFindings(t.project).firstOrNull()?.let { f ->

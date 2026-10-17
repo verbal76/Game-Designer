@@ -61,7 +61,7 @@ object SpecVersioning {
         // Every authoritative document is checked against the structured state and against each other's claims.
         val review = ConsistencyReview.reviewAll(withAssets, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to prompt, "ASSETS.md" to assetsMd))
         // Contradictory conflicts that remain are also blocking.
-        val conflictFindings = ConflictEngine.all(withAssets).filter { it.id == "combat_turn_based_vs_real_time" || it.id == "fact_contradicts_decision" }
+        val conflictFindings = ConflictEngine.all(withAssets).filter { it.id == "combat_turn_based_vs_real_time" || it.id.startsWith("fact_contradicts_") }
             .map { ReviewFinding(ReviewLevel.ERROR, it.id, it.message) }
         val coherence = com.hotattic.gamedesigner.core.engine.DesignCoherence.check(withAssets, mapOf("CLAUDE.md" to md, "MASTER_PROMPT.md" to prompt, "ASSETS.md" to assetsMd) + HandoffDocs.files(withAssets))
         val report = ReviewReport(review.findings + conflictFindings + coherence)

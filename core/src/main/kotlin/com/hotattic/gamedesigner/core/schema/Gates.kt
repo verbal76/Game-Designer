@@ -88,7 +88,7 @@ object Gates {
     }
 
     /** "no" or "yes" per clause in the order the owner said them; questions say nothing. */
-    private fun verdicts(text: String, g: Gate): List<String> {
+    private fun verdicts(text: String, g: Gate, broad: Boolean = false): List<String> {
         val out = mutableListOf<String>()
         for (sentence in text.split(sentenceSplit).filter { it.isNotBlank() }) {
             if (isQuestion(sentence)) continue
@@ -100,7 +100,7 @@ object Gates {
                 when {
                     clauseDenies(c, g) -> { out += "no"; any = true }
                     referenceAttributed(c, g) -> {}
-                    (g.tag?.let { wanted[it] } ?: g.affirm).containsMatchIn(c) && g.affirm.containsMatchIn(c) -> { out += "yes"; any = true }
+                    (if (broad) (g.tag?.let { wanted[it] } ?: g.affirm) else g.affirm).containsMatchIn(c) -> { out += "yes"; any = true }
                 }
             }
             if (!any && g.denial.containsMatchIn(sentence)) out += "no"
@@ -141,6 +141,8 @@ object Gates {
             if (!f.isRelevant(Traits(p))) continue
             val answer = said.last()
             val have = p.decision(g.key)
+            // A confirmed owner decision changes only on an explicit change of mind; a passing remark is raised as a contradiction instead (see FactCoherence).
+            if (have != null && have.ownerAuthored && have.status == com.hotattic.gamedesigner.core.model.DecisionStatus.CONFIRMED && have.value != answer && !explicitChange(text)) continue
             if (have?.value == answer && have.status == com.hotattic.gamedesigner.core.model.DecisionStatus.CONFIRMED) continue
             p = com.hotattic.gamedesigner.core.engine.ProjectOps.setDecision(p, g.key, answer, com.hotattic.gamedesigner.core.model.Provenance.OWNER_CORRECTION, now, raw = text.take(200))
             if (answer == "no") p = dropDependents(p, g, now)
@@ -149,8 +151,14 @@ object Gates {
     }
 
     /** Gates the owner has ruled out in their own words. */
+    /** What this text says about the system: "yes", "no", or null when it says nothing (or contradicts itself, which is a question for the owner). */
+    fun verdictFor(text: String, g: Gate): String? = if (mixed(text, g, broad = true)) null else verdicts(text, g, broad = true).lastOrNull()
+
+    /** Words that make a remark an instruction to change something ("actually", "after all", "I want", "add"), not a description. */
+    fun explicitChange(text: String): Boolean = com.hotattic.gamedesigner.core.engine.OwnerChange.isChange(text) || Regex("(?i)\\bafter all\\b|\\b(?:i want|i'?d like|i need|please add|let'?s add|add|include|must have|should have)\\b").containsMatchIn(text)
+
     /** Both "no" and "yes" in one message about the same system is a contradiction the owner must settle; nothing is recorded silently. */
-    private fun mixed(text: String, g: Gate) = verdicts(text, g).let { "no" in it && "yes" in it }
+    private fun mixed(text: String, g: Gate, broad: Boolean = false) = verdicts(text, g, broad).let { "no" in it && "yes" in it }
 
     fun deniedIn(text: String): List<Gate> = all.filter { "no" in verdicts(text, it) && !mixed(text, it) }
 

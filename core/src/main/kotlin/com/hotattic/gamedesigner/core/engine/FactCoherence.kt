@@ -25,6 +25,21 @@ object FactCoherence {
         val unapplied get() = "I recorded but did not apply: \"$factText\" (the design still says $state)."
     }
 
+    data class GateFinding(val gate: com.hotattic.gamedesigner.core.schema.Gates.Gate, val factText: String, val decided: String)
+
+    /** A newer remark that says the opposite of a system the owner confirmed in or out, without saying they changed their mind. */
+    fun gateFindings(p: Project): List<GateFinding> {
+        val out = mutableListOf<GateFinding>()
+        for (g in com.hotattic.gamedesigner.core.schema.Gates.all) {
+            val d = p.decision(g.key)?.takeIf { it.ownerAuthored && it.status == DecisionStatus.CONFIRMED && it.value in setOf("yes", "no") } ?: continue
+            for (f in p.activeFacts().filter { it.provenance.ownerAuthored && it.at > d.updatedAt }) {
+                val v = com.hotattic.gamedesigner.core.schema.Gates.verdictFor(f.text, g) ?: continue
+                if (v != d.value && !com.hotattic.gamedesigner.core.schema.Gates.explicitChange(f.text)) { out += GateFinding(g, f.text, d.value); break }
+            }
+        }
+        return out
+    }
+
     private fun label(ids: List<String>) = ids.joinToString(", ") { Platforms.labels[it] ?: it }
 
     fun platformFindings(p: Project): List<Finding> {
