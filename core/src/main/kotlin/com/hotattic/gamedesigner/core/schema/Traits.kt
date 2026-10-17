@@ -67,11 +67,24 @@ class Traits(val project: Project) {
             noPower && Regex("(?i)unlock|upgrade|skill|power").containsMatchIn(sys.id + " " + sys.name) -> null
             // A checklist item that offers two styles must not offer the one the design is not (a real-time game is not turn based).
             !has(Tag.TURN_BASED) && "Real-time or turn-based" in sys.detail -> sys.copy(detail = sys.detail.replace("Real-time or turn-based", "Real-time"))
-            else -> sys
+            else -> if (noCombat && sys.detail.contains(Regex("(?i)\\b(?:enem\\w*|boss\\w*|combat|fight\\w*)\\b"))) sys.copy(detail = withoutCombat(sys.detail)) else sys
         }
     }
 
-    fun loopText(g: Genre): String =
+    /** A genre's stock wording without the combat the owner ruled out ("fight enemies", "bosses"); other systems are untouched. */
+    private fun withoutCombat(text: String): String {
+        if (project.value(Keys.HAS_COMBAT) != "no") return text
+        val combatWords = Regex("(?i)\\b(?:fight\\w*|enem\\w*|boss\\w*|combat|battl\\w*|defeat\\w*|kill\\w*|weapons?|attack\\w*|shoot\\w*|monsters?)\\b")
+        val parts = text.trimEnd('.').split(Regex(",\\s*(?:and\\s+)?")).map { it.trim() }.filter { it.isNotEmpty() }
+        val kept = parts.filter { !combatWords.containsMatchIn(it) }
+        if (kept.size == parts.size) return text
+        if (kept.size < 2) return "Carry out the activities the owner described in Part A, in a loop that builds on itself, with no combat."
+        return (kept.dropLast(1).joinToString(", ") + ", and " + kept.last().removePrefix("and ")).replaceFirstChar { it.uppercase() } + "."
+    }
+
+    fun loopText(g: Genre): String = withoutCombat(loopTextRaw(g))
+
+    private fun loopTextRaw(g: Genre): String =
         if (project.value(Keys.WORLD_STRUCTURE) == "procedural_stages" && g.id == "platformer") "Cross a generated, readable route using precise movement and the traversal tools it offers, recover from missed jumps through checkpoints, and reach the goal."
         else if (continuousWorld && g.id == "platformer") "Move through the continuous world using tight movement, avoid hazards and enemies, and progress through it toward its far end."
         else g.loopTemplate

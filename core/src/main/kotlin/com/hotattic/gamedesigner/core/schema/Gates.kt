@@ -53,6 +53,59 @@ object Gates {
         return t.genresKnown && t.genres.none { it.id in g.core }
     }
 
+
+    // ---- Reading the owner's words per clause, so a negated, questioned or merely referenced system is never taken as a request -------
+
+    private val negCue = Regex("(?i)\\b(?:no(?! matter| doubt)|not(?! only| just| sure| yet| too| so| necessarily)|without|never|none of|zero|skip(?:ping)?|drop(?:ping)?|remov(?:e|ing)|exclud(?:e|ing)|leav(?:e|ing) (?:out|off)|minus|cut(?:ting)?|ditch(?:ing)?|ignor(?:e|ing)|nor|don'?t (?:want|need|like|care (?:for|about))|do not (?:want|need|like)|doesn'?t (?:need|want|have)|does not (?:need|want|have)|rather not (?:have|include)|nothing (?:about|like))\\b")
+    private val clauseSplit = Regex("[,;:]|\\bbut\\b|\\bhowever\\b|\\balthough\\b|\\bthough\\b")
+    private val sentenceSplit = Regex("(?<=[.!?])\\s+|\\n+")
+    private val questionStart = Regex("(?i)^\\s*(?:what|how|why|when|where|which|who|should|could|would|can|do|does|is|are|will)\\b")
+    private val wantCue = Regex("(?i)\\b(?:i want|i'?d like|i need|add|include|with|has|have|must have|should have|needs?|there (?:is|are|should be))\\b")
+
+    private val nounCore: Map<String, String> = mapOf(
+        Keys.HAS_COMBAT to "combat|fight(?:ing|s)?|violence|enem(?:y|ies)|battl(?:e|es|ing)|bosse?s?|monsters?|weapons?|killing",
+        Keys.HAS_ECONOMY to "economy|currenc(?:y|ies)|shops?|money|trading|gold|coins?|markets?|prices?",
+        Keys.HAS_CRAFTING to "crafting|gathering|harvest(?:ing)?|resource gathering|building materials",
+        Keys.HAS_PROGRESSION to "progression|upgrades?|xp|experience|levell?ing|level[- ]ups?|skill trees?|unlocks?|power[- ]?ups?",
+    )
+
+    private fun isQuestion(sentence: String) = sentence.trimEnd().endsWith("?") || questionStart.containsMatchIn(sentence)
+
+    /** A clause negates the system when a negation cue is followed (within a few words) by the system's noun, or the noun is called out/unneeded. */
+    private fun clauseDenies(clause: String, g: Gate): Boolean {
+        if (g.denial.containsMatchIn(clause)) return true
+        val n = nounCore[g.key] ?: return false
+        for (m in negCue.findAll(clause)) {
+            if (Regex("^[\\s'\\w-]{0,40}?\\b(?:$n)\\b", RegexOption.IGNORE_CASE).containsMatchIn(clause.substring(m.range.last + 1))) return true
+        }
+        return Regex("\\b(?:$n)\\b[^.]{0,20}\\b(?:isn'?t|is not|aren'?t|are not|won'?t be|will not be)\\b|\\b(?:$n)\\s+(?:is|are)\\s+out\\b|\\b(?:leav(?:e|ing)|tak(?:e|ing)|keep(?:ing)?|cut(?:ting)?)\\s+(?:the\\s+|any\\s+)?(?:$n)\\s+(?:out|off)\\b", RegexOption.IGNORE_CASE).containsMatchIn(clause)
+    }
+
+    /** The system's noun spoken about a referenced game ("its combat", "Syx's combat") with no wish to have it: an observation, not a requirement. */
+    private fun referenceAttributed(clause: String, g: Gate): Boolean {
+        val n = nounCore[g.key] ?: return false
+        return Regex("(?:\\b(?:its|their|his|her)|'s)\\s+(?:\\w+\\s+){0,2}(?:$n)\\b", RegexOption.IGNORE_CASE).containsMatchIn(clause) && !wantCue.containsMatchIn(clause)
+    }
+
+    /** "no" or "yes" per clause in the order the owner said them; questions say nothing. */
+    private fun verdicts(text: String, g: Gate): List<String> {
+        val out = mutableListOf<String>()
+        for (sentence in text.split(sentenceSplit).filter { it.isNotBlank() }) {
+            if (isQuestion(sentence)) continue
+            val clauses = sentence.split(clauseSplit).filter { it.isNotBlank() }
+            var any = false
+            for (c in clauses) {
+                when {
+                    clauseDenies(c, g) -> { out += "no"; any = true }
+                    referenceAttributed(c, g) -> {}
+                    (g.tag?.let { wanted[it] } ?: g.affirm).containsMatchIn(c) && g.affirm.containsMatchIn(c) -> { out += "yes"; any = true }
+                }
+            }
+            if (!any && g.denial.containsMatchIn(sentence)) out += "no"
+        }
+        return out
+    }
+
     /** True unless the owner (or a settled inference) has ruled the system out; gated detail questions use this. */
     fun open(t: Traits, key: String): Boolean = t.project.decision(key)?.value != "no"
 
@@ -68,8 +121,9 @@ object Gates {
 
     fun suggestFor(t: Traits, g: Gate): Suggestion {
         val said = (listOf(t.project.originalConcept) + t.project.activeFacts().map { it.text }).joinToString(". ")
-        val denied = g.denial.containsMatchIn(said)
-        val wants = !denied && (g.tag?.let { wanted[it] } ?: g.affirm).containsMatchIn(g.denial.replace(said, " "))
+        val v = verdicts(said, g)
+        val denied = "no" in v
+        val wants = !denied && "yes" in v
         val yes = !denied && (wants || t.genres.any { it.id in g.usually })
         return Suggestion(if (yes) "yes" else "no",
             if (denied) "You told me there is no ${g.noun}." else if (wants) "You described ${g.noun} yourself." else if (yes) "Games like this usually have ${g.noun}." else "Nothing you've described needs ${g.noun}, and adding it would dilute the focus.")
@@ -79,12 +133,11 @@ object Gates {
     fun applyOwnerText(p0: Project, text: String, now: Long): Project {
         var p = p0
         for (g in all) {
-            val no = g.denial.findAll(text).lastOrNull()?.range?.first ?: -1
-            val yes = g.affirm.findAll(g.denial.replace(text) { " ".repeat(it.value.length) }).lastOrNull()?.range?.first ?: -1
-            if (no < 0 && yes < 0) continue
+            val said = verdicts(text, g)
+            if (said.isEmpty()) continue
             val f = Fields.get(g.key) ?: continue
             if (!f.isRelevant(Traits(p))) continue
-            val answer = if (no > yes) "no" else "yes"
+            val answer = said.last()
             val have = p.decision(g.key)
             if (have?.value == answer && have.status == com.hotattic.gamedesigner.core.model.DecisionStatus.CONFIRMED) continue
             p = com.hotattic.gamedesigner.core.engine.ProjectOps.setDecision(p, g.key, answer, com.hotattic.gamedesigner.core.model.Provenance.OWNER_CORRECTION, now, raw = text.take(200))
@@ -94,10 +147,10 @@ object Gates {
     }
 
     /** Gates the owner has ruled out in their own words. */
-    fun deniedIn(text: String): List<Gate> = all.filter { it.denial.containsMatchIn(text) }
+    fun deniedIn(text: String): List<Gate> = all.filter { "no" in verdicts(text, it) }
 
     /** Gates the owner has asked for in their own words. */
-    fun affirmedIn(text: String): List<Gate> = all.filter { it.affirm.containsMatchIn(it.denial.replace(text, " ")) }
+    fun affirmedIn(text: String): List<Gate> = all.filter { "yes" in verdicts(text, it) }
 
     /** Takes back the detail answers of a system that has been ruled out, so nothing stale survives in the design. */
     fun dropDependents(p: Project, g: Gate, now: Long): Project =

@@ -310,8 +310,9 @@ object Fields {
             "Knowing which part of each reference you love stops me copying the wrong thing.",
             57, relevant = { it.genresKnown && it.value(Keys.REFERENCES).let { v -> v != null && v != "none" } },
             suggest = { t ->
-                val names = t.project.references.map { it.name }.ifEmpty { listOf(t.value(Keys.REFERENCES).orEmpty()) }
-                Suggestion(names.joinToString(" ") { "From $it: its core loop structure, pacing and the way build choices compound." } + " Take design ideas only, never characters, art, maps, music or writing.", "A safe default; correct me if you meant something else.")
+                // Nothing is invented on the owner's behalf: a reference with no named characteristic is inspiration only.
+                if (t.project.references.isNotEmpty()) Suggestion(com.hotattic.gamedesigner.core.engine.ReferenceAspects.summary(t.project), "I only use what you named; a game you did not break down is general inspiration and nothing is copied from it.")
+                else Suggestion(t.value(Keys.REFERENCES).orEmpty().split(",").map { it.trim() }.filter { it.isNotBlank() }.joinToString(" ") { "From $it: inspiration only; no specific mechanics, content or features are inherited." } + " Take design ideas only, never characters, art, maps, music or writing.", "I only use what you named; nothing is copied from a game you did not break down.")
             }),
 
         Field(Keys.CORE_LOOP, Category.GAMEPLAY, FieldKind.TEXT, "Core gameplay loop",

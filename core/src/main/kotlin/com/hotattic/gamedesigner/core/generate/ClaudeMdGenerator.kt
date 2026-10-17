@@ -484,9 +484,20 @@ object ClaudeMdGenerator {
         h2("16. Explicit exclusions, prototype scope and future possibilities")
         val ownerEx = com.hotattic.gamedesigner.core.engine.Exclusions.fromOwner(project)
         val note = v(Keys.EXCLUSIONS)
-        if (ownerEx.isNotEmpty() || note != null) {
+        // Systems the owner ruled out through a gate question or in their own words, and characteristics of a reference they rejected.
+        val ruledOut = com.hotattic.gamedesigner.core.schema.Gates.all.filter { g -> project.decision(g.key)?.let { it.value == "no" && it.ownerAuthored } == true }.map { g ->
+            val said = (listOf(project.originalConcept) + project.activeFacts().map { it.text }).flatMap { it.split(Regex("(?<=[.!?])\\s+")) }.lastOrNull { com.hotattic.gamedesigner.core.schema.Gates.deniedIn(it).any { d -> d.key == g.key } }
+            "**${g.noun.substringBefore(" (").replaceFirstChar { it.uppercase() }}** - ruled out by the owner${said?.let { ": \"${it.trim().take(160)}\"" } ?: "."} Do not add it, and do not ask about it again."
+        }
+        val rejectedFromRefs = project.references.filter { it.excluded.isNotEmpty() }.map { "**${it.excluded.joinToString(", ")} from ${it.name}** - the owner does not want this characteristic of the reference game." }
+        if (ownerEx.isNotEmpty() || note != null || ruledOut.isNotEmpty() || rejectedFromRefs.isNotEmpty()) {
             h3("Excluded by the owner (stays excluded until the owner says otherwise; do not add these, and do not ask about them again)")
-            bullets(ownerEx.map { "**${it.label}** - the owner said: \"${it.evidence}\"" } + listOfNotNull(note?.let { "Owner's note on what is out of scope or deferred: $it" }))
+            bullets(ownerEx.map { "**${it.label}** - the owner said: \"${it.evidence}\"" } + ruledOut + rejectedFromRefs + listOfNotNull(note?.let { "Owner's note on what is out of scope or deferred: $it" }))
+        }
+        val laterPlatforms = project.activeFacts().flatMap { com.hotattic.gamedesigner.core.engine.Hedge.futurePlatforms(it.text) }.distinct().filter { it !in Traits(project).platforms }
+        if (laterPlatforms.isNotEmpty()) {
+            h3("Possible later platforms (NOT launch requirements)")
+            p("The owner mentioned ${laterPlatforms.joinToString { Platforms.labels[it] ?: it }} only as a possibility for later. Do not build for it now; keep the architecture from blocking it.")
         }
         h3("Not required for this prototype")
         p("Everything below is temporary prototype scope. 'Not required' never means 'forbidden': after handoff, or on any explicit owner instruction, any of it can be built.")

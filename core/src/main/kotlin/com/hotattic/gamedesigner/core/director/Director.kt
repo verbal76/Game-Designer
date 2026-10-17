@@ -1037,7 +1037,8 @@ class Director(private val deps: DirectorDeps) {
 
         // Volunteered decisions: an explicit correction is owner-authored; otherwise they are proposals awaiting confirmation.
         // Platform instructions are applied (and answered) by the dedicated path in handleUserMessageOnce, so the keyword reading must not override them.
-        val platformsHandled = PlatformInstructions.parse(text) != null
+        // Only once platforms are decided; the very first statement ("Android is my primary platform") still has to be recorded as a proposal.
+        val platformsHandled = PlatformInstructions.parse(text) != null && p0.decision(Keys.PLATFORMS)?.value?.isNotBlank() == true
         for ((k, v) in interp.edits) {
             if (platformsHandled && (k == Keys.PLATFORMS || k == Keys.PRIMARY_PLATFORM)) continue
             val existing = p.decision(k)
@@ -1054,6 +1055,15 @@ class Director(private val deps: DirectorDeps) {
             }
         }
         if (interp.references.isNotEmpty()) p = ProjectOps.addReferences(p, interp.references, now)
+        // What the owner said about each reference (what they like, what they reject) is theirs; nothing else is inherited from the game.
+        for (ref in p.references.filter { r -> text.contains(r.name, ignoreCase = true) }) {
+            val said = ReferenceAspects.fromOwnerWords(text, ref.name)
+            if (said.wanted.isEmpty() && said.excluded.isEmpty()) continue
+            p = ProjectOps.updateReference(p, ref.copy(
+                aspects = (ref.aspects + said.wanted).distinctBy { it.lowercase() },
+                excluded = (ref.excluded + said.excluded).distinctBy { it.lowercase() },
+            ))
+        }
         p = applyTypedProposals(p, text, interp, now)
 
         val r = Reconciler.reconcile(p0, p, now)
@@ -1284,7 +1294,7 @@ class Director(private val deps: DirectorDeps) {
         val game = p0.references.firstOrNull { it.aspects.isEmpty() } ?: return ProjectOps.setPending(p0, null)
         var p = ProjectOps.updateReference(p0, game.copy(aspects = picked.map { it.substringBefore(" - ").trim() }.filter { it.isNotBlank() }.ifEmpty { listOf("its overall feel") }))
         askRefAspects(p)?.let { return it }
-        val text = p.references.joinToString(" ") { r -> "From ${r.name}: ${r.aspects.joinToString(", ")}." } + " Take design ideas only, never characters, art, maps, music or writing."
+        val text = ReferenceAspects.summary(p)
         p = ProjectOps.setDecision(p, Keys.REFERENCE_ASPECTS, text, Provenance.OWNER_EXPLICIT, now, raw = picked.joinToString("; "))
         p = ProjectOps.addMessage(p, Role.DIRECTOR, "Noted what you like from ${p.references.joinToString(" and ") { it.name }}.", now)
         return askNext(ProjectOps.setPending(p, null), settings)

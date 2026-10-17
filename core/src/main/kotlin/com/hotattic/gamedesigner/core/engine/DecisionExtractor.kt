@@ -120,7 +120,9 @@ object DecisionExtractor {
             perspectiveWords["first_person"]!!.any { it in t } || perspectiveWords["third_person"]!!.any { it in t } -> out[Keys.DIMENSION] = "3D"
         }
 
-        val plats = platformWords.filter { (_, ws) -> ws.any { GenreKnowledge.containsWord(t, it) } }.keys
+        // Only what the owner commits to counts: "Windows maybe later" is a possibility the design records, not a target.
+        val tp = Hedge.committed(text).lowercase()
+        val plats = platformWords.filter { (_, ws) -> ws.any { GenreKnowledge.containsWord(tp, it) } }.keys
         if (plats.isNotEmpty()) out[Keys.PLATFORMS] = Decision.joinList(plats)
         // An instruction about platforms ("add PC as the primary platform", "forget Android") says what the list becomes, not just what was mentioned.
         PlatformInstructions.parse(text)?.let { instruction ->

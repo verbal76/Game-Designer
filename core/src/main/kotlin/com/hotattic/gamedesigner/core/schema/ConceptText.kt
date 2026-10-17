@@ -30,9 +30,22 @@ object ConceptText {
         .replace(Regex("(?i)\\bI'd\\b"), "You would").replace(Regex("(?i)\\bmy\\b"), "your")
         .replace(Regex("(?i)\\bI\\b"), "You")
 
+    private val negated = Regex("(?i)\\b(?:no|not|without|never|don'?t|do not|doesn'?t|does not|won'?t|skip|exclude|rather not|nothing)\\b")
+    private val hedged = Regex("(?i)\\b(?:maybe|might|possibly|perhaps|later|eventually|someday|one day)\\b")
+
+    /** What the owner wants, not what they ruled out or only hope for later: "..., but I don't want its combat" keeps the part before the "but". */
+    private fun positiveOnly(text: String): String {
+        val kept = sentences(text).mapNotNull { s ->
+            val parts = s.split(Regex("(?i),?\\s+but\\s+"))
+            val good = parts.filter { !negated.containsMatchIn(it) && !hedged.containsMatchIn(it) }
+            when { good.size == parts.size -> s; good.isEmpty() -> null; else -> good.joinToString(", ").trimEnd('.', '!', '?') + "." }
+        }
+        return kept.joinToString(" ").ifBlank { text }
+    }
+
     /** A one-or-two sentence core fantasy drawn from the concept. */
     fun fantasy(concept: String): String {
-        val cleaned = withoutPlatformSentences(concept)
+        val cleaned = withoutPlatformSentences(positiveOnly(concept))
         val after = Regex("(?i)(?:,\\s*|\\s)but\\s+(.+)").find(cleaned)?.groupValues?.get(1)
             ?: Regex("(?i)\\bwhere\\s+(.+)").find(cleaned)?.groupValues?.get(1)
         var core = (if (after != null && after.trim().length >= 12) after else cleaned).trim()

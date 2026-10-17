@@ -61,6 +61,11 @@ object DesignSeeder {
             p = ProjectOps.setDecision(p, g.key, "yes", Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
             seeded += g.key
         }
+        // References the owner already broke down in their own words need no "what do you like about it?" question.
+        if (p.decision(Keys.REFERENCE_ASPECTS) == null && p.references.isNotEmpty() && p.references.all { it.aspects.isNotEmpty() } && Fields.get(Keys.REFERENCE_ASPECTS)?.isRelevant(Traits(p)) == true) {
+            p = ProjectOps.setDecision(p, Keys.REFERENCE_ASPECTS, ReferenceAspects.summary(p), Provenance.OWNER_EXPLICIT, now, DecisionStatus.CONFIRMED, "From your description")
+            seeded += Keys.REFERENCE_ASPECTS
+        }
         // Multiplayer intent only from unmistakable words; otherwise Bob asks.
         if (p.decision(Keys.MULTIPLAYER_INTENT) == null && Fields.get(Keys.MULTIPLAYER_INTENT)?.isRelevant(Traits(p)) == true) {
             val lc = said.lowercase()

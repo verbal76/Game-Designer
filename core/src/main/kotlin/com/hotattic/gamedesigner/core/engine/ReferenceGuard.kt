@@ -1,6 +1,7 @@
 package com.hotattic.gamedesigner.core.engine
 
 import com.hotattic.gamedesigner.core.model.Project
+import com.hotattic.gamedesigner.core.schema.GenreKnowledge
 import com.hotattic.gamedesigner.core.schema.Keys
 
 /**
@@ -23,6 +24,14 @@ object ReferenceGuard {
         "delete", "ignore", "stop", "start", "skip", "scrap", "swap", "replace", "choose", "pick", "select", "prefer", "need", "want", "move", "convert",
     )
 
+    /** Genre and style words ("RPG", "Tower Defense", "Pixel Art"): they describe a game, they are not one. */
+    private val genericTerms: Set<String> by lazy {
+        val fromGenres = GenreKnowledge.all.flatMap { g -> listOf(g.id.replace('_', ' '), g.label.substringBefore(" (")) }
+        (fromGenres + listOf("rpg", "jrpg", "arpg", "mmo", "mmorpg", "fps", "rts", "moba", "4x", "roguelike", "roguelite", "platformer", "shooter", "puzzle", "racing", "simulation", "strategy",
+            "adventure", "action", "sandbox", "survival", "horror", "city builder", "tower defense", "pixel art", "deck builder", "visual novel", "metroidvania", "sim", "tycoon")).map { it.lowercase() }.toSet()
+    }
+    private val genericWords: Set<String> by lazy { genericTerms.flatMap { it.split(' ', '-') }.toSet() }
+
     fun isPlausibleTitle(name: String): Boolean {
         val s = name.trim().trim('.', ',', ':', '-', '"', '\'', ' ')
         if (s.length !in 2..60) return false
@@ -31,6 +40,8 @@ object ReferenceGuard {
         val lower = words.map { it.lowercase().trim('.', ',', ':', '\'', '"') }
         if (lower.all { it in vocabulary || it in functionWords }) return false
         if (lower.last() in trailingStops) return false
+        val bare = lower.filter { it !in setOf("a", "an", "the") }
+        if (bare.joinToString(" ") in genericTerms || bare.all { it in genericWords || it in functionWords || it in vocabulary }) return false
         // "Add PC a", "Switch to PC", "Use Unity for": an instruction verb followed by a platform or function word.
         if (lower.first() in instructionVerbs && (words.size == 1 || lower.drop(1).any { it in vocabulary || it in functionWords })) return false
         return true

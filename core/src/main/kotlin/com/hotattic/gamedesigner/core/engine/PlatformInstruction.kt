@@ -35,7 +35,24 @@ data class PlatformInstruction(val steps: List<PlatformStep>, val pure: Boolean)
     }
 }
 
+/** Words that make a platform a possibility rather than a commitment ("maybe Windows later"). */
+object Hedge {
+    private val cue = Regex("(?i)\\b(?:later|eventually|someday|some day|one day|maybe|might|possibly|perhaps|in the future|down the road|if it goes well|hope to|hoping to|may also|thinking about|considering)\\b")
+    private val split = Regex("[,;.!?]|\\bbut\\b|\\band then\\b")
+
+    fun hedged(clause: String) = cue.containsMatchIn(clause)
+
+    /** The text with every hedged clause removed: only what the owner is committing to remains. */
+    fun committed(text: String): String = text.split(split).filter { !hedged(it) }.joinToString(". ")
+
+    /** Platforms the owner only mentioned as a possibility. */
+    fun futurePlatforms(text: String): List<String> = text.split(split).filter { hedged(it) }.flatMap { PlatformInstructions.mentioned(it) }.distinct()
+}
+
 object PlatformInstructions {
+
+    fun mentioned(text: String): List<String> = mentions(text.lowercase()).map { it.id }.distinct()
+
 
     private val vocabulary = listOf(
         "steam deck" to Platforms.STEAM_DECK, "windows pc" to Platforms.WINDOWS, "web browser" to Platforms.WEB, "mac os" to Platforms.MAC, "google play" to Platforms.ANDROID,
@@ -68,6 +85,8 @@ object PlatformInstructions {
 
     private fun clauseSteps(raw: String): List<PlatformStep> {
         val c = raw.lowercase().replace("’", "'").trim()
+        // "I might bring it to Windows later" is a possibility, not an instruction.
+        if (Hedge.hedged(c)) return emptyList()
         val ms = mentions(c)
         if (ms.isEmpty()) return emptyList()
         instead.find(c)?.let { m ->

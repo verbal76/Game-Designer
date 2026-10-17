@@ -42,6 +42,47 @@ object ReferenceAspects {
         return (scored.take(4) + general).distinct().take(6)
     }
 
+    data class FromOwner(val wanted: List<String>, val excluded: List<String>)
+
+    private val clauseSplit = Regex("[,;]|\\bbut\\b|\\bhowever\\b")
+    private val phraseTail = "([a-z][a-z' -]{2,38}?)"
+    private val liking = "(?:like|love|enjoy|admire|adore|want|am into|am inspired by|prefer)"
+    private val rejecting = "(?:don'?t want|do not want|don'?t need|do not need|don'?t like|do not like|not|no|without|minus|except|skip|leave out|exclude|drop)"
+
+    /**
+     * What the owner said about ONE reference in their own words: the characteristic they like ("the population simulation in X") and the
+     * ones they reject ("but I don't want its combat system"). Mentioning a game never inherits anything else from it.
+     */
+    fun fromOwnerWords(text: String, name: String): FromOwner {
+        val n = Regex.escape(name.lowercase())
+        val wanted = linkedSetOf<String>(); val excluded = linkedSetOf<String>()
+        val sentences = text.split(Regex("(?<=[.!?])\\s+"))
+        for ((i, sentence) in sentences.withIndex()) {
+            // "its/their" refers to the reference when the sentence names it, or the one before did.
+            val names = Regex(n, RegexOption.IGNORE_CASE).containsMatchIn(sentence) || (i > 0 && Regex(n, RegexOption.IGNORE_CASE).containsMatchIn(sentences[i - 1]))
+            if (!names) continue
+            val low = sentence.lowercase().replace("\u2019", "'")
+            Regex("$liking\\s+(?:the\\s+|its\\s+|how\\s+)?$phraseTail\\s+(?:in|of|from)\\s+$n", RegexOption.IGNORE_CASE).findAll(low).forEach { wanted += tidy(it.groupValues[1]) }
+            Regex("$liking\\s+$n's\\s+$phraseTail(?:$|[.,;])", RegexOption.IGNORE_CASE).findAll(low).forEach { wanted += tidy(it.groupValues[1]) }
+            for (clause in low.split(clauseSplit)) {
+                Regex("(?:^|\\s)$rejecting\\s+(?:its|their|the|that|any)\\s+$phraseTail\\s*$", RegexOption.IGNORE_CASE).find(clause.trim().trimEnd('.', '!'))?.let { excluded += tidy(it.groupValues[1]) }
+            }
+        }
+        return FromOwner(wanted.filter { it.isNotBlank() && it !in excluded }, excluded.filter { it.isNotBlank() })
+    }
+
+    private fun tidy(s: String) = s.trim().removeSuffix(" system").removeSuffix(" mechanics").trim().let { it.ifBlank { s.trim() } }
+
+    /** The reference decision text: only what the owner named. A game with nothing named is inspiration only and nothing is inherited. */
+    fun summary(p: Project): String {
+        val body = p.references.joinToString(" ") { r ->
+            val taken = if (r.aspects.isNotEmpty()) "take ${r.aspects.joinToString(", ")}" else "inspiration only; no specific mechanics, content or features are inherited"
+            val not = if (r.excluded.isNotEmpty()) "; NOT taking ${r.excluded.joinToString(", ")}" else ""
+            "From ${r.name}: $taken$not."
+        }
+        return "$body Take design ideas only, never characters, art, maps, music or writing."
+    }
+
     fun prompt(game: ReferenceGame): String = buildString {
         append("Game: ${game.name}\n")
         if (game.summary.isNotBlank()) append("What is known: ${game.summary.take(400)}\n")

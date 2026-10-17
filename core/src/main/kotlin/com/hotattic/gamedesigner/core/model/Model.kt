@@ -176,6 +176,8 @@ data class ReferenceGame(
     val name: String,
     /** Which aspects of the reference the owner wants ("the roguelite loop", "the moving castle"). */
     val aspects: List<String> = emptyList(),
+    /** Characteristics of the reference the owner explicitly does NOT want ("its combat system"). Additive: older projects read it as empty. */
+    val excluded: List<String> = emptyList(),
     val summary: String = "",
     val traits: List<String> = emptyList(),
     val sources: List<SourceRef> = emptyList(),
