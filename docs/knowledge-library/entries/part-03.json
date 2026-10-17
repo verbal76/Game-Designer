@@ -1,0 +1,587 @@
+[
+  {
+    "id": "gmtk-052-spacechem-open-ended-solutions",
+    "game": "SpaceChem",
+    "start": "01:09:20",
+    "end": "01:10:18",
+    "tags": [
+      "problem-solving",
+      "replayability",
+      "ownership",
+      "leaderboards"
+    ],
+    "problem": "Making a puzzle-like game feel personal and worth replaying.",
+    "mechanic": "Instead of a single hidden answer, the player builds an automated factory that converts atoms into molecules and passes if it meets the brief; the result is then compared with other players on three measures.",
+    "effect": "Players feel they own their solution, and a below-average comparison motivates them to return and make it faster, smaller or cheaper.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should your challenges have one intended answer, or accept any answer that meets the goal?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-053-skyrim-self-directed-rpg",
+    "game": "Skyrim",
+    "start": "01:10:24",
+    "end": "01:11:15",
+    "tags": [
+      "rpg",
+      "player-freedom",
+      "exploration",
+      "emergent-story"
+    ],
+    "problem": "What makes a role-playing game feel like the player's own adventure.",
+    "mechanic": "A large fantasy world the player explores wherever curiosity leads, with a chosen style such as magic, melee or archery, so the story comes from the places visited, characters met and quests taken.",
+    "effect": "The player's story is entirely their own, and the video treats it as a reference point for modern RPGs.",
+    "tradeoffs": "The video says other RPGs have better quests, stories and customisation.",
+    "inference": null,
+    "question": "How much of the story should come from the player's own route and playstyle?",
+    "related": [
+      "gmtk-005-zelda-freedom-and-curiosity",
+      "gmtk-016-deus-ex-player-freedom"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-054-journey-wordless-cooperation",
+    "game": "Journey",
+    "start": "01:11:28",
+    "end": "01:12:40",
+    "tags": [
+      "multiplayer",
+      "cooperation",
+      "communication",
+      "social-design"
+    ],
+    "problem": "Making online play with strangers meaningful rather than transactional or hostile.",
+    "mechanic": "Another anonymous traveller may join for a while; there is no text or voice, no visible names and no way to fight, and the only signal is a button that produces a musical note.",
+    "effect": "A surprisingly close bond forms, and some players do not realise it is a real person until the end.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "If players meet, what limited ways should they have to relate to each other?",
+    "related": [
+      "gmtk-010-pokemon-trading-community"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-055-mark-of-the-ninja-shown-information",
+    "game": "Mark of the Ninja",
+    "start": "01:12:49",
+    "end": "01:14:09",
+    "tags": [
+      "stealth",
+      "information-design",
+      "feedback",
+      "planning"
+    ],
+    "problem": "How the amount of information shown changes what kind of game it is.",
+    "mechanic": "A side-scrolling stealth game that, unlike its inspiration, displays whether the player is in shadow, how far noises carry, what guards see and intend, and previews the result of each item.",
+    "effect": "Stealth becomes planning and strategy instead of patient observation, and the player feels capable.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should the game tell the player how its systems work, or leave them to find out?",
+    "related": [
+      "gmtk-014-thief-light-and-sound"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-056-walking-dead-pressured-moral-choices",
+    "game": "The Walking Dead (Telltale)",
+    "start": "01:14:16",
+    "end": "01:15:55",
+    "tags": [
+      "narrative",
+      "choice-and-consequence",
+      "moral-choices",
+      "time-pressure"
+    ],
+    "problem": "Making story decisions emotionally heavy.",
+    "mechanic": "Puzzles give way to hard moral choices in a crisis (who is fed, who joins a mission, who is saved); dialogue choices run on a timer, some actions must be taken immediately, and decisions affect later episodes, minor ones being referenced and major ones changing the plot.",
+    "effect": "Powerful moments of guilt and regret of a kind only interactive stories produce.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should hard choices be timed, and which should echo later?",
+    "related": [
+      "gmtk-035-mass-effect-choices-ripple"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-057-virtues-last-reward-branch-map",
+    "game": "Virtue's Last Reward",
+    "start": "01:15:59",
+    "end": "01:17:02",
+    "tags": [
+      "branching-narrative",
+      "replayability",
+      "puzzle",
+      "structure"
+    ],
+    "problem": "Handling branching stories without assuming one playthrough.",
+    "mechanic": "After the story ends the player gets a flowchart of how decisions led to each ending and can re-enter at any point to choose differently, carrying information such as a password or a secret between timelines.",
+    "effect": "Branching becomes part of the gameplay, unlocking more endings through knowledge gathered across paths.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "If your story branches, should players be able to move between branches?",
+    "related": [
+      "gmtk-035-mass-effect-choices-ripple"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-058-xcom-output-randomness",
+    "game": "XCOM: Enemy Unknown",
+    "start": "01:17:13",
+    "end": "01:18:41",
+    "tags": [
+      "randomness",
+      "strategy",
+      "risk",
+      "player-trust"
+    ],
+    "problem": "How random outcomes affect a player who has planned carefully.",
+    "mechanic": "Each shot shows a hit percentage based on sight lines and distance, and the outcome is then left to chance; the displayed odds are adjusted because people misjudge probability, so an 80% shown may be about 90% in the code.",
+    "effect": "It can create memorable moments but more often disappoints, since a sound plan fails on one bad roll; the designer removed the feature in a later game.",
+    "tradeoffs": "The video says the sting of a failed roll tends to outweigh the thrill, and that the designer regretted the feature.",
+    "inference": null,
+    "question": "Should luck be resolved before the player acts or after, and how will failures feel?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-059-spec-ops-choices-through-play",
+    "game": "Spec Ops: The Line",
+    "start": "01:18:45",
+    "end": "01:19:46",
+    "tags": [
+      "choice",
+      "narrative",
+      "immersion",
+      "interface"
+    ],
+    "problem": "Presenting a choice without a menu.",
+    "mechanic": "Difficult decisions are posed through the game's normal actions, for example aiming at one of two captives, which also allows unlisted options such as shooting neither or shooting the snipers.",
+    "effect": "More immersive and natural than choosing between two labelled buttons.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could a choice be made by playing instead of by picking from a menu?",
+    "related": [
+      "gmtk-056-walking-dead-pressured-moral-choices"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-060-spaceteam-local-cooperation",
+    "game": "Spaceteam",
+    "start": "01:19:55",
+    "end": "01:20:48",
+    "tags": [
+      "multiplayer",
+      "local-play",
+      "cooperation",
+      "communication"
+    ],
+    "problem": "Building a game around people sharing a room.",
+    "mechanic": "Each player has a different control panel and gets instructions that mostly concern other people's panels, so they must call out orders and listen for those meant for them.",
+    "effect": "Plenty of noise and enjoyment, showing the benefit of designing for shared-space play.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Is your game best played in the same room, and what would that change?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-061-dishonored-world-reacts",
+    "game": "Dishonored",
+    "start": "01:20:54",
+    "end": "01:22:08",
+    "tags": [
+      "player-expression",
+      "consequence",
+      "world-state",
+      "morality-systems"
+    ],
+    "problem": "Making the world respond to a playstyle without labelling it good or bad.",
+    "mechanic": "The player may be a stealthy unseen killer or a chaotic one, with a non-lethal route for every target; the game never judges, but disorder shows in the city (swarms of rats at high levels) and in characters who may refuse help or turn hostile.",
+    "effect": "A subtler alternative to a karma meter that makes players weigh actions without feeling mechanical.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "How should the world change to reflect how the player plays, without scoring them?",
+    "related": [
+      "gmtk-016-deus-ex-player-freedom"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-062-stanley-parable-play-with-conventions",
+    "game": "The Stanley Parable",
+    "start": "01:22:13",
+    "end": "01:23:13",
+    "tags": [
+      "meta-design",
+      "satire",
+      "player-choice",
+      "narration"
+    ],
+    "problem": "Getting players to think about the conventions of games themselves.",
+    "mechanic": "An unreliable narrator, breaks of the fourth wall and jokes at the player's expense comment on player choice and narrative convention.",
+    "effect": "Players laugh, then reflect on how games steer decisions and emotions; the creator also hoped to prompt discussion afterwards.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Is there a convention in your genre worth poking at?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-063-brothers-story-in-the-controller",
+    "game": "Brothers: A Tale of Two Sons",
+    "start": "01:23:20",
+    "end": "01:24:29",
+    "tags": [
+      "controls",
+      "narrative",
+      "cooperation",
+      "game-feel"
+    ],
+    "problem": "Telling a story through the controls themselves.",
+    "mechanic": "The player steers both brothers simultaneously, each assigned a stick and a set of shoulder buttons, solving puzzles that normally need two players.",
+    "effect": "The two characters come to feel tied to the player's two thumbs, so the most affecting storytelling occurs in the hands.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could the way the player holds or uses the controls carry part of the story?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-064-clicker-games-incremental-progress",
+    "game": "Cow Clicker and Cookie Clicker",
+    "start": "01:24:38",
+    "end": "01:26:10",
+    "tags": [
+      "incremental",
+      "progression",
+      "optimisation",
+      "idle-games"
+    ],
+    "problem": "Why very simple increment-a-number games can hold players.",
+    "mechanic": "A parody game gave each player one cow to click on a six-hour cooldown to raise a counter; a follow-up adds upgrades and unlocks that speed up the clicking or automate it.",
+    "effect": "The video presents them as a pure form of how players get absorbed by upgrades, progression, rewards and optimising, whatever one thinks of them.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which parts of upgrade-and-optimise loops do you want, and how much should they carry your game?",
+    "related": [
+      "gmtk-067-steamworld-dig-upgrade-loop"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-065-gone-home-found-objects",
+    "game": "Gone Home",
+    "start": "01:26:14",
+    "end": "01:27:31",
+    "tags": [
+      "environmental-storytelling",
+      "narrative",
+      "exploration",
+      "player-inference"
+    ],
+    "problem": "Building a whole game from exploring a place and its objects.",
+    "mechanic": "The player searches an abandoned family home, reading notes, receipts, cards and other items, finding them in a partly random order or missing some.",
+    "effect": "The player fills gaps and draws connections, so understanding feels personal and hard won; narrative placed in the level alone can sustain a game.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could the player piece the story together from objects and places?",
+    "related": [
+      "gmtk-038-bioshock-audio-diaries"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-066-papers-please-empathy-through-rules",
+    "game": "Papers, Please",
+    "start": "01:27:36",
+    "end": "01:28:47",
+    "tags": [
+      "empathy",
+      "moral-choice",
+      "rules-as-narrative",
+      "deduction"
+    ],
+    "problem": "Helping the player understand why people make hard choices.",
+    "mechanic": "The player is a border inspector checking papers, first as a spot-the-error deduction task, then facing people whose documents are incomplete and choosing between the rules and their fate, with penalties for admitting them.",
+    "effect": "The game shows why people decide as they do by placing the player in the position and asking what they would do.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could a routine task become the setting for a hard decision?",
+    "related": [
+      "gmtk-056-walking-dead-pressured-moral-choices"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-067-steamworld-dig-upgrade-loop",
+    "game": "SteamWorld Dig",
+    "start": "01:28:47",
+    "end": "01:30:10",
+    "tags": [
+      "core-loop",
+      "progression",
+      "upgrades",
+      "pacing"
+    ],
+    "problem": "Building a satisfying dig, return and upgrade loop.",
+    "mechanic": "The player begins with weak tools, a dim light and room for a few lumps of ore, returns to the surface to sell and upgrade, then digs somewhat deeper each trip.",
+    "effect": "A very compelling cycle of wanting to go just a little further.",
+    "tradeoffs": "The video warns the loop can be shallow padding in the wrong hands; this game avoids that with variety, a story and secrets.",
+    "inference": null,
+    "question": "Does your repeating loop have enough variety around it to stay meaningful?",
+    "related": [
+      "gmtk-064-clicker-games-incremental-progress",
+      "gmtk-017-diablo-2-skill-tree-power-fantasy"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-068-alien-isolation-one-good-ai",
+    "game": "Alien: Isolation",
+    "start": "01:30:15",
+    "end": "01:31:33",
+    "tags": [
+      "ai",
+      "horror",
+      "unpredictability",
+      "enemy-design"
+    ],
+    "problem": "Getting believable AI without building many characters.",
+    "mechanic": "A single stalking enemy is driven by systems for sight, hearing, sneaking up and reacting to fire; its movements are rarely scripted and it gains new abilities over time.",
+    "effect": "It behaves differently each run and seems to learn from the player, so it stays frightening even after many restarts.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Would one well-built opponent serve you better than many simple ones?",
+    "related": [
+      "gmtk-072-metal-gear-solid-v-adaptive-ai"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-069-mario-kart-catch-up-items",
+    "game": "Mario Kart",
+    "start": "01:31:36",
+    "end": "01:32:48",
+    "tags": [
+      "balance",
+      "negative-feedback-loop",
+      "multiplayer",
+      "skill-gap"
+    ],
+    "problem": "Keeping a game enjoyable for players of different skill together.",
+    "mechanic": "Item boxes give results based on race position: leaders receive weak items and trailing players get strong ones, including a missile that hunts the leader.",
+    "effect": "A self-balancing negative feedback loop: struggling players get a boost and strong players are slowed, so everyone can have fun.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should your game help players who are behind, and how visibly?",
+    "related": [
+      "gmtk-037-team-fortress-2-counters"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-070-80-days-text-as-technology",
+    "game": "80 Days",
+    "start": "01:32:56",
+    "end": "01:34:26",
+    "tags": [
+      "interactive-fiction",
+      "scope",
+      "replayability",
+      "narrative"
+    ],
+    "problem": "Delivering a very large game on a small production budget.",
+    "mechanic": "A text-based take on a round-the-world journey in which a paragraph can introduce a city or character that would otherwise need models, textures, AI and voice acting; one playthrough shows only a small share of the text.",
+    "effect": "A big game that encourages replays with different routes and decisions, with branching on a scale the video says exceeds the others mentioned.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Would text carry part of your content more cheaply than art or voice?",
+    "related": [
+      "gmtk-057-virtues-last-reward-branch-map"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-071-her-story-withheld-information",
+    "game": "Her Story",
+    "start": "01:34:30",
+    "end": "01:35:50",
+    "tags": [
+      "information-design",
+      "narrative",
+      "search",
+      "deduction"
+    ],
+    "problem": "Making uncovering a story the gameplay.",
+    "mechanic": "Interview footage is divided into nearly 300 short clips in an old-style database searched by typing words, so the player finds clips from what they hear and assembles the story from out-of-order evidence.",
+    "effect": "The player pieces events together like an investigator, and withholding information keeps play engaging.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What information could you withhold so that finding it is the game?",
+    "related": [
+      "gmtk-065-gone-home-found-objects"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-072-metal-gear-solid-v-adaptive-ai",
+    "game": "Metal Gear Solid V: The Phantom Pain",
+    "start": "01:36:09",
+    "end": "01:37:32",
+    "tags": [
+      "adaptive-systems",
+      "ai",
+      "systemic-design",
+      "player-habits"
+    ],
+    "problem": "Stopping players from repeating one optimal strategy.",
+    "mechanic": "The enemy AI adapts to habits, for instance adding helmets if the player keeps aiming at heads or floodlights if bases are always raided at night; enemy camps hold autonomous agents that can be fooled, lured out and trapped.",
+    "effect": "Players cannot reuse the same best tactic and are pushed to vary their approach.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "If players find a dominant tactic, how should the game respond?",
+    "related": [
+      "gmtk-068-alien-isolation-one-good-ai",
+      "gmtk-041-left-4-dead-ai-director"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-073-metal-gear-solid-v-fun-failure",
+    "game": "Metal Gear Solid V: The Phantom Pain",
+    "start": "01:36:09",
+    "end": "01:36:58",
+    "tags": [
+      "failure",
+      "pacing",
+      "stealth",
+      "player-choice"
+    ],
+    "problem": "Making a failed attempt enjoyable.",
+    "mechanic": "When stealth breaks down, play shifts from slow sneaking to a frantic action sequence with explosions and rescue helicopters; an extraction mechanic lets the player choose whether to kill or recruit soldiers, and scoring allows any style while rewarding speed and stealth.",
+    "effect": "Failure becomes a different kind of fun, and the player decides how to play.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What does failing look like in your game, and can it be interesting?",
+    "related": [
+      "gmtk-027-prince-of-persia-rewind-failure"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-074-undertale-spare-or-defeat",
+    "game": "Undertale",
+    "start": "01:37:38",
+    "end": "01:39:00",
+    "tags": [
+      "morality",
+      "choice",
+      "replayability",
+      "combat-alternatives"
+    ],
+    "problem": "Making the player confront what they do to enemies.",
+    "mechanic": "Each enemy can be defeated or spared by talking, flattering, listening or simply waiting; the story and endings differ by approach, and on a later playthrough the game comments on the earlier choices.",
+    "effect": "Players may try to spare everyone or take a destructive route, and the game asks whether a new save should undo the harm.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Does every enemy need to be fought, and what other outcomes could there be?",
+    "related": [
+      "gmtk-047-amnesia-no-combat-horror"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-075-downwell-dual-purpose-mechanics",
+    "game": "Downwell",
+    "start": "01:39:04",
+    "end": "01:39:38",
+    "tags": [
+      "mechanics-economy",
+      "depth",
+      "interface",
+      "minimalism"
+    ],
+    "problem": "Getting depth from few mechanics.",
+    "mechanic": "The jump button doubles as fire in mid-air; firing destroys enemies and blocks and slows the fall, kills refill ammunition and build a combo, and landing resets both.",
+    "effect": "Considerable depth from half as many mechanics.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which of your mechanics could do two jobs?",
+    "related": [
+      "gmtk-021-ico-design-by-subtraction"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-076-downwell-risk-and-reward-curve",
+    "game": "Downwell",
+    "start": "01:39:38",
+    "end": "01:40:05",
+    "tags": [
+      "risk-and-reward",
+      "difficulty-curve",
+      "skill-ceiling",
+      "scoring"
+    ],
+    "problem": "Serving new and expert players in the same game.",
+    "mechanic": "Stomping on enemies gives the largest rewards but is riskier than shooting them, so it suits experienced players.",
+    "effect": "Newcomers shoot and aim to survive while experts move on to stomping and playing for score, creating a self-selected difficulty curve.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Is there a riskier way to play that rewards experts more, and is it optional?",
+    "related": [
+      "gmtk-029-devil-may-cry-3-scoring-mastery"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-077-yakuza-0-place-as-character",
+    "game": "Yakuza 0",
+    "start": "01:40:09",
+    "end": "01:41:29",
+    "tags": [
+      "setting",
+      "immersion",
+      "side-activities",
+      "world-building"
+    ],
+    "problem": "Making a believable place the centre of a game.",
+    "mechanic": "A detailed fictional district assembled from realistic stores, vending machines and architecture, with familiar goods to buy and activities such as darts, karaoke, hostess bars and arcades that make the player feel like a regular; the district recurs across the series.",
+    "effect": "The city functions almost like a character, and returning to see what changed is rewarding.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What small activities and details would make your setting feel lived in?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-078-kerbal-space-program-physics-comedy",
+    "game": "Kerbal Space Program",
+    "start": "01:41:34",
+    "end": "01:42:31",
+    "tags": [
+      "physics",
+      "building",
+      "humour",
+      "clear-goal"
+    ],
+    "problem": "Using unpredictable physics in a game.",
+    "mechanic": "The player builds rockets aiming to reach space, with a clear target of getting a craft very high without it exploding or spinning out of control.",
+    "effect": "Physics resists designer control but is nearly always funny: a carefully built craft falling apart is entertaining, even in a game praised for realism.",
+    "tradeoffs": "The video notes that designers usually want control, and physics is unpredictable.",
+    "inference": null,
+    "question": "Would physics-driven outcomes add fun to your game, and can you live with their unpredictability?",
+    "related": [
+      "gmtk-051-minecraft-player-set-goals"
+    ],
+    "confidence": "high"
+  }
+]

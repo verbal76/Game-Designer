@@ -1,0 +1,529 @@
+[
+  {
+    "id": "gmtk-001-space-invaders-difficulty-curve",
+    "game": "Space Invaders",
+    "start": "00:02:40",
+    "end": "00:03:35",
+    "tags": [
+      "difficulty-curve",
+      "pacing",
+      "tension-and-release",
+      "level-design"
+    ],
+    "problem": "Raising challenge steadily without wearing the player out.",
+    "mechanic": "Each cleared enemy makes the rest move faster, and every new wave starts with the enemies lower on the screen than the one before.",
+    "effect": "Pressure climbs through a wave and drops back when a new wave begins, giving a repeating pattern of strain and short recovery.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should difficulty rise without pause, or step back at set moments so players can recover?",
+    "related": [
+      "gmtk-007-tetris-two-kinds-of-difficulty"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-002-pac-man-role-reversal",
+    "game": "Pac-Man",
+    "start": "00:03:48",
+    "end": "00:04:39",
+    "tags": [
+      "role-reversal",
+      "variety",
+      "tension-and-release",
+      "power-fantasy"
+    ],
+    "problem": "Keeping a very simple game from feeling one-note.",
+    "mechanic": "The player is hunted by the ghosts until collecting a special pellet, which briefly turns the ghosts into targets that can be eaten for points.",
+    "effect": "The brief swap between fear and dominance adds variety and gives the game an emotional swing between weakness and strength.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Is there a moment in your game when the player's position of power could briefly flip?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-003-rogue-procedural-permadeath",
+    "game": "Rogue",
+    "start": "00:04:53",
+    "end": "00:06:01",
+    "tags": [
+      "procedural-generation",
+      "permadeath",
+      "replayability"
+    ],
+    "problem": "Making each playthrough different and preventing players from simply memorising the level.",
+    "mechanic": "Dungeons are built by rule from rooms, corridors, items and monsters, and dying means starting over in a freshly built dungeon, with no saves, checkpoints or respawns.",
+    "effect": "No two runs match, and knowledge of a specific layout cannot be rehearsed into an easy win.",
+    "tradeoffs": null,
+    "inference": "Permanent loss raises the stakes of each decision; whether that suits a given audience is a separate judgement.",
+    "question": "Should every run be newly generated, and should failure send the player all the way back?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-004-super-mario-bros-expressive-jump",
+    "game": "Super Mario Bros.",
+    "start": "00:06:06",
+    "end": "00:06:58",
+    "tags": [
+      "expressive-movement",
+      "game-feel",
+      "physics",
+      "platforming"
+    ],
+    "problem": "Making one basic action enjoyable enough to build a whole game on.",
+    "mechanic": "How high Mario jumps depends on how long the button stays pressed, how far depends on his running speed, and the player can still steer while airborne.",
+    "effect": "A simple leap becomes a wide range of controllable motions, which is fun and skill-testing enough to carry a game, even a genre.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which single action in your game should feel best, and how much control should the player have over it?",
+    "related": [
+      "gmtk-020-tony-hawk-feel-on-the-thumbs"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-005-zelda-freedom-and-curiosity",
+    "game": "The Legend of Zelda",
+    "start": "00:07:29",
+    "end": "00:08:35",
+    "tags": [
+      "player-freedom",
+      "exploration",
+      "nonlinear-order",
+      "onboarding"
+    ],
+    "problem": "Making the player's route through a game feel self-authored.",
+    "mechanic": "The player starts in an open area with almost no instructions and may head anywhere and attempt challenges in any sequence, though some areas stay closed until an item is found and dungeons carry numbers.",
+    "effect": "The journey feels personal because it is steered by curiosity instead of by a designer's script.",
+    "tradeoffs": "The freedom is bounded: some obstacles need specific items, dangerous enemies punish unprepared players, and the dungeons have a suggested order.",
+    "inference": null,
+    "question": "How much freedom should the player have over where to go and in what order?",
+    "related": [
+      "gmtk-006-mega-man-choose-your-order",
+      "gmtk-009-super-metroid-explore-and-unlock"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-006-mega-man-choose-your-order",
+    "game": "Mega Man",
+    "start": "00:08:39",
+    "end": "00:09:45",
+    "tags": [
+      "nonlinear-order",
+      "player-freedom",
+      "replayability",
+      "level-design"
+    ],
+    "problem": "Moving beyond the fixed level-after-level order common in platformers.",
+    "mechanic": "The game opens on a menu of six boss stages that may be played in any order.",
+    "effect": "Players gain a sense of control and a reason to replay, because a new order changes how the game plays.",
+    "tradeoffs": "The video says the idea is imperfect: players quickly circulated an optimal route.",
+    "inference": null,
+    "question": "Should players pick the order of your challenges, and what stops one order from being obviously best?",
+    "related": [
+      "gmtk-006b-mega-man-boss-powers-as-counters",
+      "gmtk-005-zelda-freedom-and-curiosity"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-006b-mega-man-boss-powers-as-counters",
+    "game": "Mega Man",
+    "start": "00:08:50",
+    "end": "00:09:31",
+    "tags": [
+      "progression",
+      "player-freedom",
+      "systemic-interactions",
+      "replayability"
+    ],
+    "problem": "Making the chosen order of challenges matter.",
+    "mechanic": "Beating a boss gives the player that boss's weapon, which works especially well against certain other bosses and helps in other stages.",
+    "effect": "Earlier choices change the difficulty of later ones, so ordering becomes a real decision.",
+    "tradeoffs": null,
+    "inference": "As with free ordering, a best route can appear once players learn which weapon counters which boss.",
+    "question": "Should beating one challenge change how the next ones play?",
+    "related": [
+      "gmtk-006-mega-man-choose-your-order"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-007-tetris-two-kinds-of-difficulty",
+    "game": "Tetris",
+    "start": "00:09:52",
+    "end": "00:11:05",
+    "tags": [
+      "difficulty-curve",
+      "diegetic-difficulty",
+      "systemic-interactions",
+      "feedback"
+    ],
+    "problem": "Raising difficulty in a way players can see and understand.",
+    "mechanic": "Speed is increased by the designer after a number of cleared lines, and separately the game gets harder by itself as the stack of pieces fills the space and leaves less time. Snake behaves the same way as its body grows.",
+    "effect": "Part of the rise is imposed from outside and part follows naturally from the rules, which makes the ramp transparent and easy to grasp.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should difficulty come from designer-set numbers, from the state of the play space, or from both?",
+    "related": [
+      "gmtk-001-space-invaders-difficulty-curve"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-008-doom-speed-and-space",
+    "game": "Doom",
+    "start": "00:11:12",
+    "end": "00:12:21",
+    "tags": [
+      "speed-and-flow",
+      "enemy-design",
+      "game-feel",
+      "combat"
+    ],
+    "problem": "Making combat feel frantic and energetic.",
+    "mechanic": "A very quick player character faces enemies that depend on distance and positioning, for example one that must be kept away from and another whose slow projectiles can be sidestepped.",
+    "effect": "Fights feel fast and tense, and the movement itself is a source of enjoyment.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "How fast should the player move, and how do your enemies give that speed a purpose?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-009-super-metroid-explore-and-unlock",
+    "game": "Super Metroid",
+    "start": "00:12:25",
+    "end": "00:13:45",
+    "tags": [
+      "exploration",
+      "progression-gating",
+      "level-design",
+      "world-structure"
+    ],
+    "problem": "Building a game loop around the pleasure of exploring.",
+    "mechanic": "The whole game is one connected map with barriers such as special doors and dangerous rooms; players search elsewhere for an item that lets them return, and doing so yields an upgrade or opens more of the map.",
+    "effect": "A repeating cycle of exploring and gaining abilities that relies on the player remembering the map, and that underpins the Metroidvania genre.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should your world be one connected map opened up by abilities, or a set of separate levels?",
+    "related": [
+      "gmtk-005-zelda-freedom-and-curiosity"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-010-pokemon-trading-community",
+    "game": "Pokemon Blue",
+    "start": "00:13:49",
+    "end": "00:15:18",
+    "tags": [
+      "community",
+      "cooperation",
+      "social-design",
+      "collection"
+    ],
+    "problem": "Building community around a game, beyond competition.",
+    "mechanic": "The game ships as two nearly identical versions, each with exclusive creatures; some creatures evolve only through trading and the starter creatures never reappear, so players must swap over a cable.",
+    "effect": "Players ask each other for help and trade, which turns the game into something shared.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Is there a reason for your players to help or trade with each other?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-011-mario-64-vs-tomb-raider-movement",
+    "game": "Tomb Raider (contrasted with Super Mario 64)",
+    "start": "00:15:18",
+    "end": "00:16:33",
+    "tags": [
+      "movement",
+      "platforming",
+      "3d-movement",
+      "game-feel"
+    ],
+    "problem": "Designing movement for fully three-dimensional spaces.",
+    "mechanic": "Super Mario 64 offers quick, springy, flowing movement; Tomb Raider asks for careful positioning and exact, deliberate inputs.",
+    "effect": "The same kind of 3D obstacle course can feel very different; the more deliberate style can still be rewarding once the player settles into it.",
+    "tradeoffs": "Exacting movement can seem dated and irritating next to modern games that snap to ledges and climb automatically.",
+    "inference": null,
+    "question": "Should movement be fluid and forgiving, or exact and demanding?",
+    "related": [
+      "gmtk-004-super-mario-bros-expressive-jump"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-012-resident-evil-scarce-resources",
+    "game": "Resident Evil",
+    "start": "00:16:33",
+    "end": "00:17:48",
+    "tags": [
+      "resource-scarcity",
+      "tension",
+      "horror",
+      "inventory"
+    ],
+    "problem": "Making players feel afraid and uneasy.",
+    "mechanic": "Ammunition and healing items are scarce and the inventory is a very small grid, so the player conserves ammo, weighs each shot, sometimes flees, and decides carefully what to carry.",
+    "effect": "Turning the supply of resources up or down changes how strong or weak the player feels.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "How scarce should key resources be, and what should that do to how the player feels?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-013-half-life-no-cutscenes",
+    "game": "Half-Life",
+    "start": "00:18:00",
+    "end": "00:19:06",
+    "tags": [
+      "narrative",
+      "immersion",
+      "player-agency",
+      "presentation"
+    ],
+    "problem": "Telling a story with the strengths of games rather than borrowing from film.",
+    "mechanic": "The story is shown continuously from the hero's own viewpoint, with no cutscenes or level breaks; characters speak toward the camera and events happen in real time.",
+    "effect": "A grounded, immersive feel in which the player never loses control.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should your story ever take control away from the player?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-014-thief-light-and-sound",
+    "game": "Thief: The Dark Project",
+    "start": "00:19:06",
+    "end": "00:20:04",
+    "tags": [
+      "stealth",
+      "systemic-interactions",
+      "environment",
+      "player-expression"
+    ],
+    "problem": "Making sneaking a readable and interesting way to play.",
+    "mechanic": "Detection depends on two things: light (bright areas expose the player) and sound (hard floors carry footsteps). The player can alter conditions, for instance dousing a torch or laying moss to muffle steps.",
+    "effect": "Play becomes careful watching, listening and reasoning about what the guards will do.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What does the player need to observe, and what can they change to their advantage?",
+    "related": [
+      "gmtk-016-deus-ex-player-freedom"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-015-crazy-taxi-concentrated-loop",
+    "game": "Crazy Taxi",
+    "start": "00:20:10",
+    "end": "00:21:18",
+    "tags": [
+      "short-session",
+      "concentrated-loop",
+      "onboarding",
+      "score-chasing"
+    ],
+    "problem": "Hooking a player immediately and making them want another try, as arcade games must.",
+    "mechanic": "The player collects fares and drives them to destinations within a few minutes; speed earns more money, stunts and risky driving add tips, and when the clock ends so does the session.",
+    "effect": "A great deal of enjoyment from a very simple, tightly focused loop in a short time.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What is the smallest loop that is fun by itself, and how long should one session last?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-016-deus-ex-player-freedom",
+    "game": "Deus Ex",
+    "start": "00:21:24",
+    "end": "00:22:52",
+    "tags": [
+      "player-agency",
+      "player-freedom",
+      "emergent-play",
+      "level-design",
+      "immersive-sim"
+    ],
+    "problem": "Letting players meet an objective in whatever way they prefer.",
+    "mechanic": "Open-ended levels offer many routes and solutions; the player can fight, sneak, talk their way through, or build skills like lockpicking and hacking to open other paths.",
+    "effect": "Players feel strongly in charge; the designer's stated aim was for the game to reflect the player's cleverness more than the developers'.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should your levels support several different approaches to the same goal?",
+    "related": [
+      "gmtk-014-thief-light-and-sound"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-017-diablo-2-skill-tree-power-fantasy",
+    "game": "Diablo II",
+    "start": "00:22:57",
+    "end": "00:24:25",
+    "tags": [
+      "progression",
+      "skill-tree",
+      "power-fantasy",
+      "upgrade-systems"
+    ],
+    "problem": "Making upgrades compelling and keeping players going.",
+    "mechanic": "Each level-up raises stats and lets the player select a node in a visible skill tree, giving a new active ability or passive bonus, each capable of changing how the character plays.",
+    "effect": "The sense of growing from weak to dominant, and curiosity about the next skill, keeps people playing.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "How should the player grow stronger, and should they be able to see what is coming?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-018-the-sims-player-led-play",
+    "game": "The Sims",
+    "start": "00:24:31",
+    "end": "00:25:45",
+    "tags": [
+      "emergent-play",
+      "player-expression",
+      "simulation",
+      "sandbox"
+    ],
+    "problem": "Supporting very different ways of playing the same game.",
+    "mechanic": "A household simulation in which characters fulfil their own needs using utility-based AI; the player can watch or step in and direct them.",
+    "effect": "Some players use it to tell stories and others to experiment on the characters, so the game becomes whatever the player makes of it.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should players be able to use your simulation in ways you did not plan for?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-019-gta-3-missions-and-sandbox",
+    "game": "Grand Theft Auto III",
+    "start": "00:25:45",
+    "end": "00:27:03",
+    "tags": [
+      "open-world",
+      "sandbox",
+      "mission-design",
+      "fantasy-fit"
+    ],
+    "problem": "Making the time between missions in an open world worth playing.",
+    "mechanic": "Scripted missions with goals, cutscenes, failure and rewards move the story on and open the map, while outside them the game invites mayhem through stunts, stolen vehicles and police chases.",
+    "effect": "Free play is enjoyable because the setting and the player's role welcome chaos, which many open worlds lack.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What will players want to do between your set challenges, and does your fantasy allow it?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-020-tony-hawk-feel-on-the-thumbs",
+    "game": "Tony Hawk's Pro Skater 3",
+    "start": "00:27:10",
+    "end": "00:28:34",
+    "tags": [
+      "game-feel",
+      "input-design",
+      "mastery",
+      "score-chasing"
+    ],
+    "problem": "Making inputs satisfying in themselves.",
+    "mechanic": "Tricks come from pressing a button with a direction, a manual from a quick stick motion, and a revert from a shoulder press timed to the moment of landing, all chainable into combos.",
+    "effect": "Small, memorable inputs that feel good to perform, so players can return after years away and recover the skill quickly.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which inputs in your game should feel pleasing in their own right?",
+    "related": [
+      "gmtk-004-super-mario-bros-expressive-jump"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-021-ico-design-by-subtraction",
+    "game": "Ico",
+    "start": "00:28:34",
+    "end": "00:29:48",
+    "tags": [
+      "subtraction",
+      "minimalism",
+      "relationship",
+      "presentation"
+    ],
+    "problem": "Finding a game's core by stripping away what is not needed.",
+    "mechanic": "Following a design approach of removal, the game drops interface elements, and tells a relationship between two characters with no shared language through holding hands, simple commands and protecting her; saving is tied to the companion, so progress cannot be banked while she is gone.",
+    "effect": "A bond built from actions, strengthened when the companion is taken away.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What could you remove from your game to reveal what matters most?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-022-rez-synchronised-audio",
+    "game": "Rez",
+    "start": "00:30:04",
+    "end": "00:31:01",
+    "tags": [
+      "audio",
+      "music-sync",
+      "feedback",
+      "trance-state"
+    ],
+    "problem": "Pulling players into a deeply absorbed state.",
+    "mechanic": "Shooting enemies triggers sounds that blend with the music in time, so the rhythm of play always matches the soundtrack.",
+    "effect": "A meditative, immersive experience; the designer reports that the first working version already felt striking.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should the player's actions help create the music?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-023-silent-hill-2-unsettling-space",
+    "game": "Silent Hill 2",
+    "start": "00:31:05",
+    "end": "00:32:41",
+    "tags": [
+      "atmosphere",
+      "horror",
+      "level-design",
+      "environment",
+      "narrative"
+    ],
+    "problem": "Creating psychological horror.",
+    "mechanic": "Long, quiet corridors, rooms with eerie noises but no creatures, thick fog that hides what lies ahead, and descents that go impossibly deep, all echoing the protagonist's guilt and trauma.",
+    "effect": "The place itself is disturbing, and the player shares the character's mental state.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could the environment, not the enemies, produce the feeling you want?",
+    "related": [
+      "gmtk-012-resident-evil-scarce-resources"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-024-animal-crossing-leisurely-pace",
+    "game": "Animal Crossing",
+    "start": "00:32:46",
+    "end": "00:34:11",
+    "tags": [
+      "cozy",
+      "pacing",
+      "session-design",
+      "low-pressure"
+    ],
+    "problem": "Making a gentle game with no combat, timers, failure or challenge.",
+    "mechanic": "Many goals exist but none is urgent, and content is rationed over real time: some events occur once per day and shops keep opening hours.",
+    "effect": "A relaxed rhythm, and a built-in reason for the player to put the game down.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should your game urge players to keep going, or give them a reason to stop?",
+    "related": [],
+    "confidence": "high"
+  }
+]
