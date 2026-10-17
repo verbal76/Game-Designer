@@ -25,7 +25,7 @@ class ProjectSession(private val persist: suspend (Project) -> Unit) {
     suspend fun <T> mutate(f: suspend (Project) -> Pair<Project, T>): T? = mutex.withLock {
         val p = state.value ?: return@withLock null
         val (next, result) = f(p)
-        if (next !== p) { persist(next); state.value = next }
+        if (next !== p) { val committed = com.hotattic.gamedesigner.core.engine.DecisionHistory.record(p, next); persist(committed); state.value = committed }
         result
     }
 

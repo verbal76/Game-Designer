@@ -63,9 +63,15 @@ object ReferenceAspects {
             if (!names) continue
             val low = sentence.lowercase().replace("\u2019", "'")
             Regex("$liking\\s+(?:the\\s+|its\\s+|how\\s+)?$phraseTail\\s+(?:in|of|from)\\s+$n", RegexOption.IGNORE_CASE).findAll(low).forEach { wanted += tidy(it.groupValues[1]) }
-            Regex("$liking\\s+$n's\\s+$phraseTail(?:$|[.,;])", RegexOption.IGNORE_CASE).findAll(low).forEach { wanted += tidy(it.groupValues[1]) }
+            var likedInSentence = wanted.isNotEmpty()
             for (clause in low.split(clauseSplit)) {
-                Regex("(?:^|\\s)$rejecting\\s+(?:its|their|the|that|any)\\s+$phraseTail\\s*$", RegexOption.IGNORE_CASE).find(clause.trim().trimEnd('.', '!'))?.let { excluded += tidy(it.groupValues[1]) }
+                val c = clause.trim().trimEnd('.', '!')
+                // "I like Pac-Man's role reversal": read per clause, so a later "but ..." is never swallowed into the liked aspect.
+                Regex("$liking\\s+$n's\\s+$phraseTail$", RegexOption.IGNORE_CASE).find(c)?.let { wanted += tidy(it.groupValues[1]); likedInSentence = true }
+                Regex("(?:^|\\s)$rejecting\\s+(?:its|their|the|that|any)\\s+$phraseTail\\s*$", RegexOption.IGNORE_CASE).find(c)?.let { excluded += tidy(it.groupValues[1]) }
+                // "...but I do not want power-ups" right after something liked about this game: what is left out of what is taken from it.
+                if (likedInSentence && !Regex(n, RegexOption.IGNORE_CASE).containsMatchIn(c))
+                    Regex("(?:^|\\s)(?:i\\s+)?(?:don'?t want|do not want|don'?t need|do not need|without|no|skip|leave out|exclude|drop)\\s+(?:any\\s+)?(?!(?:its|their|the|that)\\b)$phraseTail$", RegexOption.IGNORE_CASE).find(c)?.let { excluded += tidy(it.groupValues[1]) }
             }
         }
         return FromOwner(wanted.filter { it.isNotBlank() && it !in excluded }, excluded.filter { it.isNotBlank() })

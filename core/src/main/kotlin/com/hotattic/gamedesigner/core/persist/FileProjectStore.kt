@@ -17,7 +17,7 @@ data class ProjectSummary(
  *   projects/<id>/assets/...  (uploaded masters, never modified)
  * Writes are atomic (temp file + rename). A corrupt project.json is preserved as *.corrupt and the .bak is used.
  */
-class FileProjectStore(private val root: File) {
+class FileProjectStore(val root: File) {
 
     private val projectsDir get() = File(root, "projects").also { it.mkdirs() }
     private val settingsFile get() = File(root, "settings.json")
@@ -66,7 +66,7 @@ class FileProjectStore(private val root: File) {
     fun save(p: Project) {
         val f = projectFile(p.id)
         val tmp = File(f.path + ".tmp")
-        tmp.writeText(ProjectCodec.encode(p))
+        tmp.writeText(ProjectCodec.encodePreserving(p, if (f.exists()) runCatching { f.readText() }.getOrNull() else null))
         // Keep the previous good copy before replacing.
         if (f.exists()) f.copyTo(File(f.path + ".bak"), overwrite = true)
         if (!tmp.renameTo(f)) {

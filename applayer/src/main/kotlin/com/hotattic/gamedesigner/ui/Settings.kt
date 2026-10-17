@@ -76,8 +76,10 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
     var keysVersion by remember { mutableStateOf(0) }
 
     val backup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri -> if (uri != null) vm.backupAll(uri) }
-    val restore = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.restoreBackup(uri) }
+    val importFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) vm.previewImports(uris) }
+    val verifyFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.verifyBackupFile(uri) }
 
+    ImportDialog(vm)
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AboutSection(vm, shell)
@@ -149,12 +151,14 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
             }
 
             HorizontalDivider()
-            Section("Your data")
-            Text("Projects are stored only on this phone. A backup contains projects and uploaded images, never API keys or tokens.", style = MaterialTheme.typography.bodySmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton({ backup.launch("game-designer-backup.zip") }) { Text("Export backup") }
-                OutlinedButton({ restore.launch(arrayOf("application/zip", "application/octet-stream")) }) { Text("Restore backup") }
-            }
+            Section("Your projects: backup and recovery")
+            Text("Projects live in Bob's private storage on this phone. Updating Bob over the existing app keeps them. Uninstalling Bob deletes every project, and Android does not keep a copy. A backup saved to a place you choose (Downloads, Drive, a computer) is the only thing that survives an uninstall.", style = MaterialTheme.typography.bodySmall)
+            Text(if (s.lastBackupAt == 0L) "No backup has been saved yet." else "Last backup: " + java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(s.lastBackupAt)), style = MaterialTheme.typography.bodyMedium)
+            Text("A backup holds your complete projects (conversation, decisions, exclusions, approvals, spec versions) and uploaded images, with checksums. It never contains API keys or tokens.", style = MaterialTheme.typography.bodySmall)
+            Button({ backup.launch("game-designer-backup.zip") }) { Text("Back up all projects") }
+            OutlinedButton({ importFiles.launch(arrayOf("*/*")) }) { Text("Import projects from files") }
+            Text("Choose backups, spec packages or project files from your phone. You will see what each file contains before anything is saved, and nothing you already have is overwritten.", style = MaterialTheme.typography.bodySmall)
+            OutlinedButton({ verifyFile.launch(arrayOf("*/*")) }) { Text("Check a backup file") }
             status?.let { Text(it, color = MaterialTheme.colorScheme.secondary) }
             HorizontalDivider()
             DiagnosticsSection(shell)

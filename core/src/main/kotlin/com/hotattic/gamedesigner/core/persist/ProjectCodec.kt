@@ -47,6 +47,17 @@ object ProjectCodec {
 
     fun encode(p: Project): String = json.encodeToString(Project.serializer(), p)
 
+    /**
+     * Encodes [p], carrying over any top-level field the stored copy has that this build does not know. A newer application layer may have added fields
+     * (they are additive and do not bump the schema); after an OTA rollback the older layer saving the project must not silently erase them.
+     */
+    fun encodePreserving(p: Project, previousText: String?): String {
+        val fresh = json.encodeToJsonElement(Project.serializer(), p).jsonObject
+        val old = previousText?.let { runCatching { json.parseToJsonElement(it).jsonObject }.getOrNull() } ?: return json.encodeToString(JsonObject.serializer(), fresh)
+        val extra = old.filterKeys { it !in fresh.keys }
+        return json.encodeToString(JsonObject.serializer(), if (extra.isEmpty()) fresh else JsonObject(fresh + extra))
+    }
+
     fun decode(text: String, registry: MigrationRegistry = migrations): Project {
         val obj = json.parseToJsonElement(text).jsonObject
         val upgraded = registry.upgrade(obj)

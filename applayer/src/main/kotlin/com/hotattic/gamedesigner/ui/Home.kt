@@ -51,6 +51,8 @@ fun HomeScreen(vm: AppViewModel, nav: NavController) {
     var playtestPicker by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<ProjectSummary?>(null) }
     LaunchedEffect(Unit) { vm.refresh() }
+    val importFiles = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenMultipleDocuments()) { uris -> if (uris.isNotEmpty()) vm.previewImports(uris) }
+    ImportDialog(vm)
 
     Scaffold(topBar = {
         TopAppBar(title = { Text("Game Designer") }, actions = {
@@ -64,6 +66,9 @@ fun HomeScreen(vm: AppViewModel, nav: NavController) {
             item { ActionCard(Icons.Default.Add, "New game", "Start from an idea, a reference game, or a rough feeling.") { vm.createProject(ProjectMode.NEW_GAME) { nav.navigate("chat/$it") } } }
             item { ActionCard(Icons.Default.Code, "Existing game (GitHub)", "Inspect a repository first, then plan changes that keep what works.") { nav.navigate("repos") } }
             item { ActionCard(Icons.Default.SportsEsports, "Playtest feedback", "Tell ${s.directorName} how a build felt and get a continuation spec.") { playtestPicker = true } }
+            item { ActionCard(Icons.Default.Add, "Import or recover projects", "Pick a backup, spec package or project file from this phone. Nothing you have is overwritten.") { importFiles.launch(arrayOf("*/*")) } }
+            if (projects.isNotEmpty() && (s.lastBackupAt == 0L || System.currentTimeMillis() - s.lastBackupAt > 7L * 24 * 3600 * 1000))
+                item { ActionCard(Icons.Default.Settings, if (s.lastBackupAt == 0L) "No backup yet" else "Backup is over a week old", "Uninstalling Bob deletes every project on this phone. Save a backup to a place you choose (Settings > Your projects).") { nav.navigate("settings") } }
             item { ActionCard(Icons.Default.Refresh, "Reevaluate", "Run a saved design through ${s.directorName}'s newest design intelligence.") { nav.navigate("reeval-pick") } }
             if (projects.isNotEmpty()) item { Text("Your projects", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 12.dp)) }
             items(projects, key = { it.id }) { p ->

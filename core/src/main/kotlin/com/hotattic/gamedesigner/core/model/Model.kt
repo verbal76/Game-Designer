@@ -431,6 +431,24 @@ data class ReevalRecord(
 @Serializable
 data class DesignApproval(val fingerprint: String, val at: Long, /** "owner" or "delegated" */ val by: String)
 
+/**
+ * What the owner (or an owner-accepted recommendation) had decided before it was changed or removed. Active decisions live in [Project.decisions];
+ * this is the preserved history, never treated as active, and never read by the interview, the readiness figure or the spec generators.
+ */
+@Serializable
+data class DecisionRevision(
+    val key: String,
+    val value: String,
+    val provenance: Provenance,
+    val status: DecisionStatus,
+    val decidedAt: Long,
+    val supersededAt: Long,
+    /** The owner's own words that produced the old decision, unchanged. */
+    val rawAnswer: String = "",
+    /** The value that replaced it, or null when the decision was removed (for example because the owner ruled the whole system out). */
+    val replacedBy: String? = null,
+)
+
 @Serializable
 data class Project(
     val id: String,
@@ -478,6 +496,8 @@ data class Project(
     val reeval: ReevalRecord? = null,
     /** Reference-library history (shown / interested / rejected / applied), separate from decisions. Additive. */
     val knowledge: List<KnowledgeNote> = emptyList(),
+    /** Earlier owner decisions that were later changed or removed, oldest first. Additive: older projects read it as empty. */
+    val decisionHistory: List<DecisionRevision> = emptyList(),
 ) {
     fun decision(key: String): Decision? = decisions[key]
     fun value(key: String): String? = decisions[key]?.value?.takeIf { it.isNotBlank() }
@@ -504,6 +524,8 @@ data class AppSettings(
     /** Additive (no new enum values, so a rollback to an older layer still reads settings): "" = legacy [cloudProvider]. */
     val llmProviderId: String = "",
     val llmBaseUrl: String = "",
+    /** When the owner last saved a backup to a place they chose (epoch millis, 0 = never). Additive; used only for a reminder. */
+    val lastBackupAt: Long = 0L,
 )
 
 @Serializable
