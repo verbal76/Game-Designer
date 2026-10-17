@@ -91,6 +91,7 @@ class ConversationUiTest {
     }
 
     private fun render(name: String) {
+        rule.mainClock.advanceTimeBy(600); rule.waitForIdle()     // lets the return strip appear where content overflows, as it does on a phone
         val dir = File("build/ui-renders").apply { mkdirs() }
         val bmp = rule.onRoot().captureToImage().asAndroidBitmap()
         FileOutputStream(File(dir, "$name.png")).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
@@ -137,6 +138,19 @@ class ConversationUiTest {
         rule.onNodeWithTag("answer-field").assertIsNotFocused()
         assertEquals("the typed answer is still there for a retry", "A garden at dusk", text)
     }
+
+    private fun assertConfirmLabelFits(label: String) {
+        show(w = 320, h = 640) { Column(Modifier.fillMaxSize()) { ActionBar(null, true, {}, label, true, {}, true, {}, false) } }
+        val node = rule.onNodeWithText(label).fetchSemanticsNode()
+        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        node.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+        val r = results.first()
+        assertFalse("'$label' must not be visually truncated", r.hasVisualOverflow)
+        assertTrue("'$label' fits in at most two lines", r.lineCount <= 2)
+    }
+    @Test fun confirmMyAnswerIsNotCutOffOnANarrowPhone() = assertConfirmLabelFits("Confirm my answer")
+    @Test fun aLongChoiceLabelOnConfirmIsNotCutOffEither() = assertConfirmLabelFits("Confirm: A calm, cosy world")
+    @Test fun aMultiSelectConfirmLabelIsNotCutOff() = assertConfirmLabelFits("Confirm 3 selected")
 
     @Test fun anUnavailableConfirmDoesNothing() {
         var confirms = 0

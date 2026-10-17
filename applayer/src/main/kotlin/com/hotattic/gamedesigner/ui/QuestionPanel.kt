@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -33,6 +34,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.hotattic.gamedesigner.core.director.Accepted
 import com.hotattic.gamedesigner.core.director.AnswerDraft
@@ -166,9 +168,15 @@ fun ActionBar(
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (hint != null && !compact) Text(hint, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.semantics { stateDescription = hint })
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton({ tick(); onBack() }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = canBack) { Text("Back") }
-            Button({ onConfirm() }, Modifier.weight(2f).heightIn(min = 48.dp).semantics { contentDescription = if (confirmEnabled) "$confirmLabel. Records this answer." else "$confirmLabel. Not available yet." }, enabled = confirmEnabled) { Text(confirmLabel, maxLines = 1) }
-            OutlinedButton({ tick(); onNext() }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = nextEnabled) { Text("Next") }
+            // Confirm gets most of the width and may use two lines, so "Confirm my answer" and "Confirm: <choice>" are never cut off on a narrow phone.
+            val sidePad = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
+            OutlinedButton({ tick(); onBack() }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = canBack, contentPadding = sidePad) { Text("Back", maxLines = 1) }
+            Button(
+                { onConfirm() },
+                Modifier.weight(3f).heightIn(min = 48.dp).semantics { contentDescription = if (confirmEnabled) "$confirmLabel. Records this answer." else "$confirmLabel. Not available yet." },
+                enabled = confirmEnabled, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+            ) { Text(confirmLabel, maxLines = 2, textAlign = TextAlign.Center) }
+            OutlinedButton({ tick(); onNext() }, Modifier.weight(1f).heightIn(min = 48.dp), enabled = nextEnabled, contentPadding = sidePad) { Text("Next", maxLines = 1) }
         }
     }
 }
