@@ -26,4 +26,8 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // Several guard tests read repository files (the library JSON against its generated Kotlin, build files, workflows, a scan for personal data).
+    // Declaring the tree as an input stops Gradle from reporting them UP-TO-DATE after those files change.
+    inputs.files(rootProject.fileTree(rootProject.projectDir) { exclude("**/build/**", "**/.gradle/**", ".git/**", "**/.kotlin/**", "**/node_modules/**") })
+        .withPropertyName("repositoryFiles").withPathSensitivity(PathSensitivity.RELATIVE)
 }
