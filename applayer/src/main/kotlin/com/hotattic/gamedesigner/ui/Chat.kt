@@ -75,6 +75,8 @@ import kotlinx.coroutines.withContext
 import com.hotattic.gamedesigner.AppViewModel
 import com.hotattic.gamedesigner.UiEvent
 import com.hotattic.gamedesigner.core.director.DesignMode
+import com.hotattic.gamedesigner.core.director.GuidedPanel
+import com.hotattic.gamedesigner.core.director.NextState
 import com.hotattic.gamedesigner.core.director.LessonParser
 import com.hotattic.gamedesigner.core.director.Messages
 import com.hotattic.gamedesigner.core.engine.CompletenessEngine
@@ -102,6 +104,12 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     var showStages by remember { mutableStateOf(false) }
     var showPrefs by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
+    // Guided question panel: screen-only state. The open question, its options and every decision stay in the engine.
+    var panelMinimized by rememberSaveable { mutableStateOf(false) }
+    var acceptedTurn by rememberSaveable { mutableStateOf("") }
+    var acceptedBefore by rememberSaveable { mutableStateOf(0) }
+    var acceptedKey by rememberSaveable { mutableStateOf("") }
+    var acceptedLabels by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
 
     LaunchedEffect(id) { if (vm.current.value?.id != id) vm.open(id) }
@@ -152,7 +160,9 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
         // The composer is the one thing that must always stay visible. The panel above it (answer card, chips, Back) is capped to a share of
         // the space that is actually left after the keyboard opens and scrolls inside that share, so it can never push the composer out of view.
         BoxWithConstraints(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
-        val dockMax = (maxHeight * 0.38f).coerceAtLeast(96.dp)
+        val landscape = maxWidth > maxHeight
+        val keyboardOpen = imeBottom > 0
+        val dockMax = (maxHeight * (if (keyboardOpen || landscape) 0.62f else 0.5f)).coerceAtLeast(150.dp)
         Column(Modifier.fillMaxSize()) {
             if (p?.mode == ProjectMode.NEW_GAME) stages?.let { StageStrip(it) { showStages = true } }
             if (p != null && p.mode == ProjectMode.NEW_GAME) ModeSelector(DesignMode.of(p.prefs.experience), { vm.setDesignMode(it) }, showCaption = imeBottom == 0)
@@ -184,16 +194,28 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                 if (busy != null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
             }
             val last = msgs.lastOrNull()
-            Column(Modifier.fillMaxWidth().heightIn(max = dockMax).verticalScroll(rememberScrollState())) {
-            val spec = last?.question?.takeIf { last.role == Role.DIRECTOR && busy == null && it.fieldKey == p?.pendingFieldKey && (it.kind == "SINGLE" || it.kind == "MULTI" || it.kind == "BOOLEAN" || it.kind == "ASSET_UPLOAD") }
-            if (spec != null && last != null) {
-                QuestionCard(spec, last.id, onSelect = { ids -> vm.submitSelection(spec.fieldKey, ids) }, onSend = { vm.send(it) })
+            val model = p?.let { GuidedPanel.model(it, busy != null) }
+            val accepted = if (p != null && acceptedTurn.isNotEmpty()) GuidedPanel.accepted(p, acceptedBefore, acceptedKey, acceptedTurn, acceptedLabels.split("\u0001").filter { it.isNotBlank() })?.takeIf { GuidedPanel.stillCurrent(it, p) } else null
+            val canBack = p != null && GuidedPanel.canBack(p, busy != null)
+            val nextState = if (p != null) GuidedPanel.next(p, model, accepted, busy != null) else NextState(false, null)
+            Column(Modifier.fillMaxWidth().heightIn(max = dockMax)) {
+            if (accepted != null) {
+                AcceptedPanel(accepted, canBack, nextState, onBack = { acceptedTurn = ""; vm.goBack() }, onNext = { acceptedTurn = "" }, compact = keyboardOpen || landscape)
+            } else if (model != null && last != null) {
+                QuestionPanel(
+                    model, canBack, nextState,
+                    onAction = { a, labels -> acceptedTurn = a.turnId; acceptedBefore = msgs.size; acceptedKey = model.key; acceptedLabels = labels.joinToString("\u0001"); vm.perform(a) },
+                    onBack = { acceptedTurn = ""; vm.goBack() }, onNext = {},
+                    onExplainMore = { vm.send("explain more") },
+                    minimized = panelMinimized, onMinimizedChange = { panelMinimized = it }, compact = keyboardOpen || landscape,
+                )
             } else if (last != null && last.role == Role.DIRECTOR && last.quickReplies.isNotEmpty() && busy == null) {
+                // No open question but Bob offered replies (status, generate...): they stay one tap away, exactly as before.
                 LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(last.quickReplies) { q -> SuggestionChip({ vm.send(q.send) }, { Text(q.label) }) }
                 }
             }
-            if (busy == null && p?.answerTrail?.isNotEmpty() == true && p.pendingTurn == null) {
+            if (model == null && accepted == null && busy == null && p?.answerTrail?.isNotEmpty() == true && p.pendingTurn == null) {
                 TextButton({ vm.goBack() }, Modifier.padding(start = 8.dp)) { Text("\u2190 Back to previous question") }
             }
             }
@@ -261,43 +283,6 @@ private fun Bubble(m: ChatMessage, directorName: String, onExplainMore: (() -> U
                 LessonCard(lesson, m.id, onExplainMore)
                 if (parts.after.isNotBlank()) SelectionContainer { Text(parts.after, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium) }
             } else SelectionContainer { Text(m.text, style = if (system) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium) }
-        }
-    }
-}
-
-/**
- * Structured answer card. Single-select submits on tap; multi-select toggles, offers Select all / Clear, and only
- * submits when the owner taps Continue, so a first tap never ends the question.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun QuestionCard(q: QuestionSpec, messageId: String, onSelect: (List<String>) -> Unit, onSend: (String) -> Unit) {
-    val multi = q.kind == "MULTI"
-    var selected by remember(messageId) { mutableStateOf(emptySet<String>()) }
-    Surface(Modifier.fillMaxWidth().padding(horizontal = 8.dp), tonalElevation = 2.dp, shape = RoundedCornerShape(16.dp)) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (multi) Text("Pick every one that applies", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
-            Column(Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    when (q.kind) {
-                        "BOOLEAN" -> {
-                            SuggestionChip({ onSend("yes") }, { Text("Yes") })
-                            SuggestionChip({ onSend("no") }, { Text("No") })
-                        }
-                        "MULTI" -> q.options.forEach { o -> OptionChip(o.label, o.id in q.recommended, o.id in selected) { selected = if (o.id in selected) selected - o.id else selected + o.id } }
-                        else -> q.options.forEach { o -> OptionChip(o.label, o.id in q.recommended, null) { onSelect(listOf(o.id)) } }
-                    }
-                }
-            }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (multi) {
-                    TextButton({ selected = q.options.map { it.id }.toSet() }) { Text("Select all") }
-                    TextButton({ selected = emptySet() }, enabled = selected.isNotEmpty()) { Text("Clear") }
-                    Button({ onSelect(q.options.map { it.id }.filter { it in selected }) }, enabled = selected.isNotEmpty()) { Text("Continue (${selected.size})") }
-                }
-                if (q.canDelegate) OutlinedButton({ onSend("choose for me") }) { Text("Choose for me") }
-                if (q.canSkip) TextButton({ onSend("skip") }) { Text("Skip") } else TextButton({ onSend("ask me later") }) { Text("Ask me later") }
-            }
         }
     }
 }

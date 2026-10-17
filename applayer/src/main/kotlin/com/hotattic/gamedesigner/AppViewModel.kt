@@ -247,12 +247,12 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
     }
 
     /** Structured answer from the question card (single tap or multi-select Continue). */
-    fun submitSelection(fieldKey: String, ids: List<String>) {
+    fun submitSelection(fieldKey: String, ids: List<String>, turnId: String? = null) {
         viewModelScope.launch {
             _busy.value = "${c.settings.value.directorName} is thinking..."
             try {
                 val action = session.mutate { p ->
-                    val turn = c.director().submitSelection(p, c.settings.value, fieldKey, ids)
+                    val turn = c.director().submitSelection(p, c.settings.value, fieldKey, ids, turnId)
                     turn.project to turn.action
                 }
                 dispatch(action)
@@ -261,6 +261,12 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
                 toast("Something went wrong: ${t.message ?: t.javaClass.simpleName}")
             } finally { _busy.value = null }
         }
+    }
+
+    /** What the guided question panel's buttons do: the same selection and text pipelines as before, with the panel's stable turn id so a repeat is ignored. */
+    fun perform(a: com.hotattic.gamedesigner.core.director.PanelAction) = when (a) {
+        is com.hotattic.gamedesigner.core.director.PanelAction.Select -> submitSelection(a.fieldKey, a.ids, a.turnId)
+        is com.hotattic.gamedesigner.core.director.PanelAction.Say -> send(a.text, a.turnId)
     }
 
     /** A generation that was interrupted must not keep saying "writing the files". */

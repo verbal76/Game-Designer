@@ -194,7 +194,12 @@ class InteractionPolishTest {
         assertTrue("contentDescription" in polish && "mergeDescendants = true" in polish, "the stage strip and handoff panel have spoken descriptions")
         assertTrue("Send your answer" in chat && "StageStrip(" in chat && "StageDialog(" in chat, "icon buttons are labelled and progress is on screen")
         assertTrue("Dispatchers.Default" in chat, "stage progress is computed off the main thread")
-        assertTrue("OptionChip(" in chat && "q.recommended" in chat)
+        val panel = ui("ui/QuestionPanel.kt")!!
+        assertTrue("o.recommended" in panel && "Bob recommends" in panel, "Bob's recommendation is marked in words, never by colour alone")
+        assertTrue("NavRow(" in panel && "\"Back\"" in panel && "\"Next\"" in panel && "confirmLabel" in panel, "BACK | CONFIRM | NEXT are on screen in every state")
+        assertTrue(Regex("heightIn\\(min = 48\\.dp\\)").findAll(panel).count() >= 4, "touch targets are at least 48dp")
+        assertFalse("horizontalScroll" in panel || "Thread.sleep" in panel || Regex("\\bdelay\\(").containsMatchIn(panel))
+        assertFalse("Dialog(" in panel || "ModalBottomSheet" in panel || "AlertDialog" in panel, "no nested popups")
         assertTrue("RestoreInput" in vm && "RestoreInput" in chat && "RestoreInput" in root, "a message that cannot be saved goes back in the box")
         assertTrue("HandoffStage.FAILED" in vm && "failHandoffIfRunning" in vm, "an interrupted generation ends in an honest failed state")
         assertTrue("HandoffStage.COMPLETED" in vm && vm.indexOf("HandoffStage.COMPLETED") > vm.indexOf("session.mutate"), "success is reported only after the validated version was saved")

@@ -90,9 +90,14 @@ class IntegrationValidationTest {
 
     // The Chat composable renders any QuestionSpec generically by kind; it must not special-case the new keys.
     @Test fun chatScreenRendersQuestionsGenerically() {
-        val src = java.io.File(System.getProperty("user.dir")).parentFile.resolve("applayer/src/main/kotlin/com/hotattic/gamedesigner/ui/Chat.kt").takeIf { it.exists() }?.readText() ?: return
-        assertTrue("\"SINGLE\"" in src && "\"MULTI\"" in src && "q.options" in src)
-        assertFalse(Regex("primary_platform|multiplayer_|ota_content|ota_behavior").containsMatchIn(src))
+        // Questions are drawn generically by the guided panel from the engine's question data; no field is special-cased in the screens.
+        val ui = java.io.File(System.getProperty("user.dir")).parentFile.resolve("applayer/src/main/kotlin/com/hotattic/gamedesigner/ui")
+        val chat = ui.resolve("Chat.kt").takeIf { it.exists() }?.readText() ?: return
+        val panel = ui.resolve("QuestionPanel.kt").readText()
+        val engine = java.io.File(System.getProperty("user.dir")).resolve("src/main/kotlin/com/hotattic/gamedesigner/core/director/GuidedPanel.kt").readText()
+        assertTrue("\"SINGLE\"" in engine && "\"MULTI\"" in engine && "spec.options" in engine)
+        assertTrue("GuidedPanel.model(" in chat && "QuestionPanel(" in chat && "model.options" in panel)
+        assertFalse(Regex("primary_platform|multiplayer_|ota_content|ota_behavior").containsMatchIn(chat + panel + engine))
     }
 
     @Test fun ordinaryOwnerPhrasesAreUnderstood() = runBlocking {
