@@ -101,7 +101,7 @@ object ClaudeMdGenerator {
         val ownerDecisions = project.decisions.filter { (k, d) -> ownerDecision(k, d) && k !in sectionKeys && d.prov == Provenance.OWNER_EXPLICIT }
         h2("A2. Owner requirements")
         if (ownerFacts.isEmpty() && ownerDecisions.isEmpty()) p("The owner specified nothing beyond the concept above.")
-        bullets(ownerFacts.map { it.text })
+        bullets(ownerFacts.map { f -> com.hotattic.gamedesigner.core.engine.FactStance.of(project, f).let { r -> if (r.note == null) f.text else "${f.text} [${r.note}]" } })
         bullets(ownerDecisions.map { (k, d) -> "**${Fields.get(k)?.title ?: k}:** ${label(k, d.value)}" + if (d.rawAnswer.isNotBlank() && d.rawAnswer.length < 160) " (owner said: \"${d.rawAnswer.trim()}\")" else "" })
 
         val retracted = project.facts.filter { it.status == FactStatus.RETRACTED }

@@ -42,6 +42,9 @@ object Hedge {
 
     fun hedged(clause: String) = cue.containsMatchIn(clause)
 
+    /** The clauses of [text] that are only possibilities. */
+    fun hedgedClauses(text: String): List<String> = text.split(split).filter { hedged(it) }
+
     /** The text with every hedged clause removed: only what the owner is committing to remains. */
     fun committed(text: String): String = text.split(split).filter { !hedged(it) }.joinToString(". ")
 

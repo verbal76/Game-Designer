@@ -1123,6 +1123,14 @@ object Dependencies {
         Keys.ORIENTATION to setOf(Keys.GENRE, Keys.PLATFORMS, TAG),
         Keys.MENUS_SETTINGS to emptySet(),
         Keys.SCOPE_CHOICE to emptySet(),
+        // Free-text design answers describe the game itself; a platform or 2D/3D change does not make them stale (the audit found they were dropped by "also add Windows").
+        Keys.CORE_LOOP to setOf(Keys.GENRE, TAG),
+        Keys.FIRST_SLICE to setOf(Keys.GENRE, TAG),
+        Keys.DONE to setOf(Keys.GENRE, TAG),
+        Keys.WIN_LOSS to setOf(Keys.GENRE, TAG),
+        Keys.DIFFICULTY_FAILURE to setOf(Keys.GENRE, TAG),
+        Keys.PLAYER_FEELING to setOf(Keys.CONCEPT),
+        Keys.MUST_NOT_CHANGE to emptySet(),
     )
 
     fun sourcesOf(field: Field): Set<String> = when {

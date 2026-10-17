@@ -164,7 +164,14 @@ object HandoffDocs {
         label(p, Keys.WIN_LOSS)?.let { add("Win and loss: $it", Keys.WIN_LOSS, "Core loop", "Reach the completion state and a failure state on the real build") }
         label(p, Keys.DIFFICULTY_FAILURE)?.let { add("Failure and recovery: $it", Keys.DIFFICULTY_FAILURE, "Core loop", "Fail on purpose; confirm recovery cannot soft-lock") }
         t.systems().forEach { (_, s) -> rows += Row("${s.name}: ${s.detail}", "Should", "Core loop", "Bob's genre checklist", "Exercise the system end to end on the real build") }
-        p.activeFacts().forEach { rows += Row("Owner statement: ${it.text.take(240)}", "Must", "-", "Owner (own words)", "Verify the statement is true in the running game") }
+        p.activeFacts().forEach { f ->
+            val r = com.hotattic.gamedesigner.core.engine.FactStance.of(p, f)
+            when (r.stance) {
+                com.hotattic.gamedesigner.core.engine.Stance.REQUEST -> rows += Row("Owner statement: ${f.text.take(240)}", "Must", "-", "Owner (own words)", "Verify the statement is true in the running game")
+                com.hotattic.gamedesigner.core.engine.Stance.REJECTION -> rows += Row("Owner exclusion: ${f.text.take(240)}", "Exclusion", "-", "Owner (own words)", "Verify nothing in the build contradicts the exclusion")
+                else -> rows += Row("Owner statement (${r.note}): ${f.text.take(240)}", "Not required", "-", "Owner (own words)", "None: this is not a requirement")
+            }
+        }
         if (t.has(com.hotattic.gamedesigner.core.schema.Tag.PROCGEN) || p.value(Keys.WORLD_STRUCTURE) == "procedural_stages") add("Generated content is always completable, fair and reproducible from a seed.", Keys.WORLD_STRUCTURE, "Core loop", "Automated reachability and completion check over many seeds")
         add("Progress saves safely (versioned schema, safe writes, recovery) and survives closing and reopening the game.", Keys.SAVE_SYSTEM, "Core loop", "Save, close the game, reopen, load; corrupt-file recovery test")
         label(p, Keys.PERFORMANCE)?.let { add("Performance: $it", Keys.PERFORMANCE, "-", "Measured frame rate on representative hardware") }
