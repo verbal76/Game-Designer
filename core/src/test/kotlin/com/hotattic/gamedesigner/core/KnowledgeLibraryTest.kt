@@ -48,11 +48,11 @@ class KnowledgeLibraryTest {
         val all = KnowledgeLibrary.entries
         assertTrue(all.size >= 100, "every distinct supported principle is bundled: ${all.size}")
         assertEquals(all.size, all.map { it.id }.toSet().size)
-        assertTrue(all.map { it.game }.toSet().size >= 100, "100 distinct games are covered")
-        assertTrue(KnowledgeLibrary.active.size in 10..15, "pilot size: ${KnowledgeLibrary.active.size}")
+        assertTrue(all.filter { it.sourceId == "gmtk" }.map { it.game }.toSet().size >= 100, "100 distinct games are covered")
+        assertTrue(KnowledgeLibrary.active.count { it.sourceId == "gmtk" } in 10..15, "pilot size: ${KnowledgeLibrary.active.size}")
         val clock = Regex("\\d\\d:[0-5]\\d:[0-5]\\d")
         for (e in all) {
-            assertTrue(clock.matches(e.start) && clock.matches(e.end) && e.start <= e.end, "${e.id} has a real source range")
+            if (e.sourceId == "gmtk") assertTrue(clock.matches(e.start) && clock.matches(e.end) && e.start <= e.end, "${e.id} has a real source range")
             assertTrue(e.concepts.isNotEmpty(), "${e.id} belongs to at least one topic")
             assertTrue(e.related.all { KnowledgeLibrary.byId(it) != null }, "${e.id} relates only to real entries")
             assertEquals("VALIDATED", e.extractionStatus)

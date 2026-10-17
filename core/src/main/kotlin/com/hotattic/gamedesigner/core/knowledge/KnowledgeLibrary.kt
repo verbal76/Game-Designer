@@ -10,8 +10,6 @@ import com.hotattic.gamedesigner.core.schema.Keys
  */
 object KnowledgeLibrary {
     const val SOURCE_TITLE = "The 100 Games That Taught Me Game Design"
-    const val SOURCE_CREATOR = "Game Maker's Toolkit"
-    const val SOURCE_KIND = "video"
     const val MIN_SCORE = 4
     const val MAX_RESULTS = 2
 
@@ -85,12 +83,12 @@ object KnowledgeLibrary {
      * The best entries for [query] (what the owner said) and/or [fieldKey] (the open question). A match needs a topic hit plus a second
      * independent signal (another topic or a shared content word), so a vague request returns nothing rather than a stretched example.
      */
-    fun retrieve(p: Project, query: String, fieldKey: String? = null, includeInactive: Boolean = false): List<Match> {
+    fun retrieve(p: Project, query: String, fieldKey: String? = null, includeInactive: Boolean = false, panel: Boolean = false): List<Match> {
         val wanted = conceptsOfText(query) + conceptsOfField(fieldKey)
         if (wanted.isEmpty()) return emptyList()
         val ctxWords = words(query + " " + p.originalConcept).map(::stem).toSet()
         val shown = p.knowledge.filter { it.status == KnowledgeStatus.SHOWN }.map { it.entryId }.toSet()
-        val scored = (if (includeInactive) entries else active).filterNot { suppressed(p, it) }.mapNotNull { e ->
+        val scored = (if (includeInactive) entries else active).filterNot { suppressed(p, it) || (panel && it.explicitOnly) }.mapNotNull { e ->
             val topics = e.concepts.filter { it in wanted }
             if (topics.isEmpty()) return@mapNotNull null
             val body = words(e.problem + " " + e.mechanic + " " + e.effect + " " + e.tags.joinToString(" ")).map(::stem).toSet()
@@ -105,5 +103,5 @@ object KnowledgeLibrary {
     }
 
     /** True when "Show an example" is worth offering on this open question. */
-    fun hasExampleFor(p: Project, fieldKey: String?) = fieldKey != null && retrieve(p, "", fieldKey).isNotEmpty()
+    fun hasExampleFor(p: Project, fieldKey: String?) = fieldKey != null && retrieve(p, "", fieldKey, panel = true).isNotEmpty()
 }

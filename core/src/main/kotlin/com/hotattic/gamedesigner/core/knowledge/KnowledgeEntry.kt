@@ -1,5 +1,8 @@
 package com.hotattic.gamedesigner.core.knowledge
 
+/** Where entries come from. [locator] says how an entry points into the source: "timestamp" or "section". [status] is shown with every card from this source. */
+data class KnowledgeSource(val id: String, val title: String, val creator: String, val kind: String, val locator: String, val status: String)
+
 /** A named design topic and the owner phrases that point at it. Part of the generated data; retrieval is keyed on these, not on titles. */
 data class KnowledgeConcept(val name: String, val phrases: List<String>)
 
@@ -27,12 +30,20 @@ data class KnowledgeEntry(
     val confidence: String,
     /** Only pilot entries are retrieved; the rest are validated and waiting to be activated. */
     val pilot: Boolean,
+    val sourceId: String = "gmtk",
+    /** SOURCE_SUPPORTED (a stated design principle), SOURCE_CONSTRUCT / SOURCE_FRAMEWORK / SOURCE_OBSERVATION / SOURCE_CAVEAT for the research paper. */
+    val classification: String = "SOURCE_SUPPORTED",
+    /** Never offered by the "Show an example" button; only when the owner asks. */
+    val explicitOnly: Boolean = false,
 ) {
+    val source get() = KnowledgeLibraryData.sources.getValue(sourceId)
     val extractionStatus get() = "VALIDATED"
     val reviewedBy get() = "none (machine-validated only; owner review pending)"
-    val sourceTitle get() = KnowledgeLibrary.SOURCE_TITLE
-    val sourceCreator get() = KnowledgeLibrary.SOURCE_CREATOR
-    val sourceKind get() = KnowledgeLibrary.SOURCE_KIND
+    val sourceTitle get() = source.title
+    val sourceCreator get() = source.creator
+    val sourceKind get() = source.kind
     val contentVersion get() = KnowledgeLibraryData.CONTENT_VERSION
-    val timestamp get() = "$start-$end"
+    /** Timestamp range for a video, section name for a paper. Never copied text. */
+    val timestamp get() = if (end.isBlank()) start else "$start-$end"
+    val fromPaper get() = source.locator == "section"
 }

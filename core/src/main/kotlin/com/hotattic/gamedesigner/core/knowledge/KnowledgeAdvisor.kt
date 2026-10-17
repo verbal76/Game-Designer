@@ -37,12 +37,13 @@ object KnowledgeAdvisor {
         for (m in matches) {
             val e = m.entry
             append("\n${e.game}: ${e.problem.trimEnd('.')}.\n")
-            append("How it works: ${e.mechanic}\n")
-            append("What it does for players: ${e.effect}\n")
-            e.tradeoffs?.let { append("Worth weighing: $it\n") }
+            append(if (e.fromPaper) "What the paper describes: ${e.mechanic}\n" else "How it works: ${e.mechanic}\n")
+            append(if (e.fromPaper) "The experience it names: ${e.effect}\n" else "What it does for players: ${e.effect}\n")
+            e.tradeoffs?.let { append(if (e.fromPaper) "Risks and limits: $it\n" else "Worth weighing: $it\n") }
             e.inference?.let { append("My own analysis (not from the source): $it\n") }
             append("Why I raised it: ${m.reason}.\n")
             append("Source: ${e.sourceTitle}, ${e.sourceCreator}, ${e.timestamp}\n")
+            if (e.fromPaper) append("Source status: ${e.source.status} Mentioning it is not a request to add any mechanic.\n")
         }
     }.trimEnd()
 

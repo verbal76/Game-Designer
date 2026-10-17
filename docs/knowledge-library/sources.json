@@ -1,0 +1,17 @@
+{
+  "gmtk": {
+    "title": "The 100 Games That Taught Me Game Design",
+    "creator": "Game Maker's Toolkit",
+    "kind": "video",
+    "locator": "timestamp",
+    "status": "Presenter's design observations; not peer-reviewed research."
+  },
+  "karhulahti2024": {
+    "title": "Vitality structures in 'addictive' game design",
+    "creator": "Veli-Matti Karhulahti",
+    "kind": "journal article (Open Research Europe 4:47, version 2, 14 Oct 2024, doi:10.12688/openreseurope.17177.2)",
+    "locator": "section",
+    "status": "Theory proposal built on the author's own recollection of play. It offers hypotheses for further testing and does not establish a cause of problem gaming.",
+    "sections": ["Abstract", "Terminology", "Design", "Theory", "Vitality Structures", "Methods", "Analysis", "Analysis: CLIMB", "Analysis: FINAL STRETCH", "Analysis: ALERT", "Discussion", "Discussion: CLIMB", "Discussion: FINAL STRETCH", "Discussion: ALERT", "Ontology", "Conclusions"]
+  }
+}

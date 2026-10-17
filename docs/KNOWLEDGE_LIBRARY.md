@@ -40,3 +40,26 @@ Add JSON files under `docs/knowledge-library/entries/`, extend `tags.json` if ne
 ## Verified and not verified
 Verified: 17 JVM tests in `KnowledgeLibraryTest` (the 12 scenarios, view-changes-nothing, Show-an-example offered only where relevant, no library text in a recording model's prompts, unknown ledger ids, library integrity). With the earlier corpus tests the mandatory brief cases ("Songs of Syx ... no combat", Pac-Man without power-ups, "Maybe Windows later, Android first", "No, not for a general audience") are covered.
 Not verified: behaviour with the real on-device model (none is runnable here; the model path is tested only with a scripted recording provider, which proves library text is not sent to it), the Compose "Show an example" button (compiled only in CI), and any device behaviour.
+
+## Second source: Karhulahti (2024), "Vitality structures in 'addictive' game design"
+Open Research Europe 4:47, version 2, 14 Oct 2024, doi:10.12688/openreseurope.17177.2. Added as `entries/part-05-karhulahti2024.json` (9 entries, all active, all **explicit-only**: retrieved only when the owner asks, never by the "Show an example" button).
+
+| Entry | Classification | Section |
+|---|---|---|
+| CLIMB | SOURCE_CONSTRUCT | Analysis: CLIMB |
+| FINAL STRETCH | SOURCE_CONSTRUCT | Analysis: FINAL STRETCH |
+| ALERT | SOURCE_CONSTRUCT | Analysis: ALERT |
+| Micro, meso and macro time scales | SOURCE_FRAMEWORK | Analysis |
+| Self, avatar or object perspective (meta-spatial) | SOURCE_FRAMEWORK | Analysis |
+| Past, present and future perspective (meta-temporal) | SOURCE_FRAMEWORK | Analysis |
+| Design and experience as a pair | SOURCE_FRAMEWORK | Vitality Structures |
+| Signal density and session length | SOURCE_OBSERVATION | Analysis: ALERT |
+| What the source does and does not establish | SOURCE_CAVEAT | Methods |
+
+How it differs from the video source: provenance is a section name, not a timestamp (`sources.json` lists valid sections). Every entry must carry tradeoffs and a `Bob's reading` inference, kept apart from the paper's content. Every card from this source adds "Source status": the framework is a hypothesis-stage proposal from the author's own recollection and does not establish a cause of problem gaming, and mentioning a construct is not a request for any mechanic. Cards label the tradeoff line "Risks and limits".
+
+Guards: the concepts have their own topic (`engagement_loops`) that no other entry shares, so ordinary requests (difficulty, exploration, onboarding, progression) never surface them. A message that describes a feature ("I want ranked ladders and notifications") is not a request for reference material. They are never added to decisions, the interpretation prompt, reevaluation, or the spec. Interest, rejection and suppression behave as for the video entries.
+
+Deliberately excluded because the paper does not support them as design knowledge or they are not constructs it proposes: causal claims about addiction; the author's clinical hypotheses (links to ADHD, autism, OCD, impulsivity, anxiety); the gambling-design material (near-miss, illusion of control) which the paper reviews rather than proposes; Stern's vitality-forms theory, affordance and ontology discussion; the "prime vitality structure" idea (speculative); per-game rank numbers; and the 27/18/6 matrix counts (covered qualitatively by the dimension entries).
+
+Validation limit: the validator compared the entries against the ~1,300 words of the supplied text that the entries draw from (definitions, dimensions, status and limits), not the full ~19,000-word paper. A planted copied sentence is caught; paraphrase quality beyond overlap is not machine-verifiable, so review stays pending.
