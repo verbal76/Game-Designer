@@ -27,7 +27,18 @@ android {
     // Release signing comes from the environment (CI), never from source. There is deliberately NO fallback to the debug key: a release build
     // without the permanent key must fail, because a debug-signed APK of the production application id can never update the installed app.
     val ksPath = System.getenv("GD_KEYSTORE")
+    // The TEST app (debug build type) is signed with its own persistent key, never the release key: CI loads it from the private draft release
+    // "gd-test-signing-key" (tools/ota/ensure-test-key.sh). Without it (local builds) the default debug key is used, which cannot update a CI-built test app.
+    val testKsPath = System.getenv("GD_TEST_KEYSTORE")
     signingConfigs {
+        if (testKsPath != null) {
+            create("testStable") {
+                storeFile = file(testKsPath)
+                storePassword = System.getenv("GD_TEST_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GD_TEST_KEY_ALIAS")
+                keyPassword = System.getenv("GD_TEST_KEYSTORE_PASSWORD")
+            }
+        }
         if (ksPath != null) {
             create("release") {
                 storeFile = file(ksPath)
@@ -52,6 +63,7 @@ android {
         debug {
             applicationIdSuffix = ".test"
             versionNameSuffix = "-test"
+            signingConfig = signingConfigs.findByName("testStable") ?: signingConfigs.getByName("debug")
         }
         release {
             isMinifyEnabled = false

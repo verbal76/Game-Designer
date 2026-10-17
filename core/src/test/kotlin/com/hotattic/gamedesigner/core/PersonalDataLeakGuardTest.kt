@@ -79,7 +79,7 @@ class PersonalDataLeakGuardTest {
 
     @Test fun ciInspectsTheActualApkAndOtaBundleForPersonalData() {
         val ci = File(root, ".github/workflows/android.yml").readText()
-        assertTrue(ci.contains("check-distribution-privacy.py") && ci.contains("otabundle-debug.apk") && ci.contains("gd-test-debug-keystore"), "privacy audit and stable test key are wired into CI")
+        assertTrue(ci.contains("check-distribution-privacy.py") && ci.contains("otabundle-debug.apk") && ci.contains("ensure-test-key.sh"), "privacy audit and stable test key are wired into CI")
         assertTrue(File(root, "tools/check-distribution-privacy.py").readText().contains("originalConcept"))
     }
 }

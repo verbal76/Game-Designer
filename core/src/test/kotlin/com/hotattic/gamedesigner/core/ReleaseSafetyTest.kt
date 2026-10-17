@@ -48,4 +48,31 @@ class ReleaseSafetyTest {
         assertTrue(tracked.none { it.extension in setOf("keystore", "jks", "p12", "pfx") }, "a signing keystore is committed")
         assertTrue(File(root, ".github/workflows/android.yml").readText().contains("Release signing guard"), "CI exercises the guard")
     }
+
+    // ---- the TEST app keeps one signing certificate across builds ------------------------------------------------------------------------------------
+
+    private val workflow = File(root, ".github/workflows/android.yml").readText()
+    private val testKeyScript = File(root, "tools/ota/ensure-test-key.sh").readText()
+
+    @Test fun theTestBuildIsSignedWithAPersistentTestKeyNeverTheReleaseKey() {
+        val debug = block("debug {")
+        assertTrue(debug.contains("findByName(\"testStable\")"), "debug (the TEST app) uses the persistent test key when CI provides it")
+        assertFalse(debug.contains("\"release\""), "the test build never uses the release signing config")
+        assertTrue(block("release {").contains("findByName(\"release\")") && !block("release {").contains("testStable"), "release never uses the test key")
+        for (v in listOf("GD_TEST_KEYSTORE", "GD_TEST_KEYSTORE_PASSWORD", "GD_TEST_KEY_ALIAS")) assertTrue(gradle.contains("\"$v\""), v)
+    }
+
+    @Test fun theTestKeyLivesInItsOwnPrivateDraftReleaseNotAnEvictableCache() {
+        assertTrue(testKeyScript.contains("gd-test-signing-key") && testKeyScript.contains("NAME=\"gd-test-signing-key\""), "a separate store from production and OTA")
+        assertTrue(testKeyScript.contains("--draft"), "private draft release")
+        assertTrue(testKeyScript.contains("does not match its recorded fingerprint"), "a corrupted or swapped keystore stops the build")
+        assertTrue(testKeyScript.contains("sort_by(.id)"), "concurrent first runs agree on one key")
+        assertFalse(workflow.contains("actions/cache@") && workflow.contains("debug.keystore"), "the evictable cache is no longer the key store")
+        assertTrue(workflow.contains("tools/ota/ensure-test-key.sh"))
+    }
+
+    @Test fun ciFailsIfTheApkIsNotSignedWithThePersistentTestCertificate() {
+        assertTrue(workflow.contains("certificate SHA-256 digest: \${GD_TEST_CERT_SHA256}"), "the built APK is compared with the recorded test certificate")
+        assertTrue(workflow.indexOf("ensure-test-key.sh") < workflow.indexOf("assembleDebug"), "the key is loaded before the APK is built")
+    }
 }

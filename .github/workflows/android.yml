@@ -21,6 +21,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: write   # only to create the private draft release holding the test key on the very first run
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -32,13 +34,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           cache-read-only: false   # feature branches may save the Gradle cache so later runs are not cold
-      # The side-by-side test build is signed with the runner's debug key. Caching that key makes successive TEST builds updatable in place; it is a
-      # throw-away key for the test application id only and is never the release key. If the cache is evicted the test app (synthetic data only) is reinstalled.
-      - name: Stable debug key for the test build
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: gd-test-debug-keystore-v1
+      # The side-by-side test build is signed with a PERSISTENT test key kept in the private draft release "gd-test-signing-key" (visible to repository
+      # writers only, never expires). An Actions cache is not used: it did not save (the runner's debug keystore is not at the cached path) and can be evicted.
+      # It is a different key from the production release key and cannot sign production. The step verifies the keystore against its recorded fingerprint.
+      - name: Persistent signing key for the test build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tools/ota/ensure-test-key.sh "$RUNNER_TEMP/testkey" | tee key.log
+          echo "GD_TEST_KEYSTORE=$RUNNER_TEMP/testkey/test.keystore" >> "$GITHUB_ENV"
+          echo "GD_TEST_KEYSTORE_PASSWORD=$(sed -n 's/^password=//p' "$RUNNER_TEMP/testkey/test.properties")" >> "$GITHUB_ENV"
+          echo "GD_TEST_KEY_ALIAS=$(sed -n 's/^alias=//p' "$RUNNER_TEMP/testkey/test.properties")" >> "$GITHUB_ENV"
+          echo "GD_TEST_CERT_SHA256=$(cat "$RUNNER_TEMP/testkey/test.sha256")" >> "$GITHUB_ENV"
       - name: Monotonic version code
         run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
       - name: Android lint, debug APK, layer unit tests (incl. theme contrast)
@@ -63,7 +70,10 @@ jobs:
           grep -q "package: name='com.hotatticgames.gamedesigner.test'" badging-test.txt
           grep -q "versionName='5.0.0-test'" badging-test.txt
           grep -q "application-label:'Game Designer TEST'" badging-test.txt
-          "$BT/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -E "certificate SHA-256 digest|Signer #1 certificate DN" | head -3
+          "$BT/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee certs-test.txt | grep -E "certificate SHA-256 digest|Signer #1 certificate DN" | head -3
+          # The APK must carry the persistent test certificate: the same one on every build, so each test APK updates the previous one in place.
+          grep -q "certificate SHA-256 digest: ${GD_TEST_CERT_SHA256}" certs-test.txt
+          echo "TEST signing certificate SHA-256: ${GD_TEST_CERT_SHA256}" | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Distribution privacy audit (test APK and the OTA application-layer bundle)
         run: |
           set -euo pipefail

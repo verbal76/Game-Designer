@@ -31,7 +31,7 @@ OTA: edit `ota/publish-request.json` (channel, version > current, label; stable 
 |---|---|---|
 | Application id | `com.hotatticgames.gamedesigner` | `com.hotatticgames.gamedesigner.test` |
 | Built by | `release-vN.yml` only (needs the permanent key; a release build without it now fails) | Android CI (`android.yml`), the `debug` build type; version name ends `-test` |
-| Signing | Persistent release key in the private draft release `gd-signing-keys` | The CI debug key, kept in the Actions cache `gd-test-debug-keystore-v1`; throw-away, never the release key |
+| Signing | Persistent release key in the private draft release `gd-signing-keys` | A persistent TEST key in the private draft release `gd-test-signing-key` (never the release key); CI checks every TEST APK against its recorded fingerprint |
 | Private storage | Its own (`files/projects/...`) | Its own, completely separate; projects imported into one are not in the other |
 | OTA | On (release APK carries the trusted OTA key) | Off (no trusted key in the APK) |
 | Installing over each other | n/a | Cannot happen: different ids. Never uninstall production to test |

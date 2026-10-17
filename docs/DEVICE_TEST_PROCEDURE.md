@@ -17,7 +17,7 @@ What the automated tests cannot show: the Compose screens, Android's file picker
 | A10 | With a damaged project (see C) take a backup | Dialog titled "Backup needs attention" naming the project and how it was handled; the reminder stays |
 | A11 | Settings > Check a backup file on the new backup | "This file is intact" |
 | A12 | Reinstall the TEST app only (remove Game Designer TEST, install again), then import the backup | Every project returns with its messages, decisions and spec versions |
-| A13 | Install a newer TEST APK over the old one (same signing cache) | Projects are still there |
+| A13 | Install a newer TEST APK over the old one (same persistent TEST key; the first build signed with it cannot update TEST apps installed before the key was made persistent) | Projects are still there |
 
 ## B. Side-by-side
 | # | Do | Expect |
