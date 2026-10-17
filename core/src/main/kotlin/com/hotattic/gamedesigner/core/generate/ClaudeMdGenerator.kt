@@ -190,7 +190,7 @@ object ClaudeMdGenerator {
                 buildString {
                     append("**${r.name}**")
                     if (r.aspects.isNotEmpty()) append(" - take: ${r.aspects.joinToString("; ")}")
-                    if (r.summary.isNotBlank()) append(". Research summary: ${r.summary}")
+                    if (r.summary.isNotBlank()) append(". Background research (NOT a requirement; nothing in it is inherited unless the owner listed it above): ${r.summary}")
                     if (r.sources.isNotEmpty()) append(" (sources: ${r.sources.joinToString(", ") { it.url }})")
                 }
             })

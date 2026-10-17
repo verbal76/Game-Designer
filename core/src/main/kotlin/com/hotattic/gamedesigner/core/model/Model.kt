@@ -181,6 +181,8 @@ data class ReferenceGame(
     val summary: String = "",
     val traits: List<String> = emptyList(),
     val sources: List<SourceRef> = emptyList(),
+    /** A lookup already came back empty ("not found"): it is not repeated on every message. Additive; older projects read it as false. */
+    val researchTried: Boolean = false,
 )
 
 @Serializable

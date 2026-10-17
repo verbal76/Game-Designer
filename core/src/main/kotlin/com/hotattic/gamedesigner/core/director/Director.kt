@@ -1121,14 +1121,14 @@ class Director(private val deps: DirectorDeps) {
         if (!settings.internetResearchAllowed) return p0
         val research = deps.research ?: return p0
         var p = p0
-        for (ref in p0.references.filter { it.summary.isBlank() && it.sources.isEmpty() && ReferenceGuard.isPlausibleTitle(it.name) }) {
+        for (ref in p0.references.filter { it.summary.isBlank() && it.sources.isEmpty() && !it.researchTried && ReferenceGuard.isPlausibleTitle(it.name) }) {
             when (val r = runCatching { research.researchReferenceGame(ref.name) }.getOrElse { ResearchOutcome.Unavailable(it.message ?: "error") }) {
                 is ResearchOutcome.Found -> {
                     val found = r.value
                     p = ProjectOps.updateReference(p, ref.copy(summary = found.summary, traits = found.traits, sources = found.sources))
                     p = ProjectOps.addMessage(p, Role.SYSTEM, "Researched ${ref.name}: ${found.summary.take(220)}", deps.clock())
                 }
-                is ResearchOutcome.NotFound -> p = ProjectOps.addMessage(p, Role.SYSTEM, "I couldn't find reliable information on \"${ref.name}\". I'll rely on how you describe it.", deps.clock())
+                is ResearchOutcome.NotFound -> p = ProjectOps.addMessage(ProjectOps.updateReference(p, ref.copy(researchTried = true)), Role.SYSTEM, "I couldn't find reliable information on \"${ref.name}\". I'll rely on how you describe it.", deps.clock())
                 is ResearchOutcome.Unavailable -> p = ProjectOps.addMessage(p, Role.SYSTEM, "I can't reach the internet right now (${r.reason}), so I'll continue without researching ${ref.name}.", deps.clock())
             }
         }
