@@ -150,6 +150,8 @@ object DecisionExtractor {
         return Extraction(out, refs, negatedGenres.toList(), negatedTags.toList(), affirmedTags.toList())
     }
 
+    private val rejectedComparison = Regex("(?i)\\b(?:not|nothing|unlike|never|don'?t|do not|different from|other than|instead of|rather than|no)\\b")
+
     private val titlePattern = Regex("\\b(?:[Cc]alled|[Nn]amed|[Tt]itled)\\s+[\"“']?([A-Z0-9][\\w'’:\\-]*(?:\\s+[A-Z0-9][\\w'’:\\-]*){0,4})")
 
     /** The game's own working title when the owner states one (\"called X\"), at most 30 characters. */
@@ -173,6 +175,10 @@ object DecisionExtractor {
             if ((multi || single) && s !in notGames) found += s
         }
         titleSeq.findAll(text).forEach { m ->
+            // "Not like Minecraft", "I don't want it to be like Candy Crush": a game named to say what this is NOT.
+            val before = text.substring(0, m.range.first)
+            val clausePrefix = before.substring(before.lastIndexOfAny(charArrayOf('.', ',', ';', '!', '?')) + 1).substringAfterLast(" but ")
+            if (rejectedComparison.containsMatchIn(clausePrefix)) return@forEach
             val afterTrigger = triggerEnds.any { it == m.range.first }
             // Skip a leading sentence-initial common word (e.g. "I want Risk of Rain 2" matches "Risk of Rain 2" only).
             consider(m.value, afterTrigger)

@@ -95,6 +95,8 @@ object Gates {
             val clauses = sentence.split(clauseSplit).filter { it.isNotBlank() }
             var any = false
             for (c in clauses) {
+                // "I might want crafting, not sure": a consideration, not a request or a rejection.
+                if (com.hotattic.gamedesigner.core.engine.Hedge.hedged(c)) continue
                 when {
                     clauseDenies(c, g) -> { out += "no"; any = true }
                     referenceAttributed(c, g) -> {}
@@ -134,7 +136,7 @@ object Gates {
         var p = p0
         for (g in all) {
             val said = verdicts(text, g)
-            if (said.isEmpty()) continue
+            if (said.isEmpty() || mixed(text, g)) continue
             val f = Fields.get(g.key) ?: continue
             if (!f.isRelevant(Traits(p))) continue
             val answer = said.last()
@@ -147,10 +149,13 @@ object Gates {
     }
 
     /** Gates the owner has ruled out in their own words. */
-    fun deniedIn(text: String): List<Gate> = all.filter { "no" in verdicts(text, it) }
+    /** Both "no" and "yes" in one message about the same system is a contradiction the owner must settle; nothing is recorded silently. */
+    private fun mixed(text: String, g: Gate) = verdicts(text, g).let { "no" in it && "yes" in it }
+
+    fun deniedIn(text: String): List<Gate> = all.filter { "no" in verdicts(text, it) && !mixed(text, it) }
 
     /** Gates the owner has asked for in their own words. */
-    fun affirmedIn(text: String): List<Gate> = all.filter { "yes" in verdicts(text, it) }
+    fun affirmedIn(text: String): List<Gate> = all.filter { "yes" in verdicts(text, it) && !mixed(text, it) }
 
     /** Takes back the detail answers of a system that has been ruled out, so nothing stale survives in the design. */
     fun dropDependents(p: Project, g: Gate, now: Long): Project =

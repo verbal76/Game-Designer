@@ -37,7 +37,7 @@ data class PlatformInstruction(val steps: List<PlatformStep>, val pure: Boolean)
 
 /** Words that make a platform a possibility rather than a commitment ("maybe Windows later"). */
 object Hedge {
-    private val cue = Regex("(?i)\\b(?:later|eventually|someday|some day|one day|maybe|might|possibly|perhaps|in the future|down the road|if it goes well|hope to|hoping to|may also|thinking about|considering)\\b")
+    private val cue = Regex("(?i)\\b(?:later|eventually|someday|some day|one day|maybe|might|possibly|perhaps|in the future|down the road|if it goes well|hope to|hoping to|may also|thinking about|considering|not sure|unsure|undecided|not certain|if i want|if i decide|not decided|haven'?t decided)\\b")
     private val split = Regex("[,;.!?]|\\bbut\\b|\\band then\\b")
 
     fun hedged(clause: String) = cue.containsMatchIn(clause)
