@@ -4,7 +4,7 @@ Branch `ccr-6330e20f-dm7zhm` (PR #1, draft). Spec: `CLAUDE.md`. Decisions: `docs
 
 ## Releases
 - `v1` Physical Test Baseline 1 (commit 2b53d80, debug-signed with a throwaway CI key). Untouched.
-- `v2` **OTA-capable native baseline** (latest): `Game-Designer-v2.apk`, signed with the persistent Game Designer release key, versionName 2.0.0.
+- `v2`..`v5`: signed native releases (production id `com.hotatticgames.gamedesigner`, persistent Game Designer release key). `v5` is the latest release (versionName 5.0.0). Later builds on this branch are not releases.
 - `ota-dev` prerelease: the dev OTA channel (`manifest.json`, `manifest.sig`, `bundle.zip`), currently bundle v2 `ota-proof-2`.
 - `gd-signing-keys` is a PRIVATE DRAFT release holding the OTA signing key + APK keystore. Never publish or delete it (deleting = new signing identity: reinstall + new APK for OTA trust).
 
@@ -21,13 +21,21 @@ See `docs/CONVERSATION.md`. Interpreter + provenance + reconciler + consistency 
 CI green: core + otakit JVM tests, lint, theme-contrast test, bundle build/sign/verify. v2 workflow verified the real APK (apksigner, aapt2 badging, bundled layer + OTA runtime present) and ran a live OTA lifecycle against the published channel (discover, verify, stage, trial, commit, restart persistence, no loop, corruption rollback).
 
 ## NOT verified
-Nothing has run on a device or emulator. Unverified on hardware: dex loading of the OTA bundle, first-frame health commit, the contrast fix visually, splash, Keystore, LiteRT-LM, pickers. The privacy of the draft key release rests on GitHub's documented behavior (confirm by viewing the Releases page logged out: `gd-signing-keys` must not appear).
+Nothing has run on a device or emulator by this agent; the owner is testing the TEST APK. Unverified on hardware: dex loading of the OTA bundle, first-frame health commit, the contrast fix visually, splash, Keystore, LiteRT-LM, pickers. The privacy of the draft key release rests on GitHub's documented behavior (confirm by viewing the Releases page logged out: `gd-signing-keys` must not appear).
 
 ## Publishing OTA / APK
 OTA: edit `ota/publish-request.json` (channel, version > current, label; stable needs `confirm: PUBLISH-STABLE`) and push; ordinary pushes never publish. New APK (native/permission/dependency/resource/runtime change): add a new release workflow like `release-v2.yml`. Changing `shellApi`/Kotlin/Compose/AGP versions changes the runtime fingerprint and needs a new APK.
 
-## Install note
-v1 -> v2 cannot update in place (different signing key): export backup in Settings, uninstall v1, install v2, restore. Later APKs signed with the persistent key update over v2.
+## Production Bob vs Game Designer TEST (read before installing anything)
+| | Production Bob | Game Designer TEST |
+|---|---|---|
+| Application id | `com.hotatticgames.gamedesigner` | `com.hotatticgames.gamedesigner.test` |
+| Built by | `release-vN.yml` only (needs the permanent key; a release build without it now fails) | Android CI (`android.yml`), the `debug` build type; version name ends `-test` |
+| Signing | Persistent release key in the private draft release `gd-signing-keys` | The CI debug key, kept in the Actions cache `gd-test-debug-keystore-v1`; throw-away, never the release key |
+| Private storage | Its own (`files/projects/...`) | Its own, completely separate; projects imported into one are not in the other |
+| OTA | On (release APK carries the trusted OTA key) | Off (no trusted key in the APK) |
+| Installing over each other | n/a | Cannot happen: different ids. Never uninstall production to test |
+Installing a debug-signed APK of the production id over a release-signed app is refused by Android and would force an uninstall (which deletes the projects); the debug build no longer uses the production id, so that can no longer occur. Back up first: Settings > Your projects > Back up all projects (`docs/PROJECT_TRANSFER.md`).
 
 ## Next (after owner's physical findings)
 Reference-game fork gap; asset search; emulator smoke test in CI; consider moving signing material to repository secrets.

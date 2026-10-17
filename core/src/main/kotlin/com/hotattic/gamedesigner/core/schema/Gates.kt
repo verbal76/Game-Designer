@@ -157,6 +157,19 @@ object Gates {
     /** Words that make a remark an instruction to change something ("actually", "after all", "I want", "add"), not a description. */
     fun explicitChange(text: String): Boolean = com.hotattic.gamedesigner.core.engine.OwnerChange.isChange(text) || Regex("(?i)\\bafter all\\b|\\b(?:i want|i'?d like|i need|please add|let'?s add|add|include|must have|should have)\\b").containsMatchIn(text)
 
+    /**
+     * True when a model's proposed value for a system gate says the opposite of what the owner said: in this message, or in an earlier statement of
+     * theirs that is still active (unless this message is an explicit change of mind). A model that ignores "no combat" never gets to switch it on,
+     * whether or not the gate had already been recorded as a decision.
+     */
+    fun contradictsOwnerWords(p: com.hotattic.gamedesigner.core.model.Project, key: String, value: String, text: String): Boolean {
+        val g = byKey[key] ?: return false
+        val proposed = value.trim().lowercase().takeIf { it == "yes" || it == "no" } ?: return false
+        verdictFor(text, g)?.let { if (it != proposed) return true }
+        if (explicitChange(text)) return false
+        return p.activeFacts().any { it.provenance.ownerAuthored && verdictFor(it.text, g)?.let { v -> v != proposed } == true }
+    }
+
     /** Both "no" and "yes" in one message about the same system is a contradiction the owner must settle; nothing is recorded silently. */
     private fun mixed(text: String, g: Gate, broad: Boolean = false) = verdicts(text, g, broad).let { "no" in it && "yes" in it }
 

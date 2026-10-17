@@ -963,14 +963,19 @@ class Director(private val deps: DirectorDeps) {
         if (trivial) return rules
         val (provider, kind) = readyProvider() ?: return rules
         val llm = LlmInterpreter.interpret(provider, kind, name(settings), p, field, text) ?: return rules
-        return mergeInterpretations(rules, llm)
+        // A model proposal that says the opposite of the owner's own words about a system (the owner said "no combat", the model says combat) is dropped.
+        return mergeInterpretations(rules, llm.copy(edits = llm.edits.filterNot { (k, v) -> Gates.contradictsOwnerWords(p, k, v, text) }))
     }
 
     internal fun mergeInterpretations(rules: Interpretation, llm: Interpretation): Interpretation {
         val useLlmAnswer = llm.intent != AnswerIntent.UNCLEAR
         val affirmed = (rules.affirmedTags + llm.affirmedTags).distinct()
         val rejectedTags = (rules.rejectedTags + llm.rejectedTags).distinct().filter { it !in llm.affirmedTags }
-        return (if (useLlmAnswer) llm else rules.copy(by = llm.by)).copy(
+        // The rules read negation deterministically. When they found the owner REFUSING an option ("No, not for a general audience"), the model's answer
+        // never replaces theirs, and a model that selected a refused option is overruled either way.
+        val ruleRefusal = rules.intent == AnswerIntent.REJECT || rules.rejectedOptions.isNotEmpty()
+        val answer = if (useLlmAnswer && !ruleRefusal) llm.copy(selected = llm.selected.filterNot { it in rules.rejectedOptions }) else rules.copy(by = llm.by)
+        return answer.copy(
             edits = llm.edits + rules.edits,
             rejectedGenres = (rules.rejectedGenres + llm.rejectedGenres).distinct(),
             rejectedTags = rejectedTags, affirmedTags = affirmed, rejectedOptions = (rules.rejectedOptions + llm.rejectedOptions).distinct(),
