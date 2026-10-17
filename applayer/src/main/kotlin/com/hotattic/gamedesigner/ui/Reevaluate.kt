@@ -1,6 +1,10 @@
 package com.hotattic.gamedesigner.ui
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LinearProgressIndicator
+import com.hotattic.gamedesigner.core.engine.ReevalRunState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,30 +50,57 @@ import com.hotattic.gamedesigner.core.engine.Reevaluation
 import java.text.DateFormat
 import java.util.Date
 
-/** Reevaluate, step 1: choose which saved design to run through the newest design intelligence. */
+/**
+ * Reevaluate, step 1: choose which saved design to run through the newest design intelligence. The chosen card itself shows what is happening
+ * (highlighted border, its own progress and name, a Cancel button, or the error), the other cards wait, and a second tap does nothing.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReevalPickerScreen(vm: AppViewModel, nav: NavController) {
     val projects by vm.projects.collectAsState()
-    val busy by vm.busy.collectAsState()
+    val run by vm.reevalRun.collectAsState()
     val s by vm.settings.collectAsState()
     LaunchedEffect(Unit) { vm.refresh() }
+    val anyRunning = run is ReevalRunState.Running
     Scaffold(topBar = {
         TopAppBar(title = { Text("Reevaluate") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } })
     }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Which saved design should ${s.directorName} reconsider? Everything you already decided stays exactly as it is; only what an older Bob guessed is rethought. Nothing is replaced until you approve.", style = MaterialTheme.typography.bodyMedium)
-            if (busy != null) Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).padding(end = 8.dp), strokeWidth = 2.dp); Text(busy ?: "", style = MaterialTheme.typography.bodySmall) }
+            Text("Which saved design should ${s.directorName} reconsider? Everything you already decided stays exactly as it is. ${s.directorName} reviews the design and shows you what he found; nothing in your saved design changes until you approve it.", style = MaterialTheme.typography.bodyMedium)
             val eligible = projects.filter { !it.corrupt }
             if (eligible.isEmpty()) Text("No saved designs yet.", style = MaterialTheme.typography.bodyMedium)
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(eligible, key = { it.id }) { p ->
-                    Card(Modifier.fillMaxWidth().clickable(enabled = busy == null) {
-                        vm.reevaluate(p.id) { id -> nav.navigate("reeval/$id") { popUpTo("reeval-pick") { inclusive = true } } }
-                    }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                        Column(Modifier.padding(14.dp)) {
-                            Text(p.name.ifBlank { "Untitled game" }, style = MaterialTheme.typography.titleMedium)
+                    val name = p.name.ifBlank { "Untitled game" }
+                    val running = run is ReevalRunState.Running && run.id == p.id
+                    val failed = run is ReevalRunState.Failed && run.id == p.id
+                    val shape = RoundedCornerShape(12.dp)
+                    Card(
+                        Modifier.fillMaxWidth()
+                            .then(if (running) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, shape) else if (failed) Modifier.border(2.dp, MaterialTheme.colorScheme.error, shape) else Modifier)
+                            .clickable(enabled = !anyRunning && !running) {
+                                vm.dismissReevalError()
+                                vm.reevaluate(p.id) { id -> nav.navigate("reeval/$id") { popUpTo("reeval-pick") { inclusive = true } } }
+                            },
+                        colors = CardDefaults.cardColors(containerColor = if (running) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant),
+                        shape = shape,
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(name, style = MaterialTheme.typography.titleMedium)
                             Text("${modeLabel(p.mode)} - ${p.versionCount} spec version(s) - ${DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(p.updatedAt))}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (running) {
+                                Text("Reevaluating $name...", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                LinearProgressIndicator(Modifier.fillMaxWidth())
+                                Text("Your saved design is not changed. This can take a while on the phone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                                TextButton({ vm.cancelReevaluation() }) { Text("Cancel") }
+                            } else if (failed) {
+                                Text("Could not reevaluate $name: ${(run as ReevalRunState.Failed).message}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    TextButton({ vm.dismissReevalError(); vm.reevaluate(p.id) { id -> nav.navigate("reeval/$id") { popUpTo("reeval-pick") { inclusive = true } } } }) { Text("Try again") }
+                                    TextButton({ vm.dismissReevalError() }) { Text("Dismiss") }
+                                }
+                            } else if (anyRunning) Text("Waiting: another design is being reevaluated.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            else Text("Tap to review this design", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }

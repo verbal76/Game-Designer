@@ -195,20 +195,41 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
      * One implementation for both entry points (home and inside a project): runs the saved design through the current design
      * intelligence. Spec versions are untouched; [onReady] is called with the project id once the result is saved.
      */
-    fun reevaluate(projectId: String, onReady: (String) -> Unit = {}) = viewModelScope.launch {
-        _busy.value = "${c.settings.value.directorName} is reevaluating this design..."
-        try {
-            if (current.value?.id != projectId) {
-                val p = withContext(Dispatchers.IO) { c.store.load(projectId) }
-                session.open(p)
+    private val reevalTracker = com.hotattic.gamedesigner.core.engine.ReevalRunTracker()
+    private val _reevalRun = MutableStateFlow<com.hotattic.gamedesigner.core.engine.ReevalRunState>(com.hotattic.gamedesigner.core.engine.ReevalRunState.Idle)
+    /** Which project is being reevaluated (or just finished or failed). The picker highlights that one card and shows progress inside it. */
+    val reevalRun = _reevalRun.asStateFlow()
+    private var reevalJob: kotlinx.coroutines.Job? = null
+
+    fun reevaluate(projectId: String, onReady: (String) -> Unit = {}) {
+        val name = _projects.value.firstOrNull { it.id == projectId }?.name?.ifBlank { "Untitled game" } ?: "this design"
+        if (!reevalTracker.begin(projectId, name)) return          // a second tap, or another project, while one is running does nothing
+        _reevalRun.value = reevalTracker.state
+        reevalJob = viewModelScope.launch {
+            _busy.value = "${c.settings.value.directorName} is reevaluating $name..."
+            try {
+                if (current.value?.id != projectId) {
+                    val p = withContext(Dispatchers.IO) { c.store.load(projectId) }
+                    session.open(p)
+                }
+                session.mutate { p -> val t = c.director().reevaluate(p, c.settings.value); t.project to Unit }
+                refresh()
+                reevalTracker.succeed(projectId); _reevalRun.value = reevalTracker.state
+                onReady(projectId)
+                reevalTracker.acknowledge(); _reevalRun.value = reevalTracker.state
+            } catch (t: kotlinx.coroutines.CancellationException) { reevalTracker.cancel(); _reevalRun.value = reevalTracker.state; throw t }
+            catch (t: Throwable) {
+                val msg = "${t.message ?: t.javaClass.simpleName}. Your design is unchanged."
+                reevalTracker.fail(projectId, msg); _reevalRun.value = reevalTracker.state
             }
-            session.mutate { p -> val t = c.director().reevaluate(p, c.settings.value); t.project to Unit }
-            refresh()
-            onReady(projectId)
-        } catch (t: kotlinx.coroutines.CancellationException) { throw t }
-        catch (t: Throwable) { toast("Could not reevaluate: ${t.message ?: t.javaClass.simpleName}. Your design is unchanged.") }
-        finally { _busy.value = null }
+            finally { _busy.value = null }
+        }
     }
+
+    /** Stops a reevaluation that is still running. Nothing was saved yet, so the design is exactly as it was. */
+    fun cancelReevaluation() { reevalJob?.cancel(); reevalTracker.cancel(); _reevalRun.value = reevalTracker.state }
+
+    fun dismissReevalError() { reevalTracker.acknowledge(); _reevalRun.value = reevalTracker.state }
 
     /**
      * An independent opinion from a DIFFERENT AI than the one that helped design the game. [useCloud] sends a summary of the design to the

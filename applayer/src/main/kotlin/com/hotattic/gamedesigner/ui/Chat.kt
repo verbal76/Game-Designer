@@ -3,6 +3,12 @@ package com.hotattic.gamedesigner.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.focus.focusRequester
+import com.hotattic.gamedesigner.core.director.AnswerDraft
+import com.hotattic.gamedesigner.core.director.ConversationView
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -105,7 +111,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     var showPrefs by remember { mutableStateOf(false) }
     var showRename by remember { mutableStateOf(false) }
     // Guided question panel: screen-only state. The open question, its options and every decision stay in the engine.
-    var panelMinimized by rememberSaveable { mutableStateOf(false) }
+    var draftsRaw by rememberSaveable { mutableStateOf("") }
     var acceptedTurn by rememberSaveable { mutableStateOf("") }
     var acceptedBefore by rememberSaveable { mutableStateOf(0) }
     var acceptedKey by rememberSaveable { mutableStateOf("") }
@@ -118,18 +124,51 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> vm.onImagePicked(uri) }
     LaunchedEffect(Unit) { vm.events.collect { e -> if (e is UiEvent.PickImage) picker.launch("image/*") else if (e is UiEvent.RestoreInput && input.isBlank()) input = e.text } }
     val p = project?.takeIf { it.id == id }
-    LaunchedEffect(p?.messages?.size, busy) { p?.messages?.size?.let { if (it > 0) listState.animateScrollToItem(it - 1 + if (busy != null) 1 else 0) } }
+    // Scrolling is decided below, once it is known whether a question is open.
 
     val completeness = remember(p) { p?.let { CompletenessEngine.compute(it) } }
     // Stage progress is worked out off the main thread, so a long project never delays a tap or the keyboard.
     val stages by produceState<StageProgress?>(null, p) { value = p?.let { withContext(Dispatchers.Default) { DesignStages.of(it) } } }
     val tick = rememberTick()
-    // When the keyboard opens, closes or changes height, keep the latest message in view above the composer.
     val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
-    LaunchedEffect(imeBottom > 0) { p?.messages?.size?.let { if (it > 0) listState.scrollToItem(it - 1) } }
+    val density = LocalDensity.current
+    val fontScale = density.fontScale
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val composerFocus = remember { androidx.compose.ui.focus.FocusRequester() }
 
-    // The Scaffold adds no bottom inset of its own: the keyboard and the navigation bar are applied exactly once, on the content below
-    // (the default content insets plus imePadding counted the same space twice and left the composer's position at the mercy of the IME).
+    // What the screen shows is a view over engine state: the open question, the accepted answer, and a history that never repeats the question.
+    val model = p?.let { GuidedPanel.model(it, busy != null) }
+    val history = remember(p, model?.messageId, model?.notes) { if (p != null) ConversationView.history(p, model) else emptyList<ChatMessage>() }
+    val accepted = if (p != null && acceptedTurn.isNotEmpty()) GuidedPanel.accepted(p, acceptedBefore, acceptedKey, acceptedTurn, acceptedLabels.split("\u0001").filter { it.isNotBlank() })?.takeIf { GuidedPanel.stillCurrent(it, p) } else null
+    val canBack = p != null && GuidedPanel.canBack(p, busy != null)
+    val nextState = if (p != null) GuidedPanel.next(p, model, accepted, busy != null) else NextState(false, null)
+    val questionActive = model != null && accepted == null && p?.messages?.isNotEmpty() == true
+    val drafts = remember(draftsRaw) { AnswerDraft.decode(draftsRaw) }
+    val draft = if (questionActive) drafts[model!!.key] ?: AnswerDraft() else AnswerDraft()
+    fun setDraft(d: AnswerDraft) { val k = model?.key ?: return; draftsRaw = AnswerDraft.encode(if (d.isEmpty) drafts - k else drafts + (k to d)) }
+    val extraItems = (if (p?.pendingTurn != null) 1 else 0) + (if (busy != null) 1 else 0)
+    val cardIndex = history.size + extraItems            // the item that holds the open question (or the "recorded" card)
+    val showCard = questionActive || accepted != null
+    val moreBelow by remember { derivedStateOf { listState.canScrollForward } }
+
+    // A new question starts at the top of the screen so the question and its choices are in view. A plain reply scrolls to the newest message.
+    LaunchedEffect(model?.messageId, accepted != null, history.size, busy) {
+        if (showCard) listState.animateScrollToItem(cardIndex) else if (history.isNotEmpty()) listState.animateScrollToItem(history.size - 1 + extraItems)
+    }
+    // Once an answer is recorded its draft is finished with.
+    LaunchedEffect(accepted != null) { if (accepted != null && acceptedKey.isNotEmpty()) draftsRaw = AnswerDraft.encode(drafts - acceptedKey) }
+    val compact = imeBottom > 0 || fontScale > 1.3f
+
+    fun confirmDraft() {
+        val m = model ?: return
+        GuidedPanel.confirm(m, draft.selected, draft.text)?.let { a ->
+            tick(); acceptedTurn = a.turnId; acceptedBefore = p?.messages?.size ?: 0; acceptedKey = m.key
+            acceptedLabels = (if (draft.text.isNotBlank()) listOf(draft.text.trim().take(60)) else m.options.filter { it.id in draft.selected }.map { it.label }).joinToString("\u0001")
+            vm.perform(a)
+        }
+    }
+
+    // The Scaffold adds no bottom inset of its own: the keyboard and the navigation bar are applied exactly once, on the content below.
     Scaffold(contentWindowInsets = WindowInsets(0), topBar = {
         TopAppBar(
             title = {
@@ -157,79 +196,97 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
             },
         )
     }) { pad ->
-        // The composer is the one thing that must always stay visible. The panel above it (answer card, chips, Back) is capped to a share of
-        // the space that is actually left after the keyboard opens and scrolls inside that share, so it can never push the composer out of view.
-        BoxWithConstraints(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
-        val landscape = maxWidth > maxHeight
-        val keyboardOpen = imeBottom > 0
-        val dockMax = (maxHeight * (if (keyboardOpen || landscape) 0.62f else 0.5f)).coerceAtLeast(150.dp)
-        Column(Modifier.fillMaxSize()) {
-            if (p?.mode == ProjectMode.NEW_GAME) stages?.let { StageStrip(it) { showStages = true } }
-            if (p != null && p.mode == ProjectMode.NEW_GAME) ModeSelector(DesignMode.of(p.prefs.experience), { vm.setDesignMode(it) }, showCaption = imeBottom == 0)
-            if (interpreter == InterpreterKind.RULES && p?.mode != ProjectMode.PLAYTEST_CONTINUE) {
-                Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "RULES-ONLY MODE: no on-device AI is active, so free text is matched by simple rules. Answer buttons are exact.",
-                        Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    )
-                    TextButton({ nav.navigate("models") }) { Text("Set up AI") }
+        // One scrolling area (the history, then the open question as its last item) and, below it, a separate fixed bottom area with the answer box and
+        // BACK | CONFIRM | NEXT. The fixed area is outside the scroll, so it can never cover content, and the keyboard is applied once.
+        Column(Modifier.fillMaxSize().padding(pad).imePadding().navigationBarsPadding()) {
+            if (!compact) {
+                if (p?.mode == ProjectMode.NEW_GAME) stages?.let { StageStrip(it) { showStages = true } }
+                if (p != null && p.mode == ProjectMode.NEW_GAME) ModeSelector(DesignMode.of(p.prefs.experience), { vm.setDesignMode(it) }, showCaption = false)
+                if (interpreter == InterpreterKind.RULES && p?.mode != ProjectMode.PLAYTEST_CONTINUE) {
+                    Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "RULES-ONLY MODE: no on-device AI is active, so free text is matched by simple rules. Answer buttons are exact.",
+                            Modifier.weight(1f), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        )
+                        TextButton({ nav.navigate("models") }) { Text("Set up AI") }
+                    }
+                } else if (interpreter == InterpreterKind.LOCAL_LLM) {
+                    Text("LOCAL AI: Bob is using the on-device model", Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 }
-            } else if (interpreter == InterpreterKind.LOCAL_LLM) {
-                Text("LOCAL AI: Bob is using the on-device model", Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             }
-            val msgs = p?.messages.orEmpty()
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(msgs, key = { it.id }) { m -> Bubble(m, settings.directorName, onExplainMore = if (m.id == msgs.lastOrNull()?.id && busy == null) ({ vm.send("explain more") }) else null) }
-                p?.pendingTurn?.let { pt -> item(key = "pending-${pt.id}") {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        Column(Modifier.widthIn(max = 520.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(16.dp)).padding(12.dp)) {
-                            SelectionContainer { Text(pt.text, style = MaterialTheme.typography.bodyMedium) }
-                            if (busy == null) {
-                                Text("Saved, not answered yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                                TextButton({ vm.retryPending() }) { Text("Retry") }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(history, key = { it.id }) { m -> Bubble(m, settings.directorName) }
+                    p?.pendingTurn?.let { pt -> item(key = "pending-${pt.id}") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Column(Modifier.widthIn(max = 520.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(16.dp)).padding(12.dp)) {
+                                SelectionContainer { Text(pt.text, style = MaterialTheme.typography.bodyMedium) }
+                                if (busy == null) {
+                                    Text("Saved, not answered yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                    TextButton({ vm.retryPending() }) { Text("Retry") }
+                                }
                             }
                         }
+                    } }
+                    if (busy != null) item(key = "busy") { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
+                    if (accepted != null) item(key = "accepted-card") { AcceptedCard(accepted, nextState) }
+                    else if (questionActive && model != null) item(key = "active-question") {
+                        ActiveQuestionCard(
+                            model, draft, onDraft = { setDraft(it) },
+                            onAction = { a, labels -> acceptedTurn = a.turnId; acceptedBefore = p?.messages?.size ?: 0; acceptedKey = model.key; acceptedLabels = labels.joinToString("\u0001"); vm.perform(a) },
+                            onExplainMore = { vm.send("explain more") },
+                            onTypeOwn = { runCatching { composerFocus.requestFocus() } },
+                        )
                     }
-                } }
-                if (busy != null) item { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
-            }
-            val last = msgs.lastOrNull()
-            val model = p?.let { GuidedPanel.model(it, busy != null) }
-            val accepted = if (p != null && acceptedTurn.isNotEmpty()) GuidedPanel.accepted(p, acceptedBefore, acceptedKey, acceptedTurn, acceptedLabels.split("\u0001").filter { it.isNotBlank() })?.takeIf { GuidedPanel.stillCurrent(it, p) } else null
-            val canBack = p != null && GuidedPanel.canBack(p, busy != null)
-            val nextState = if (p != null) GuidedPanel.next(p, model, accepted, busy != null) else NextState(false, null)
-            Column(Modifier.fillMaxWidth().heightIn(max = dockMax)) {
-            if (accepted != null) {
-                AcceptedPanel(accepted, canBack, nextState, onBack = { acceptedTurn = ""; vm.goBack() }, onNext = { acceptedTurn = "" }, compact = keyboardOpen || landscape)
-            } else if (model != null && last != null) {
-                QuestionPanel(
-                    model, canBack, nextState,
-                    onAction = { a, labels -> acceptedTurn = a.turnId; acceptedBefore = msgs.size; acceptedKey = model.key; acceptedLabels = labels.joinToString("\u0001"); vm.perform(a) },
-                    onBack = { acceptedTurn = ""; vm.goBack() }, onNext = {},
-                    onExplainMore = { vm.send("explain more") },
-                    minimized = panelMinimized, onMinimizedChange = { panelMinimized = it }, compact = keyboardOpen || landscape,
+                }
+                if (moreBelow) AssistChip(
+                    onClick = { scope.launch { listState.animateScrollBy(with(density) { 360.dp.toPx() }) } },
+                    label = { Text("More below \u2193") }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
                 )
-            } else if (last != null && last.role == Role.DIRECTOR && last.quickReplies.isNotEmpty() && busy == null) {
-                // No open question but Bob offered replies (status, generate...): they stay one tap away, exactly as before.
-                LazyRow(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(last.quickReplies) { q -> SuggestionChip({ vm.send(q.send) }, { Text(q.label) }) }
+            }
+            // The fixed bottom area: quick replies when no question is open, the one answer box, and the three navigation buttons.
+            Surface(Modifier.fillMaxWidth(), tonalElevation = 6.dp) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    val last = p?.messages?.lastOrNull()
+                    if (!questionActive && accepted == null && last != null && last.role == Role.DIRECTOR && last.quickReplies.isNotEmpty() && busy == null) {
+                        // No open question but Bob offered replies (status, generate...): they stay one tap away.
+                        LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(last.quickReplies) { q -> SuggestionChip({ vm.send(q.send) }, { Text(q.label) }) } }
+                    }
+                    if (accepted == null) {
+                        val text = if (questionActive) draft.text else input
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
+                            OutlinedTextField(
+                                text, { v -> if (questionActive) setDraft(draft.type(v)) else input = v },
+                                Modifier.weight(1f).heightIn(max = if (compact) 96.dp else 168.dp).focusRequester(composerFocus),
+                                placeholder = { Text(if (p?.mode == ProjectMode.PLAYTEST_CONTINUE) "Describe what you noticed..." else if (questionActive) "Or type or dictate your own answer..." else "Type or dictate a message to Bob...") },
+                                minLines = 1, maxLines = if (compact) 3 else 6,
+                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                                shape = RoundedCornerShape(20.dp),
+                            )
+                            FilledIconButton(
+                                { if (questionActive) confirmDraft() else { val t = input; input = ""; tick(); vm.send(t) } },
+                                Modifier.padding(start = 8.dp), enabled = text.isNotBlank() && busy == null,
+                            ) { Icon(Icons.AutoMirrored.Filled.Send, if (questionActive) "Confirm your typed answer" else "Send your message") }
+                        }
+                    }
+                    if (questionActive && model != null) {
+                        val blocked = GuidedPanel.confirmBlocked(model, draft.selected, draft.text)
+                        ActionBar(
+                            hint = draft.hint(model), canBack = canBack, onBack = { acceptedTurn = ""; vm.goBack() },
+                            confirmLabel = draft.confirmLabel(model), confirmEnabled = blocked == null, onConfirm = { confirmDraft() },
+                            nextEnabled = nextState.enabled, onNext = {}, compact = compact,
+                        )
+                    } else if (accepted != null) {
+                        ActionBar(
+                            hint = null, canBack = canBack, onBack = { acceptedTurn = ""; vm.goBack() },
+                            confirmLabel = "Recorded", confirmEnabled = false, onConfirm = {},
+                            nextEnabled = nextState.enabled, onNext = { acceptedTurn = "" }, compact = compact,
+                        )
+                    } else if (busy == null && p?.answerTrail?.isNotEmpty() == true && p.pendingTurn == null) {
+                        TextButton({ vm.goBack() }) { Text("\u2190 Back to previous question") }
+                    }
                 }
             }
-            if (model == null && accepted == null && busy == null && p?.answerTrail?.isNotEmpty() == true && p.pendingTurn == null) {
-                TextButton({ vm.goBack() }, Modifier.padding(start = 8.dp)) { Text("\u2190 Back to previous question") }
-            }
-            }
-            Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
-                OutlinedTextField(
-                    input, { input = it }, Modifier.weight(1f).heightIn(max = 168.dp),
-                    placeholder = { Text(if (p?.mode == ProjectMode.PLAYTEST_CONTINUE) "Describe what you noticed..." else "Type or dictate your answer...") },
-                    minLines = 1, maxLines = 8,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                    shape = RoundedCornerShape(20.dp),
-                )
-                FilledIconButton({ val t = input; input = ""; tick(); vm.send(t) }, Modifier.padding(start = 8.dp), enabled = input.isNotBlank() && busy == null) { Icon(Icons.AutoMirrored.Filled.Send, "Send your answer") }
-            }
-        }
         }
     }
 
@@ -263,10 +320,10 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
 }
 
 @Composable
-private fun Bubble(m: ChatMessage, directorName: String, onExplainMore: (() -> Unit)? = null) {
+private fun Bubble(m: ChatMessage, directorName: String) {
     val mine = m.role == Role.USER
     val system = m.role == Role.SYSTEM
-    // Bob's teaching cards arrive inside his message; they are drawn as a card so a long lesson stays readable on a phone.
+    // Non-question messages can still carry a teaching card; it is drawn as a card so a long lesson stays readable on a phone.
     val parts = remember(m.id, m.text) { if (m.role == Role.DIRECTOR) LessonParser.split(m.text) else null }
     // A design disagreement is a conversation, not an error: it gets a calm tone. Only a real technical stop uses the error colours.
     val tone = remember(m.id, m.text) { if (m.role == Role.DIRECTOR) Messages.toneOf(m.text) else Messages.Tone.NORMAL }
@@ -278,11 +335,12 @@ private fun Bubble(m: ChatMessage, directorName: String, onExplainMore: (() -> U
         ) {
             if (!mine) Text(if (system) "Research / notes" else when (tone) { Messages.Tone.CONFLICT_SOFT -> "$directorName - design check"; Messages.Tone.CONFLICT_HARD -> "$directorName - needs a decision"; else -> directorName }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
             val lesson = parts?.lesson
-            if (parts != null && lesson != null) {
-                if (parts.before.isNotBlank()) SelectionContainer { Text(parts.before, style = MaterialTheme.typography.bodyMedium) }
-                LessonCard(lesson, m.id, onExplainMore)
-                if (parts.after.isNotBlank()) SelectionContainer { Text(parts.after, Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyMedium) }
-            } else SelectionContainer { Text(m.text, style = if (system) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium) }
+            if (mine) SelectionContainer { Text(m.text, style = MaterialTheme.typography.bodyMedium) }
+            else if (parts != null && lesson != null) {
+                if (parts.before.isNotBlank()) SelectionContainer { MarkdownText(parts.before) }
+                LessonCard(lesson, m.id, null)
+                if (parts.after.isNotBlank()) SelectionContainer { MarkdownText(parts.after, Modifier.padding(top = 8.dp)) }
+            } else SelectionContainer { MarkdownText(m.text, style = if (system) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium) }
         }
     }
 }
