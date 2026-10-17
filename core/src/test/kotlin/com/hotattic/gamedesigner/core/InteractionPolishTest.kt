@@ -192,7 +192,7 @@ class InteractionPolishTest {
         for (f in listOf(polish, lesson, chat, spec, home)) { assertFalse("Thread.sleep" in f || Regex("\\bdelay\\(").containsMatchIn(f), "nothing waits before responding") ; assertFalse("horizontalScroll" in f) }
         assertFalse(Regex("(\\d+)\\.sp").findAll(polish + lesson).any { it.groupValues[1].toInt() < 12 })
         assertTrue("contentDescription" in polish && "mergeDescendants = true" in polish, "the stage strip and handoff panel have spoken descriptions")
-        assertTrue("Send your message" in chat && "Confirm your typed answer" in chat && "StageStrip(" in chat && "StageDialog(" in chat, "icon buttons are labelled and progress is on screen")
+        assertTrue("Send your message" in ui("ui/ConversationParts.kt")!! && "Confirm your typed answer" !in chat && "StageStrip(" in chat && "StageDialog(" in chat, "icon buttons are labelled and progress is on screen")
         assertTrue("Dispatchers.Default" in chat, "stage progress is computed off the main thread")
         val panel = ui("ui/QuestionPanel.kt")!!
         assertTrue("o.recommended" in panel && "Bob recommends" in panel, "Bob's recommendation is marked in words, never by colour alone")

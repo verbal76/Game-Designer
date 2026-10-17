@@ -3,9 +3,9 @@ package com.hotattic.gamedesigner.ui
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.runtime.derivedStateOf
-import androidx.compose.ui.focus.focusRequester
+import com.hotattic.gamedesigner.core.director.ComposerPolicy
+import com.hotattic.gamedesigner.core.director.ConversationScroll
+import com.hotattic.gamedesigner.core.director.SubmitGuard
 import com.hotattic.gamedesigner.core.director.AnswerDraft
 import com.hotattic.gamedesigner.core.director.ConversationView
 import kotlinx.coroutines.launch
@@ -147,24 +147,33 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
     val draft = if (questionActive) drafts[model!!.key] ?: AnswerDraft() else AnswerDraft()
     fun setDraft(d: AnswerDraft) { val k = model?.key ?: return; draftsRaw = AnswerDraft.encode(if (d.isEmpty) drafts - k else drafts + (k to d)) }
     val extraItems = (if (p?.pendingTurn != null) 1 else 0) + (if (busy != null) 1 else 0)
-    val cardIndex = history.size + extraItems            // the item that holds the open question (or the "recorded" card)
     val showCard = questionActive || accepted != null
-    val moreBelow by remember { derivedStateOf { listState.canScrollForward } }
+    val itemCount = history.size + extraItems + (if (showCard) 1 else 0)
+    val compact = imeBottom > 0 || fontScale > 1.3f
+    val dismissKeyboard = rememberKeyboardDismiss()
+    val submitGuard = remember { SubmitGuard() }
 
-    // A new question starts at the top of the screen so the question and its choices are in view. A plain reply scrolls to the newest message.
-    LaunchedEffect(model?.messageId, accepted != null, history.size, busy) {
-        if (showCard) listState.animateScrollToItem(cardIndex) else if (history.isNotEmpty()) listState.animateScrollToItem(history.size - 1 + extraItems)
-    }
+    // ---- following the conversation ----------------------------------------------------------------------------------------------------------
+    // ConversationScroll (core) decides; the follower reports what happened to it and performs the scroll once the layout has settled.
+    val contentKey = listOf<Any?>(history.size, model?.messageId, accepted != null, p?.pendingTurn?.id, busy != null)
+    val follower = rememberConversationFollower(listState, itemCount, imeBottom, contentKey, p?.id)
+    fun report(e: ConversationScroll.Event) = follower.report(e)
     // Once an answer is recorded its draft is finished with.
     LaunchedEffect(accepted != null) { if (accepted != null && acceptedKey.isNotEmpty()) draftsRaw = AnswerDraft.encode(drafts - acceptedKey) }
-    val compact = imeBottom > 0 || fontScale > 1.3f
 
+    // Every explicit answering action: one submission, the keyboard closes at once, and the newest content comes into view.
+    fun submitted(a: com.hotattic.gamedesigner.core.director.PanelAction, labels: List<String>, key: String) {
+        if (!submitGuard.begin(a.turnId, System.currentTimeMillis())) return
+        tick(); acceptedTurn = a.turnId; acceptedBefore = p?.messages?.size ?: 0; acceptedKey = key
+        acceptedLabels = labels.joinToString("\u0001")
+        vm.perform(a)
+        dismissKeyboard()
+        report(ConversationScroll.Event.CONFIRMED)
+    }
     fun confirmDraft() {
         val m = model ?: return
         GuidedPanel.confirm(m, draft.selected, draft.text)?.let { a ->
-            tick(); acceptedTurn = a.turnId; acceptedBefore = p?.messages?.size ?: 0; acceptedKey = m.key
-            acceptedLabels = (if (draft.text.isNotBlank()) listOf(draft.text.trim().take(60)) else m.options.filter { it.id in draft.selected }.map { it.label }).joinToString("\u0001")
-            vm.perform(a)
+            submitted(a, if (draft.text.isNotBlank()) listOf(draft.text.trim().take(60)) else m.options.filter { it.id in draft.selected }.map { it.label }, m.key)
         }
     }
 
@@ -214,35 +223,29 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                     Text("LOCAL AI: Bob is using the on-device model", Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                 }
             }
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-                LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(history, key = { it.id }) { m -> Bubble(m, settings.directorName) }
-                    p?.pendingTurn?.let { pt -> item(key = "pending-${pt.id}") {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            Column(Modifier.widthIn(max = 520.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(16.dp)).padding(12.dp)) {
-                                SelectionContainer { Text(pt.text, style = MaterialTheme.typography.bodyMedium) }
-                                if (busy == null) {
-                                    Text("Saved, not answered yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
-                                    TextButton({ vm.retryPending() }) { Text("Retry") }
-                                }
+            ConversationViewport(listState, ConversationScroll.returnLabel(follower.state), { report(ConversationScroll.Event.RETURN_TO_LATEST) }, Modifier.weight(1f).fillMaxWidth()) {
+                items(history, key = { it.id }) { m -> Bubble(m, settings.directorName) }
+                p?.pendingTurn?.let { pt -> item(key = "pending-${pt.id}") {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        Column(Modifier.widthIn(max = 520.dp).background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f), RoundedCornerShape(16.dp)).padding(12.dp)) {
+                            SelectionContainer { Text(pt.text, style = MaterialTheme.typography.bodyMedium) }
+                            if (busy == null) {
+                                Text("Saved, not answered yet.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                                TextButton({ vm.retryPending() }) { Text("Retry") }
                             }
                         }
-                    } }
-                    if (busy != null) item(key = "busy") { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
-                    if (accepted != null) item(key = "accepted-card") { AcceptedCard(accepted, nextState) }
-                    else if (questionActive && model != null) item(key = "active-question") {
-                        ActiveQuestionCard(
-                            model, draft, onDraft = { setDraft(it) },
-                            onAction = { a, labels -> acceptedTurn = a.turnId; acceptedBefore = p?.messages?.size ?: 0; acceptedKey = model.key; acceptedLabels = labels.joinToString("\u0001"); vm.perform(a) },
-                            onExplainMore = { vm.send("explain more") },
-                            onTypeOwn = { runCatching { composerFocus.requestFocus() } },
-                        )
                     }
+                } }
+                if (busy != null) item(key = "busy") { Row(verticalAlignment = Alignment.CenterVertically) { CircularProgressIndicator(Modifier.padding(4.dp).widthIn(max = 22.dp), strokeWidth = 2.dp); Text(busy ?: "", Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall) } }
+                if (accepted != null) item(key = "accepted-card") { AcceptedCard(accepted, nextState) }
+                else if (questionActive && model != null) item(key = "active-question") {
+                    ActiveQuestionCard(
+                        model, draft, onDraft = { setDraft(it) },
+                        onAction = { a, labels -> submitted(a, labels, model.key) },
+                        onExplainMore = { vm.send("explain more") },
+                        onTypeOwn = { runCatching { composerFocus.requestFocus() } },
+                    )
                 }
-                if (moreBelow) AssistChip(
-                    onClick = { scope.launch { listState.animateScrollBy(with(density) { 360.dp.toPx() }) } },
-                    label = { Text("More below \u2193") }, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
-                )
             }
             // The fixed bottom area: quick replies when no question is open, the one answer box, and the three navigation buttons.
             Surface(Modifier.fillMaxWidth(), tonalElevation = 6.dp) {
@@ -252,35 +255,28 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
                         // No open question but Bob offered replies (status, generate...): they stay one tap away.
                         LazyRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) { items(last.quickReplies) { q -> SuggestionChip({ vm.send(q.send) }, { Text(q.label) }) } }
                     }
-                    if (accepted == null) {
-                        val text = if (questionActive) draft.text else input
-                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
-                            OutlinedTextField(
-                                text, { v -> if (questionActive) setDraft(draft.type(v)) else input = v },
-                                Modifier.weight(1f).heightIn(max = if (compact) 96.dp else 168.dp).focusRequester(composerFocus),
-                                placeholder = { Text(if (p?.mode == ProjectMode.PLAYTEST_CONTINUE) "Describe what you noticed..." else if (questionActive) "Or type or dictate your own answer..." else "Type or dictate a message to Bob...") },
-                                minLines = 1, maxLines = if (compact) 3 else 6,
-                                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                                shape = RoundedCornerShape(20.dp),
-                            )
-                            FilledIconButton(
-                                { if (questionActive) confirmDraft() else { val t = input; input = ""; tick(); vm.send(t) } },
-                                Modifier.padding(start = 8.dp), enabled = text.isNotBlank() && busy == null,
-                            ) { Icon(Icons.AutoMirrored.Filled.Send, if (questionActive) "Confirm your typed answer" else "Send your message") }
-                        }
+                    if (accepted == null && !questionActive) {
+                        // Free messages (no open question): the only place the send arrow exists. Sending is an explicit action, so the newest content comes into view.
+                        AnswerComposer(
+                            input, { input = it },
+                            if (p?.mode == ProjectMode.PLAYTEST_CONTINUE) "Describe what you noticed..." else "Type or dictate a message to Bob...",
+                            compact, composerFocus, showSend = ComposerPolicy.showSendArrow(false), sendEnabled = input.isNotBlank() && busy == null,
+                            onSend = { val t = input; input = ""; tick(); vm.send(t); report(ConversationScroll.Event.CONFIRMED) },
+                        )
                     }
                     if (questionActive && model != null) {
                         val blocked = GuidedPanel.confirmBlocked(model, draft.selected, draft.text)
-                        ActionBar(
-                            hint = draft.hint(model), canBack = canBack, onBack = { acceptedTurn = ""; vm.goBack() },
-                            confirmLabel = draft.confirmLabel(model), confirmEnabled = blocked == null, onConfirm = { confirmDraft() },
-                            nextEnabled = nextState.enabled, onNext = {}, compact = compact,
+                        QuestionAnswerBar(
+                            draft.text, { setDraft(draft.type(it)) }, "Or type or dictate your own answer...", compact, composerFocus,
+                            hint = draft.hint(model), canBack = canBack, onBack = { acceptedTurn = ""; vm.goBack(); report(ConversationScroll.Event.ADVANCED) },
+                            confirmLabel = draft.confirmLabel(model), confirmEnabled = blocked == null && busy == null, onConfirm = { confirmDraft() },
+                            nextEnabled = nextState.enabled, onNext = {},
                         )
                     } else if (accepted != null) {
                         ActionBar(
-                            hint = null, canBack = canBack, onBack = { acceptedTurn = ""; vm.goBack() },
+                            hint = null, canBack = canBack, onBack = { acceptedTurn = ""; vm.goBack(); report(ConversationScroll.Event.ADVANCED) },
                             confirmLabel = "Recorded", confirmEnabled = false, onConfirm = {},
-                            nextEnabled = nextState.enabled, onNext = { acceptedTurn = "" }, compact = compact,
+                            nextEnabled = nextState.enabled, onNext = { acceptedTurn = ""; report(ConversationScroll.Event.ADVANCED) }, compact = compact,
                         )
                     } else if (busy == null && p?.answerTrail?.isNotEmpty() == true && p.pendingTurn == null) {
                         TextButton({ vm.goBack() }) { Text("\u2190 Back to previous question") }
@@ -320,7 +316,7 @@ fun ChatScreen(vm: AppViewModel, nav: NavController, id: String) {
 }
 
 @Composable
-private fun Bubble(m: ChatMessage, directorName: String) {
+internal fun Bubble(m: ChatMessage, directorName: String) {
     val mine = m.role == Role.USER
     val system = m.role == Role.SYSTEM
     // Non-question messages can still carry a teaching card; it is drawn as a card so a long lesson stays readable on a phone.

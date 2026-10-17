@@ -26,7 +26,7 @@ android {
         compose = true
         buildConfig = true
     }
-    testOptions { unitTests.isReturnDefaultValues = true }
+    testOptions { unitTests.isReturnDefaultValues = true; unitTests.isIncludeAndroidResources = true }
 }
 
 // Third-party libraries are provided by the shell (:app) at runtime, so they are compileOnly here: the OTA bundle then
@@ -51,4 +51,12 @@ dependencies {
     testImplementation(libs.androidx.compose.ui)
     testImplementation(libs.androidx.compose.material3)
     testImplementation(libs.junit)
+    // Real-component rendering and behaviour tests (JVM, Robolectric). Test-only: none of this reaches the app or the OTA bundle.
+    testImplementation(libs.androidx.activity.compose)
+    testImplementation(libs.androidx.compose.material.icons)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation(libs.kotlinx.coroutines.android)
+    testImplementation(libs.androidx.core.ktx)
 }
