@@ -436,75 +436,55 @@ class AppViewModel(app: Application, private val c: AppContainer) : AndroidViewM
     }
 
     // ---- Backup, import and recovery (owner-controlled; nothing is read or written unless the owner picks a file) ----
+    // The behaviour lives in core's TransferController (tested on the JVM); this layer only adapts Android Uris and publishes results to the screens.
 
     data class ImportPreview(val files: List<com.hotattic.gamedesigner.core.persist.ProjectTransfer.FilePreview>) { val importable get() = files.sumOf { it.importable } }
+    data class BackupReport(val success: Boolean, val headline: String, val lines: List<String>)
 
+    private val transfer = com.hotattic.gamedesigner.core.persist.TransferController(c.store, c.shell.nativeVersionName)
     private val _importPreview = MutableStateFlow<ImportPreview?>(null)
     val importPreview = _importPreview.asStateFlow()
-    private var pendingImports: List<ByteArray> = emptyList()
+    private val _backupReport = MutableStateFlow<BackupReport?>(null)
+    val backupReport = _backupReport.asStateFlow()
 
     private fun displayName(uri: Uri): String = try {
         getApplication<Application>().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null }
     } catch (e: Exception) { null } ?: (uri.lastPathSegment ?: "file")
 
-    /** Reads at most the importer's size limit; a larger file is refused instead of exhausting memory. */
-    private fun readCapped(uri: Uri): ByteArray? {
-        val limit = com.hotattic.gamedesigner.core.persist.ProjectTransfer.MAX_TOTAL_BYTES
-        getApplication<Application>().contentResolver.openInputStream(uri)?.use { input ->
-            val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(64 * 1024); var total = 0L; var n: Int
-            while (input.read(buf).also { n = it } > 0) { total += n; if (total > limit) return null; out.write(buf, 0, n) }
-            return out.toByteArray()
-        }
-        return null
-    }
+    private fun picked(uri: Uri) = com.hotattic.gamedesigner.core.persist.TransferController.Picked(displayName(uri)) { getApplication<Application>().contentResolver.openInputStream(uri) }
 
-    /** Step 1 of an import: read and check the chosen files. Nothing is written. */
+    /** Step 1 of an import: read and check the chosen files (bounded reads). Nothing is written. Backing out of the picker does nothing. */
     fun previewImports(uris: List<Uri>) = viewModelScope.launch {
-        if (uris.isEmpty()) return@launch
-        val loaded = withContext(Dispatchers.IO) { uris.map { u -> displayName(u) to runCatching { readCapped(u) }.getOrNull() } }
-        val previews = withContext(Dispatchers.IO) {
-            loaded.map { (name, bytes) ->
-                if (bytes == null) com.hotattic.gamedesigner.core.persist.ProjectTransfer.FilePreview(name, com.hotattic.gamedesigner.core.persist.PackageKind.UNKNOWN, "This file could not be read (it may be too large or no longer available)", emptyList(), 0, emptyList())
-                else com.hotattic.gamedesigner.core.persist.ProjectTransfer.preview(name, bytes)
-            }
-        }
-        pendingImports = loaded.map { it.second ?: ByteArray(0) }
-        _importPreview.value = ImportPreview(previews)
+        val pv = withContext(Dispatchers.IO) { transfer.preview(uris.map(::picked)) }
+        _importPreview.value = pv?.let { ImportPreview(it.files) }
     }
 
-    fun cancelImports() { pendingImports = emptyList(); _importPreview.value = null }
+    fun cancelImports() { transfer.cancel(); _importPreview.value = null }
 
     /** Step 2: import every valid project from the previewed files. Existing projects are never overwritten; a clash is saved as a separate copy. */
     fun confirmImports() = viewModelScope.launch {
-        val bytes = pendingImports; pendingImports = emptyList(); _importPreview.value = null
-        val results = withContext(Dispatchers.IO) { bytes.filter { it.isNotEmpty() }.map { com.hotattic.gamedesigner.core.persist.ProjectTransfer.import(c.store, it) } }
+        _importPreview.value = null
+        val outcome = withContext(Dispatchers.IO) { transfer.confirm() }
         refresh()
-        val count = results.sumOf { it.imported.size }
-        val problems = results.flatMap { it.errors + it.skipped }
-        toast(if (count == 0) "Nothing was imported. " + problems.joinToString(" ").take(300) else "Imported $count project(s). Nothing existing was changed." + if (problems.isNotEmpty()) " Some items were skipped: " + problems.joinToString(" ").take(200) else "")
+        toast(outcome.message)
     }
 
-    /** Saves a backup to the place the owner chose, then reads it back and checks it, so a bad backup is noticed now and not after a reinstall. */
+    /** Saves a backup to the place the owner chose, reads it back and checks it, and reports exactly what is and is not in it. */
     fun backupAll(out: Uri) = viewModelScope.launch {
-        val report = withContext(Dispatchers.IO) {
-            val bytes = com.hotattic.gamedesigner.core.persist.ProjectTransfer.createBackup(c.store, c.shell.nativeVersionName, System.currentTimeMillis())
-            getApplication<Application>().contentResolver.openOutputStream(out, "wt")!!.use { it.write(bytes) }
-            val back = getApplication<Application>().contentResolver.openInputStream(out)?.use { it.readBytes() }
-            if (back == null) null else com.hotattic.gamedesigner.core.persist.ProjectTransfer.verify(back)
+        val resolver = getApplication<Application>().contentResolver
+        val sink = object : com.hotattic.gamedesigner.core.persist.TransferController.BackupSink {
+            override fun open(): java.io.OutputStream = resolver.openOutputStream(out, "wt") ?: throw java.io.IOException("the chosen location could not be opened for writing")
+            override fun read(): java.io.InputStream? = resolver.openInputStream(out)
         }
-        if (report?.ok == true) {
-            updateSettings { it.copy(lastBackupAt = System.currentTimeMillis()) }
-            toast("Backup saved and verified: ${report.projects} project(s) with checksums. It is outside Bob's private storage, so it survives an uninstall. It never contains API keys.")
-        } else toast("The backup was written but could not be verified: " + (report?.problems?.joinToString(" ") ?: "the file could not be read back") + " Save it again to another place.")
+        val summary = withContext(Dispatchers.IO) { transfer.backup(sink) }
+        if (summary.countsAsBackup) updateSettings { it.copy(lastBackupAt = System.currentTimeMillis()) }
+        _backupReport.value = BackupReport(summary.success, summary.headline + if (summary.success) ". It is outside Bob's private storage, so it survives an uninstall. It never contains API keys." else "", summary.lines)
     }
+
+    fun dismissBackupReport() { _backupReport.value = null }
 
     /** Integrity check of a chosen file; writes nothing. */
-    fun verifyBackupFile(uri: Uri) = viewModelScope.launch {
-        val bytes = withContext(Dispatchers.IO) { runCatching { readCapped(uri) }.getOrNull() }
-        if (bytes == null) { toast("That file could not be read."); return@launch }
-        val v = withContext(Dispatchers.IO) { com.hotattic.gamedesigner.core.persist.ProjectTransfer.verify(bytes) }
-        toast(if (v.ok) "This file is intact: ${v.projects} project(s)" + (if (v.hasManifest) ", checksums match." else ", readable (older backup without checksums).") else "Problem: " + v.problems.joinToString(" ").ifBlank { "this is not a project backup." })
-    }
+    fun verifyBackupFile(uri: Uri) = viewModelScope.launch { toast(withContext(Dispatchers.IO) { transfer.check(picked(uri)) }) }
 
     // ---- GitHub ----
 

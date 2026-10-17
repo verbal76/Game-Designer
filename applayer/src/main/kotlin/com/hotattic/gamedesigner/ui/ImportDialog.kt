@@ -45,3 +45,22 @@ fun ImportDialog(vm: AppViewModel) {
         dismissButton = { if (p.importable > 0) TextButton({ vm.cancelImports() }) { Text("Cancel") } },
     )
 }
+
+/** What a backup contains and what it does not. A backup with anything left out is never presented as a clean success. */
+@Composable
+fun BackupReportDialog(vm: AppViewModel) {
+    val report by vm.backupReport.collectAsState()
+    val r = report ?: return
+    AlertDialog(
+        onDismissRequest = { vm.dismissBackupReport() },
+        title = { Text(if (r.success) "Backup saved" else "Backup needs attention") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(r.headline, style = MaterialTheme.typography.bodyMedium)
+                r.lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                if (!r.success) Text("Nothing on this phone was changed or deleted. Do not rely on this file as a complete backup. Fix the items above, or save another backup.", style = MaterialTheme.typography.bodySmall)
+            }
+        },
+        confirmButton = { TextButton({ vm.dismissBackupReport() }) { Text("OK") } },
+    )
+}

@@ -14,12 +14,17 @@ import java.util.zip.ZipOutputStream
 @Serializable
 data class BackupFile(val path: String, val sha256: String, val size: Long)
 
+/** OK, or why the stored copy was not a clean one: RECOVERED_FROM_BAK (the last good copy was saved instead), NEWER_FORMAT (kept raw; a newer Game Designer can read it). */
 @Serializable
-data class BackupProject(val id: String, val name: String, val schemaVersion: Int, val files: List<BackupFile>)
+data class BackupProject(val id: String, val name: String, val schemaVersion: Int, val files: List<BackupFile>, val status: String = "OK")
+
+/** A project that could not be saved as a working project. Its raw files are kept under `unreadable/<folder>/` so nothing is lost. */
+@Serializable
+data class BackupNote(val id: String, val status: String, val detail: String)
 
 /** Lists what a backup should contain so damage or tampering is detectable before anything is restored. */
 @Serializable
-data class BackupManifest(val format: String = "game-designer-backup", val formatVersion: Int = 1, val createdAt: Long, val appVersion: String, val projects: List<BackupProject>)
+data class BackupManifest(val format: String = "game-designer-backup", val formatVersion: Int = 1, val createdAt: Long, val appVersion: String, val projects: List<BackupProject>, val notes: List<BackupNote> = emptyList())
 
 /** SPEC_ONLY: generated documents (CLAUDE.md and friends) with no project data in them. They cannot be turned back into a project. */
 enum class PackageKind { BACKUP, SPEC_PACKAGE, BARE_PROJECT, SPEC_ONLY, UNKNOWN }
@@ -30,7 +35,7 @@ data class PackageProject(
     val verified: Boolean?, val problems: List<String>,
 ) { val ok get() = project != null && problems.none { it.startsWith("ERROR") } }
 
-data class PackageInspection(val kind: PackageKind, val projects: List<PackageProject>, val problems: List<String>, val hasManifest: Boolean)
+data class PackageInspection(val kind: PackageKind, val projects: List<PackageProject>, val problems: List<String>, val hasManifest: Boolean, val notes: List<BackupNote> = emptyList())
 
 data class ImportedProject(val sourceId: String, val id: String, val name: String, val renamed: Boolean, val verbatim: Boolean, val warnings: List<String>)
 
@@ -51,8 +56,27 @@ data class ImportResult(val imported: List<ImportedProject>, val skipped: List<S
 object ProjectTransfer {
     const val MANIFEST = "backup-manifest.json"
     const val MAX_ENTRIES = 5000
-    const val MAX_TOTAL_BYTES = 400L * 1024 * 1024
-    const val MAX_PROJECT_JSON = 32L * 1024 * 1024
+    /** The largest file the importer will read at all. Phones have a small heap; a real backup is a few MB. */
+    const val MAX_INPUT_BYTES = 64L * 1024 * 1024
+    /** The most it will hold after unpacking, across every kept entry. */
+    const val MAX_TOTAL_BYTES = 128L * 1024 * 1024
+    const val MAX_ENTRY_BYTES = 48L * 1024 * 1024
+    const val MAX_PROJECT_JSON = 16L * 1024 * 1024
+    /** A package that unpacks to far more than it weighs is a decompression bomb. */
+    const val MAX_EXPANSION = 100L
+    private const val BOMB_FLOOR = 8L * 1024 * 1024
+
+    class TooLargeException(val limit: Long) : RuntimeException("larger than the allowed ${limit / 1048576} MB")
+
+    /** Reads [input] fully but never more than [limit] bytes: a larger stream is refused after at most limit+1 bytes, not buffered. */
+    fun readLimited(input: java.io.InputStream, limit: Long = MAX_INPUT_BYTES): ByteArray {
+        val out = ByteArrayOutputStream(); val buf = ByteArray(64 * 1024); var total = 0L; var n: Int
+        while (input.read(buf).also { n = it } > 0) { total += n; if (total > limit) throw TooLargeException(limit); out.write(buf, 0, n) }
+        return out.toByteArray()
+    }
+
+    /** Package paths worth keeping in memory; everything else is counted against the limits and dropped. */
+    private fun wanted(name: String) = name == MANIFEST || name == "game-designer/project.json" || name.startsWith("projects/") || name.startsWith("branding/master/") || name == "CLAUDE.md" || name.endsWith("/CLAUDE.md") || name == "MASTER_PROMPT.md"
 
     private fun sha(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
     private fun safeId(id: String) = id.replace(Regex("[^A-Za-z0-9_-]"), "_")
@@ -63,28 +87,87 @@ object ProjectTransfer {
 
     // ---- backup ---------------------------------------------------------------------------------------------------------------------------
 
-    /** A backup of every project in [store] (project.json plus uploaded assets), with a manifest of checksums. API keys are never included. */
-    fun createBackup(store: FileProjectStore, appVersion: String, now: Long): ByteArray {
-        val bos = ByteArrayOutputStream()
-        val entries = mutableListOf<BackupProject>()
-        ZipOutputStream(bos).use { z ->
-            for (s in store.list().filter { !it.corrupt }) {
-                val dir = store.projectDir(s.id)
-                val files = mutableListOf<BackupFile>()
-                dir.walkTopDown().filter { it.isFile }.sortedBy { it.path }.forEach { f ->
-                    val rel = f.relativeTo(dir).path.replace('\\', '/')
-                    if (rel.endsWith(".tmp") || rel.endsWith(".corrupt") || rel.endsWith(".bak")) return@forEach
-                    val bytes = f.readBytes()
-                    z.putNextEntry(ZipEntry("projects/${dir.name}/$rel")); z.write(bytes); z.closeEntry()
-                    files += BackupFile("projects/${dir.name}/$rel", sha(bytes), bytes.size.toLong())
-                }
-                entries += BackupProject(s.id, s.name, com.hotattic.gamedesigner.core.model.PROJECT_SCHEMA_VERSION, files)
-            }
-            val manifest = ProjectCodec.json.encodeToString(BackupManifest.serializer(), BackupManifest(createdAt = now, appVersion = appVersion, projects = entries))
-            z.putNextEntry(ZipEntry(MANIFEST)); z.write(manifest.toByteArray()); z.closeEntry()
-        }
-        return bos.toByteArray()
+    enum class BackupStatus { INCLUDED, RECOVERED_FROM_BAK, NEWER_FORMAT_RAW, UNREADABLE_RAW, TOO_LARGE }
+
+    /** What happened to one project folder. [status] other than INCLUDED means the backup is not fully clean for it. */
+    data class BackupItem(val folder: String, val name: String, val status: BackupStatus, val detail: String)
+
+    data class BackupResult(val items: List<BackupItem>, val bytesWritten: Long, val sha256: String) {
+        /** True only when every project folder went into the backup as a normal, readable project. */
+        val complete get() = items.isNotEmpty() && items.all { it.status == BackupStatus.INCLUDED }
+        val included get() = items.count { it.status == BackupStatus.INCLUDED || it.status == BackupStatus.RECOVERED_FROM_BAK }
+        val attention get() = items.filter { it.status != BackupStatus.INCLUDED }
     }
+
+    private fun tryDecode(text: String): Project? = try { ProjectCodec.decode(text) } catch (e: Exception) { null }
+
+    /**
+     * Writes a backup of every project folder to [out]. READ-ONLY on the store: it never loads through [FileProjectStore] (whose loading may rewrite
+     * recovery copies) and never changes a file. No project is dropped silently: a damaged project.json is replaced in the backup by its last good
+     * `.bak` (the damaged file is kept beside it under `recovery/`), a project from a newer Game Designer is kept raw, and a project with no readable
+     * copy has its raw files saved under `unreadable/` and is reported. Each file is read once and hashed into the manifest; memory is one file at a time.
+     */
+    fun createBackup(store: FileProjectStore, appVersion: String, now: Long, out: java.io.OutputStream): BackupResult {
+        val counting = object : java.io.FilterOutputStream(out) {
+            val digest: MessageDigest = MessageDigest.getInstance("SHA-256"); var count = 0L
+            override fun write(b: Int) { out.write(b); digest.update(b.toByte()); count++ }
+            override fun write(b: ByteArray, off: Int, len: Int) { out.write(b, off, len); digest.update(b, off, len); count += len }
+            override fun close() { flush() }
+        }
+        val projects = mutableListOf<BackupProject>(); val notes = mutableListOf<BackupNote>(); val items = mutableListOf<BackupItem>()
+        val root = File(store.root, "projects")
+        ZipOutputStream(counting).use { z ->
+            fun put(path: String, bytes: ByteArray) { z.putNextEntry(ZipEntry(path)); z.write(bytes); z.closeEntry() }
+            for (dir in (root.listFiles { f -> f.isDirectory } ?: emptyArray()).sortedBy { it.name }) {
+                val pj = File(dir, "project.json"); val bak = File(dir, "project.json.bak")
+                if (!pj.exists() && !bak.exists() && dir.listFiles().isNullOrEmpty()) continue   // an empty folder is not a project
+                val files = mutableListOf<BackupFile>()
+                fun assets() = dir.walkTopDown().filter { it.isFile }.sortedBy { it.path }.filter { f ->
+                    val rel = f.relativeTo(dir).path.replace('\\', '/'); rel.startsWith("assets/") && !rel.endsWith(".tmp")
+                }
+                val big = dir.walkTopDown().filter { it.isFile }.firstOrNull { it.length() > MAX_ENTRY_BYTES }
+                if (big != null) { items += BackupItem(dir.name, dir.name, BackupStatus.TOO_LARGE, "${big.name} is larger than the ${MAX_ENTRY_BYTES / 1048576} MB limit and could not be backed up"); notes += BackupNote(dir.name, "TOO_LARGE", big.name); continue }
+                val text = runCatching { pj.readText() }.getOrNull()
+                val main = text?.let(::tryDecode)
+                var status = "OK"; var name: String; var itemStatus = BackupStatus.INCLUDED; var detail = ""
+                val projectBytes: ByteArray
+                if (main != null) { projectBytes = pj.readBytes(); name = main.name.ifBlank { dir.name } }
+                else {
+                    val newer = text != null && runCatching { ProjectCodec.decode(text) }.exceptionOrNull() is UnsupportedSchemaException
+                    val bakText = if (bak.exists()) runCatching { bak.readText() }.getOrNull() else null
+                    val recovered = bakText?.let(::tryDecode)
+                    when {
+                        newer -> { projectBytes = pj.readBytes(); name = dir.name; status = "NEWER_FORMAT"; itemStatus = BackupStatus.NEWER_FORMAT_RAW; detail = "saved by a newer Game Designer; kept as it is and readable only by that version" }
+                        recovered != null -> {
+                            projectBytes = bak.readBytes(); name = recovered.name.ifBlank { dir.name }; status = "RECOVERED_FROM_BAK"; itemStatus = BackupStatus.RECOVERED_FROM_BAK
+                            detail = "its project file is damaged, so its last good copy was saved instead (the damaged file is kept under recovery/ in the backup; nothing on the phone was changed)"
+                            if (pj.exists()) put("recovery/${dir.name}/project.json.damaged", pj.readBytes())
+                        }
+                        else -> {
+                            // no readable copy at all: keep every raw file so nothing is lost, and say so
+                            dir.walkTopDown().filter { it.isFile }.sortedBy { it.path }.forEach { f -> put("unreadable/${dir.name}/${f.relativeTo(dir).path.replace('\\', '/')}", f.readBytes()) }
+                            items += BackupItem(dir.name, dir.name, BackupStatus.UNREADABLE_RAW, "no readable copy of this project exists; its raw files were saved under unreadable/ in the backup")
+                            notes += BackupNote(dir.name, "UNREADABLE", "no readable project.json or .bak"); continue
+                        }
+                    }
+                }
+                put("projects/${dir.name}/project.json", projectBytes); files += BackupFile("projects/${dir.name}/project.json", sha(projectBytes), projectBytes.size.toLong())
+                for (f in assets()) { val rel = f.relativeTo(dir).path.replace('\\', '/'); val b = f.readBytes(); put("projects/${dir.name}/$rel", b); files += BackupFile("projects/${dir.name}/$rel", sha(b), b.size.toLong()) }
+                projects += BackupProject(main?.id ?: tryDecode(String(projectBytes))?.id ?: dir.name, name, com.hotattic.gamedesigner.core.model.PROJECT_SCHEMA_VERSION, files, status)
+                if (itemStatus != BackupStatus.INCLUDED) notes += BackupNote(dir.name, status, detail)
+                items += BackupItem(dir.name, name, itemStatus, detail)
+            }
+            put(MANIFEST, ProjectCodec.json.encodeToString(BackupManifest.serializer(), BackupManifest(createdAt = now, appVersion = appVersion, projects = projects, notes = notes)).toByteArray())
+        }
+        return BackupResult(items, counting.count, counting.digest.digest().joinToString("") { "%02x".format(it) })
+    }
+
+    /** Convenience for tests and small callers: the backup as bytes plus its report. */
+    fun createBackupBytes(store: FileProjectStore, appVersion: String, now: Long): Pair<ByteArray, BackupResult> {
+        val bos = ByteArrayOutputStream(); val r = createBackup(store, appVersion, now, bos); return bos.toByteArray() to r
+    }
+
+    fun createBackup(store: FileProjectStore, appVersion: String, now: Long): ByteArray = createBackupBytes(store, appVersion, now).first
 
     // ---- reading --------------------------------------------------------------------------------------------------------------------------
 
@@ -92,7 +175,7 @@ object ProjectTransfer {
 
     private fun readZip(bytes: ByteArray): Raw {
         val files = linkedMapOf<String, ByteArray>(); val problems = mutableListOf<String>()
-        var total = 0L; var count = 0
+        var total = 0L; var kept = 0L; var count = 0
         try {
             ZipInputStream(ByteArrayInputStream(bytes)).use { z ->
                 var e: ZipEntry? = z.nextEntry
@@ -102,9 +185,17 @@ object ProjectTransfer {
                     if (!e.isDirectory) {
                         if (!safeRelative(name)) problems += "ERROR: unsafe path in package: $name"
                         else {
-                            val out = ByteArrayOutputStream(); val buf = ByteArray(64 * 1024); var n: Int
-                            while (z.read(buf).also { n = it } > 0) { total += n; if (total > MAX_TOTAL_BYTES) { problems += "ERROR: the package is larger than the allowed ${MAX_TOTAL_BYTES / 1048576} MB"; return Raw(files, problems) }; out.write(buf, 0, n) }
-                            files[name] = out.toByteArray()
+                            val keep = wanted(name)
+                            val out = if (keep) ByteArrayOutputStream() else null
+                            val buf = ByteArray(64 * 1024); var n: Int; var entry = 0L
+                            while (z.read(buf).also { n = it } > 0) {
+                                entry += n; total += n
+                                if (entry > MAX_ENTRY_BYTES) { problems += "ERROR: $name unpacks to more than ${MAX_ENTRY_BYTES / 1048576} MB"; return Raw(files, problems) }
+                                if (total > MAX_TOTAL_BYTES) { problems += "ERROR: the package unpacks to more than the allowed ${MAX_TOTAL_BYTES / 1048576} MB"; return Raw(files, problems) }
+                                if (total > BOMB_FLOOR && total > MAX_EXPANSION * maxOf(bytes.size, 1)) { problems += "ERROR: the package expands far beyond its size and was refused"; return Raw(files, problems) }
+                                out?.write(buf, 0, n)
+                            }
+                            if (out != null) { files[name] = out.toByteArray(); kept += entry }
                         }
                     }
                     e = z.nextEntry
@@ -123,8 +214,9 @@ object ProjectTransfer {
 
     /** Reads and checks a package without writing anything. */
     fun inspect(bytes: ByteArray): PackageInspection {
-        val trimmed = bytes.dropWhile { it == ' '.code.toByte() || it == '\n'.code.toByte() || it == '\r'.code.toByte() }
-        if (trimmed.firstOrNull() == '{'.code.toByte()) {
+        if (bytes.size > MAX_INPUT_BYTES) return PackageInspection(PackageKind.UNKNOWN, emptyList(), listOf("ERROR: this file is larger than the allowed ${MAX_INPUT_BYTES / 1048576} MB"), false)
+        val first = bytes.firstOrNull { it != ' '.code.toByte() && it != '\n'.code.toByte() && it != '\r'.code.toByte() && it != '\t'.code.toByte() }
+        if (first == '{'.code.toByte()) {
             val (p, err) = decode(bytes, "this file")
             return PackageInspection(PackageKind.BARE_PROJECT, listOf(PackageProject(p?.id ?: "", p?.name ?: "", p, bytes, emptyMap(), null, listOfNotNull(err))), emptyList(), false)
         }
@@ -160,10 +252,12 @@ object ProjectTransfer {
                         bad.forEach { probs += "ERROR: ${it.path} is missing or does not match its checksum" }
                     }
                 }
+                if (m != null && m.status == "RECOVERED_FROM_BAK") probs += "WARNING: when this backup was made the project file was damaged; this is its last good copy"
                 PackageProject(p?.id ?: dir.removePrefix("projects/"), p?.name ?: dir, p, raw, assets, verified, probs)
             }
-            return PackageInspection(PackageKind.BACKUP, projects, problems, manifest != null)
+            return PackageInspection(PackageKind.BACKUP, projects, problems, manifest != null, manifest?.notes.orEmpty())
         }
+        if (manifest != null && (manifest.notes.isNotEmpty() || manifest.projects.isEmpty())) return PackageInspection(PackageKind.BACKUP, emptyList(), problems, true, manifest.notes)
 
         val spec = zip.files["game-designer/project.json"]
         if (spec != null) {
@@ -247,9 +341,9 @@ object ProjectTransfer {
         val ins = inspect(bytes)
         val names = ins.projects.map { it.name.ifBlank { it.sourceId.ifBlank { "unnamed" } } }
         val usable = ins.projects.count { it.ok && it.verified != false }
-        val details = (ins.problems + ins.projects.flatMap { p -> p.problems.map { "${p.name.ifBlank { p.sourceId }}: $it" } }).map { it.replace("ERROR: ", "Problem: ").replace("WARNING: ", "Note: ") }.distinct()
+        val details = (ins.problems + ins.notes.map { "WARNING: ${it.id}: ${it.status} - ${it.detail}" } + ins.projects.flatMap { p -> p.problems.map { "${p.name.ifBlank { p.sourceId }}: $it" } }).map { it.replace("ERROR: ", "Problem: ").replace("WARNING: ", "Note: ") }.distinct()
         val head = when (ins.kind) {
-            PackageKind.BACKUP -> "Complete backup with ${ins.projects.size} project(s)" + when { !ins.hasManifest -> " (older backup without checksums; each project was read and decoded successfully)"; ins.projects.all { it.verified == true } -> " (checksums verified)"; else -> " (checksum problems found)" }
+            PackageKind.BACKUP -> (if (ins.notes.isEmpty()) "Complete backup" else "INCOMPLETE backup (${ins.notes.size} project(s) could not be saved completely)") + " with ${ins.projects.size} readable project(s)" + when { !ins.hasManifest -> " (older backup without checksums; each project was read and decoded successfully)"; ins.projects.all { it.verified == true } -> " (checksums verified)"; else -> " (checksum problems found)" }
             PackageKind.SPEC_PACKAGE -> "Spec package that includes the complete project: its conversation, decisions, exclusions, approvals and spec versions can be imported"
             PackageKind.BARE_PROJECT -> "A single project file"
             PackageKind.SPEC_ONLY -> "Generated specification only. It has no project data, so it cannot be imported as a project"
@@ -266,7 +360,8 @@ object ProjectTransfer {
     fun verify(bytes: ByteArray): Verification {
         val ins = inspect(bytes)
         val probs = (ins.problems + ins.projects.flatMap { p -> p.problems.map { "${p.name.ifBlank { p.sourceId }}: $it" } }).filter { it.contains("ERROR") }.map { it.replace("ERROR: ", "") }
-        val ok = ins.projects.isNotEmpty() && probs.isEmpty() && ins.projects.all { it.ok && it.verified != false }
-        return Verification(ok, ins.kind, ins.hasManifest, ins.projects.size, probs)
+        val noted = ins.notes.map { "${it.id}: ${it.status} - ${it.detail}" }
+        val ok = ins.projects.isNotEmpty() && probs.isEmpty() && noted.isEmpty() && ins.projects.all { it.ok && it.verified != false }
+        return Verification(ok, ins.kind, ins.hasManifest, ins.projects.size, probs + noted)
     }
 }

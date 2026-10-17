@@ -80,6 +80,7 @@ fun SettingsScreen(vm: AppViewModel, nav: NavController, shell: ShellServices) {
     val verifyFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) vm.verifyBackupFile(uri) }
 
     ImportDialog(vm)
+    BackupReportDialog(vm)
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }, navigationIcon = { IconButton({ nav.popBackStack() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } }) }) { pad ->
         Column(Modifier.fillMaxSize().padding(pad).padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AboutSection(vm, shell)
