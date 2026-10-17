@@ -108,14 +108,14 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 14
           if-no-files-found: error
-      # The runner's artifact storage is not reachable from every environment, so the renders are also printed to the log in a compact form (half size,
-      # 48 colours, base64) that a reviewer can decode: lines "GDRENDER <name> <base64 png>".
-      - name: Print compact UI renders to the log
+      # The runner's artifact storage is not reachable from every environment, so the renders are also printed to the log as base64 PNG that a reviewer
+      # can decode: lines "GDRENDER <name> <base64 png>".
+      - name: Print UI renders to the log
         if: always()
         run: |
           for f in applayer/build/ui-renders/*.png; do
             [ -e "$f" ] || continue
-            echo "GDRENDER $(basename "$f" .png) $(convert "$f" -resize 50% -colors 48 -strip PNG8:- | base64 -w0)"
+            echo "GDRENDER $(basename "$f" .png) $(base64 -w0 "$f")"
           done
       # Renders of the real question-and-answer components (Robolectric, synthetic data), produced by the applayer unit tests. Not a phone: no soft keyboard.
       - name: Upload UI renders
