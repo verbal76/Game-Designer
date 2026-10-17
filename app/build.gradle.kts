@@ -24,7 +24,8 @@ android {
         buildConfigField("String", "LITERTLM_VERSION", "\"${libs.versions.litertlm.get()}\"")
     }
 
-    // Release signing comes from the environment (CI), never from source. Without it, a local release build is debug-signed.
+    // Release signing comes from the environment (CI), never from source. There is deliberately NO fallback to the debug key: a release build
+    // without the permanent key must fail, because a debug-signed APK of the production application id can never update the installed app.
     val ksPath = System.getenv("GD_KEYSTORE")
     signingConfigs {
         if (ksPath != null) {
@@ -34,6 +35,14 @@ android {
                 keyAlias = System.getenv("GD_KEY_ALIAS")
                 keyPassword = System.getenv("GD_KEY_PASSWORD")
             }
+        }
+    }
+    gradle.taskGraph.whenReady {
+        val releasePackaging = allTasks.any { it.project == project && Regex("(assemble|bundle|package)Release").matches(it.name) }
+        if (releasePackaging) {
+            val missing = listOf("GD_KEYSTORE", "GD_KEYSTORE_PASSWORD", "GD_KEY_ALIAS", "GD_KEY_PASSWORD").filter { System.getenv(it).isNullOrBlank() }
+            if (missing.isNotEmpty() || !file(ksPath!!).exists())
+                throw GradleException("Refusing to sign a release build without the permanent signing key (missing: ${missing.ifEmpty { listOf("the keystore file") }.joinToString()}). Release builds are made only by the release workflows; a debug-signed production APK could never update the installed app.")
         }
     }
 
@@ -46,7 +55,7 @@ android {
         }
         release {
             isMinifyEnabled = false
-            signingConfig = if (ksPath != null) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release")   // null (unsigned) when the key is absent; the guard above stops release packaging then
         }
     }
 

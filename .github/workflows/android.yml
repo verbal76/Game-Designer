@@ -49,6 +49,12 @@ jobs:
         if: failure()
         run: |
           { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
+      - name: Release signing guard (a release build without the permanent key must refuse, never fall back to debug signing)
+        run: |
+          set +e
+          out=$(env -u GD_KEYSTORE -u GD_KEYSTORE_PASSWORD -u GD_KEY_ALIAS -u GD_KEY_PASSWORD ./gradlew :app:assembleRelease --console=plain 2>&1); code=$?
+          echo "$out" | grep -E "Refusing to sign|FAILED|BUILD" | head -5
+          [ "$code" -ne 0 ] && echo "$out" | grep -q "Refusing to sign a release build without the permanent signing key"
       - name: Side-by-side identity of the test APK (must not be the production application id)
         run: |
           set -euo pipefail
