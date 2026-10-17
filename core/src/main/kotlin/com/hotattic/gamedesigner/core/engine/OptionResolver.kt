@@ -10,9 +10,9 @@ import com.hotattic.gamedesigner.core.schema.Option
  */
 object OptionResolver {
 
-    enum class Mode { SELECT, ALL, NONE, DELEGATE, UNCLEAR }
+    enum class Mode { SELECT, ALL, NONE, DELEGATE, REJECT, UNCLEAR }
 
-    data class Resolution(val mode: Mode, val ids: List<String>, val confident: Boolean)
+    data class Resolution(val mode: Mode, val ids: List<String>, val confident: Boolean, /** Options the owner said they do NOT want ("not a general audience"). */ val rejected: List<String> = emptyList())
 
     private val wordNumbers = mapOf("one" to 1, "two" to 2, "three" to 3, "four" to 4, "five" to 5, "six" to 6, "seven" to 7, "eight" to 8, "nine" to 9, "ten" to 10)
     private val ordinals = mapOf("first" to 1, "second" to 2, "third" to 3, "fourth" to 4, "fifth" to 5, "sixth" to 6, "seventh" to 7, "eighth" to 8, "ninth" to 9, "tenth" to 10,
@@ -52,10 +52,43 @@ object OptionResolver {
         }
         // Delegation is a short request ("you choose"), never a phrase buried in a long description ("You choose which side to play.").
         if (delegateCue.containsMatchIn(t) && t.split(' ').size <= 8) return Resolution(Mode.DELEGATE, emptyList(), true)
+        negatedPick(options, multi, text)?.let { return it }
         val (ids, confident) = select(options, t, multi)
         if (ids.isNotEmpty()) return Resolution(Mode.SELECT, ids, confident)
         if (noneCue.containsMatchIn(t)) return Resolution(Mode.NONE, emptyList(), true)
         return Resolution(Mode.UNCLEAR, emptyList(), false)
+    }
+
+    private val negationCue = Regex("(?:^|\\s)(?:no|not|never|nope|dont|don't|do not|isn't|isnt|wasn't)(?=\\s|$)")
+    private val clauseBreak = Regex("[,;.!?]|\\bbut\\b|\\binstead\\b|\\band(?=\\s+(?:not|no)\\b)", RegexOption.IGNORE_CASE)
+
+    /**
+     * "No, not a general audience" rejects an option; "adults, not kids" picks one and rejects another. A clause whose negation is part of an
+     * option's own wording ("no multiplayer") is left to the normal matching, so an option's negative name is still an answer.
+     */
+    private fun negatedPick(options: List<Option>, multi: Boolean, text: String): Resolution? {
+        if (noneCue.containsMatchIn(norm(text))) return null
+        val positives = mutableListOf<String>(); val rejected = mutableListOf<String>()
+        for (clause in text.split(clauseBreak).map { norm(it) }.filter { it.isNotEmpty() }) {
+            val cue = negationCue.find(clause)
+            if (cue == null) { positives += select(options, clause, multi).first; continue }
+            // An option's own full wording or alias ("No - updates come as a normal new install", "no multiplayer") is an answer, whatever it starts with.
+            val named = options.filter { o -> (listOf(o.label) + o.aliases).map { norm(it) }.any { w -> w.isNotEmpty() && (clause == w || clause.startsWith("$w ") || clause.contains(" $w ") && negationCue.containsMatchIn(w)) } }
+            if (named.isNotEmpty()) { positives += named.map { it.id }; continue }
+            val tail = clause.substring(cue.range.last + 1).trim()
+            val tailIds = if (tail.isEmpty()) emptyList() else select(options, tail, true).first
+            if (tailIds.isEmpty()) continue
+            // "No - updates come as a normal install" when an option itself begins "No - updates ship as a normal install": the negation is the option's own wording.
+            val cueText = cue.value.trim()
+            val ownWording = options.filter { o -> o.id in tailIds && (listOf(o.label) + o.aliases).any { norm(it).startsWith("$cueText ") } }
+            if (ownWording.isNotEmpty()) { positives += ownWording.map { it.id }; continue }
+            val whole = select(options, clause, multi).first
+            if (whole.isNotEmpty() && !tailIds.containsAll(whole)) positives += whole else rejected += tailIds
+        }
+        if (rejected.isEmpty()) return null
+        val picks = positives.distinct().filter { it !in rejected }
+        return if (picks.isNotEmpty()) Resolution(Mode.SELECT, if (multi) picks else picks.take(1), true, rejected.distinct())
+        else Resolution(Mode.REJECT, emptyList(), true, rejected.distinct())
     }
 
     /** Positional first (it is unambiguous when present), then numeric intervals, then wording. */

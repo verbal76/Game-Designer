@@ -755,7 +755,22 @@ class Director(private val deps: DirectorDeps) {
                 }
                 val err = if (value.isBlank()) "I need an answer for that one." else field.validate(Traits(p), value)
                 if (err != null) FieldResult(p, directReply = err, kind = kind)
-                else commitValue(p, settings, field, value, text, now, interp).let { r -> r.copy(modelNote = r.modelNote ?: model, kind = kind) }
+                else commitValue(p, settings, field, value, text, now, interp).let { r ->
+                    // "adults, not kids": the choice is recorded and the rejected option stays ruled out.
+                    val ruledOut = interp.rejectedOptions.filter { id -> field.options(traits).any { it.id == id } && id !in value.split(Decision.LIST_SEPARATOR) }
+                    r.copy(project = if (ruledOut.isEmpty()) r.project else ProjectOps.reject(r.project, field.key, ruledOut, now), modelNote = r.modelNote ?: model, kind = kind)
+                }
+            }
+            AnswerIntent.REJECT -> {
+                // "No, not X": X is ruled out, never recorded as the choice. Ask again with what is left.
+                val valid = interp.rejectedOptions.filter { id -> field.options(traits).any { it.id == id } }
+                if (valid.isEmpty()) FieldResult(p, directReply = "I couldn't tell which option you don't want. ${field.prompt}", kind = kind)
+                else {
+                    val q = ProjectOps.reject(p, field.key, valid, now)
+                    val labels = valid.joinToString(", ") { id -> field.options(traits).first { it.id == id }.label }
+                    if (field.offered(Traits(q)).isEmpty()) FieldResult(q, directReply = "That rules out every option I have. Tell me in your own words what you want.", kind = kind)
+                    else FieldResult(q, directReply = "Okay - not $labels. Which would you like instead?", kind = kind)
+                }
             }
             AnswerIntent.DELEGATE -> {
                 val d = contextualChoice(p, settings, field, now) ?: ProjectOps.delegate(p, field.key, now)
@@ -914,7 +929,7 @@ class Director(private val deps: DirectorDeps) {
         return (if (useLlmAnswer) llm else rules.copy(by = llm.by)).copy(
             edits = llm.edits + rules.edits,
             rejectedGenres = (rules.rejectedGenres + llm.rejectedGenres).distinct(),
-            rejectedTags = rejectedTags, affirmedTags = affirmed,
+            rejectedTags = rejectedTags, affirmedTags = affirmed, rejectedOptions = (rules.rejectedOptions + llm.rejectedOptions).distinct(),
             references = (rules.references + llm.references).distinctBy { it.lowercase() },
             retract = (rules.retract + llm.retract).distinct(), facts = llm.facts, by = llm.by,
             preferences = llm.preferences, constraints = llm.constraints, ambiguities = llm.ambiguities,
@@ -1256,7 +1271,7 @@ class Director(private val deps: DirectorDeps) {
     private fun assetPlanQuick() = listOf(QuickReply("Looks good", "looks good"), QuickReply("CC0 only", "cc0 only"), QuickReply("Original assets only", "only original assets"))
 
     private fun quickFor(field: Field, t: Traits): List<QuickReply> = buildList {
-        val opts = field.options(t)
+        val opts = field.offered(t)
         if (field.kind != FieldKind.TEXT) opts.take(8).forEach { add(QuickReply(it.label, it.label)) }
         if (field.suggest(t) != null) add(QuickReply("Choose for me", "choose for me"))
         if (com.hotattic.gamedesigner.core.engine.Explainer.topicFor(field.key) != null) add(QuickReply("Explain more", "explain more"))
@@ -1313,9 +1328,9 @@ class Director(private val deps: DirectorDeps) {
         ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, text, deps.clock(), field.key, listOf(QuickReply("Choose the image", "upload my own"), QuickReply("Create one for me", "create an original one for me"))), field.key)
 
     private fun specFor(field: Field, t: Traits): QuestionSpec = QuestionSpec(
-        field.key, if (field.key in Keys.brandingKeyForSlot.values) "ASSET_UPLOAD" else field.kind.name, if (field.kind.isSelect) field.options(t).map { ChoiceOption(it.id, it.label, it.description) } else emptyList(),
-        canDelegate = field.suggest(t) != null, canSkip = !field.required,
-        recommended = if (field.kind.isSelect) field.suggest(t)?.value?.split(Decision.LIST_SEPARATOR)?.filter { id -> field.options(t).any { it.id == id } }.orEmpty() else emptyList(),
+        field.key, if (field.key in Keys.brandingKeyForSlot.values) "ASSET_UPLOAD" else field.kind.name, if (field.kind.isSelect) field.offered(t).map { ChoiceOption(it.id, it.label, it.description) } else emptyList(),
+        canDelegate = field.recommendation(t) != null, canSkip = !field.required,
+        recommended = if (field.kind.isSelect) field.recommendation(t)?.value?.split(Decision.LIST_SEPARATOR)?.filter { id -> field.offered(t).any { it.id == id } }.orEmpty() else emptyList(),
     )
 
     /** Chooses the next thing to say. Announces at most one new conflict per turn, before the next question. */
@@ -1446,13 +1461,13 @@ class Director(private val deps: DirectorDeps) {
         com.hotattic.gamedesigner.core.engine.Explainer.topicFor(field.key)?.let { topic ->
             if (p.messages.none { it.role == Role.DIRECTOR && "**${topic.term}.**" in it.text }) Messages.lesson(field, t)?.let { sb.append("\n\n").append(it) }
         }
-        val opts = field.options(t)
+        val opts = field.offered(t)
         if (field.kind == FieldKind.MULTI) sb.append("\n(Pick every one that applies, then tap Continue. Or say \"all\" / \"all except ...\".)")
         if (field.kind != FieldKind.TEXT && opts.isNotEmpty() && p.prefs.experience == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) {
             sb.append("\n")
             opts.take(8).forEachIndexed { i, o -> sb.append("\n${i + 1}. ${o.label}").append(if (o.description.isNotBlank()) " - ${o.description}" else "") }
         }
-        val s = field.suggest(t)
+        val s = field.recommendation(t)
         if (s != null && field.kind != FieldKind.TEXT) sb.append("\n\nI'd go with: ${Messages.display(p, field.key, s.value)}. ${s.rationale}")
         else if (s != null) sb.append("\n\nOr say \"choose for me\" and I'll draft it.")
         return ProjectOps.setPending(ProjectOps.addMessage(p, Role.DIRECTOR, sb.toString(), now, field.key, quickFor(field, t), specFor(field, t)), field.key)

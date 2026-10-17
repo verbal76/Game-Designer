@@ -8,7 +8,9 @@ import com.hotattic.gamedesigner.core.schema.Keys
 import com.hotattic.gamedesigner.core.schema.Traits
 
 sealed class Answer {
-    data class Value(val value: String) : Answer()
+    data class Value(val value: String, val rejected: List<String> = emptyList()) : Answer()
+    /** The owner ruled these options out and chose nothing else yet. */
+    data class Reject(val ids: List<String>) : Answer()
     object Delegate : Answer()
     object Postpone : Answer()
     object Skip : Answer()
@@ -76,9 +78,10 @@ object AnswerParser {
             val r = OptionResolver.resolve(options, multi, raw)
             when (r.mode) {
                 OptionResolver.Mode.DELEGATE -> return Answer.Delegate
+                OptionResolver.Mode.REJECT -> return Answer.Reject(r.rejected)
                 OptionResolver.Mode.ALL, OptionResolver.Mode.SELECT -> if (r.ids.isNotEmpty()) {
                     // A genuine question that merely mentions an option is not an answer.
-                    if (!(looksLikeQuestion(raw) && raw.split(Regex("\\s+")).size >= 4 && !r.confident)) return validate(field, traits, Decision.joinList(r.ids))
+                    if (!(looksLikeQuestion(raw) && raw.split(Regex("\\s+")).size >= 4 && !r.confident)) return validate(field, traits, Decision.joinList(r.ids)).let { a -> if (a is Answer.Value) a.copy(rejected = r.rejected) else a }
                 }
                 OptionResolver.Mode.NONE -> return if (!field.required || multi) Answer.Skip else Answer.Postpone
                 OptionResolver.Mode.UNCLEAR -> Unit

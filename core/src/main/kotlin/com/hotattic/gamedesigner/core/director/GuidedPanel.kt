@@ -70,7 +70,7 @@ object GuidedPanel {
         val parts = LessonParser.split(last.text)
         val field = key.takeUnless { it.startsWith("__") }?.let { Fields.get(it) }
         val t = Traits(p)
-        val suggestion = field?.suggest(t)
+        val suggestion = field?.recommendation(t)
 
         val kind = when {
             key == "__review__" -> PanelKind.REVIEW

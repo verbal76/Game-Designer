@@ -19,7 +19,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-enum class AnswerIntent { SELECT, ALL, NONE, DELEGATE, POSTPONE, SKIP, AFFIRM, NEGATE, QUESTION, FREEFORM, UNCLEAR }
+enum class AnswerIntent { SELECT, ALL, NONE, DELEGATE, POSTPONE, SKIP, AFFIRM, NEGATE, REJECT, QUESTION, FREEFORM, UNCLEAR }
 
 /** Where an interpretation came from; shown to the owner so rules are never passed off as AI. */
 enum class InterpreterKind(val label: String) {
@@ -40,6 +40,8 @@ data class Interpretation(
     val edits: Map<String, String> = emptyMap(),
     val rejectedGenres: List<String> = emptyList(),
     val rejectedTags: List<Tag> = emptyList(),
+    /** Options of the open question the owner ruled out ("not a general audience"). */
+    val rejectedOptions: List<String> = emptyList(),
     val affirmedTags: List<Tag> = emptyList(),
     val references: List<String> = emptyList(),
     /** Plain statements of owner intent worth remembering ("two characters, one descending and one climbing"). */
@@ -111,8 +113,9 @@ object LocalInterpreter {
         )
         if (field == null) return base.copy(intent = if (ex.isEmpty) AnswerIntent.FREEFORM else AnswerIntent.FREEFORM, value = text.trim())
         return when (val a = AnswerParser.parse(field, t, text)) {
+            is Answer.Reject -> base.copy(intent = AnswerIntent.REJECT, rejectedOptions = a.ids)
             is Answer.Value -> {
-                if (field.kind.isSelect) base.copy(intent = AnswerIntent.SELECT, selected = a.value.split(Decision.LIST_SEPARATOR).filter { it.isNotBlank() }, value = a.value)
+                if (field.kind.isSelect) base.copy(intent = AnswerIntent.SELECT, selected = a.value.split(Decision.LIST_SEPARATOR).filter { it.isNotBlank() }, value = a.value, rejectedOptions = a.rejected)
                 else base.copy(intent = AnswerIntent.FREEFORM, value = a.value)
             }
             Answer.Delegate -> base.copy(intent = AnswerIntent.DELEGATE)

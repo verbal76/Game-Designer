@@ -159,6 +159,19 @@ class Field(
 
     fun isRelevant(t: Traits): Boolean = t.mode in modes && relevant(t)
 
+    /** The options worth offering now: what the owner already ruled out is not put in front of them again (it can still be chosen in words, which lifts the rejection). */
+    fun offered(t: Traits): List<Option> = options(t).filter { !t.project.isRejected(key, it.id) }
+
+    /** [suggest], but never an option the owner rejected: the next best remaining option is recommended instead. */
+    fun recommendation(t: Traits): Suggestion? {
+        val s = suggest(t) ?: return null
+        if (!kind.isSelect) return s
+        val rejected = t.project.rejected[key].orEmpty()
+        if (rejected.isEmpty() || s.value.split("|").none { it in rejected }) return s
+        val alt = offered(t).firstOrNull() ?: return null
+        return Suggestion(alt.id, "You ruled out my first suggestion, so this is the one I would pick from what is left.")
+    }
+
     companion object {
         val NEW_ONLY = setOf(ProjectMode.NEW_GAME)
         val ALL_MODES = ProjectMode.values().toSet()
