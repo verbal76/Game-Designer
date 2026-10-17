@@ -145,7 +145,8 @@ class ConversationUiTest {
         val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
         node.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(results)
         val r = results.first()
-        assertFalse("'$label' must not be visually truncated", r.hasVisualOverflow)
+        assertEquals("'$label' must be fully visible, not cut off", label.length, r.getLineEnd(r.lineCount - 1, visibleEnd = true))
+        assertFalse("'$label' must not be ellipsized", (0 until r.lineCount).any { r.isLineEllipsized(it) })
         assertTrue("'$label' fits in at most two lines", r.lineCount <= 2)
     }
     @Test fun confirmMyAnswerIsNotCutOffOnANarrowPhone() = assertConfirmLabelFits("Confirm my answer")
