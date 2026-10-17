@@ -1,0 +1,531 @@
+[
+  {
+    "id": "gmtk-079-super-mario-maker-learn-by-making",
+    "game": "Super Mario Maker",
+    "start": "01:42:54",
+    "end": "01:43:34",
+    "tags": [
+      "level-design",
+      "learning",
+      "creation-tools",
+      "playtesting"
+    ],
+    "problem": "Learning design by starting from familiar parts.",
+    "mechanic": "Players assemble levels from the rules, tools and visuals of the Mario platformers, play others' levels and look for tips.",
+    "effect": "They find that making something fun is difficult, and so get a first experience of level design.",
+    "tradeoffs": "The video says the original's online servers are closed, so sharing there is no longer possible.",
+    "inference": null,
+    "question": "Would letting players build with your rules be valuable, and how would you teach them?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-080-doom-2016-glory-kill",
+    "game": "Doom (2016)",
+    "start": "01:43:34",
+    "end": "01:44:45",
+    "tags": [
+      "fantasy-fulfilment",
+      "health-systems",
+      "aggression",
+      "game-feel"
+    ],
+    "problem": "Making every design decision serve one central fantasy.",
+    "mechanic": "Health does not regenerate behind cover; instead the player staggers demons and rushes in for a brutal finishing move that drops health pickups.",
+    "effect": "The player feels aggressive and forward-driving, since the loop pushes them toward enemies where most shooters reward retreat, and the move recurs constantly because it supplies a key resource.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What should the player's main resource loop make them do, and how does it fit the fantasy?",
+    "related": [
+      "gmtk-044-batman-arkham-asylum-fantasy",
+      "gmtk-008-doom-speed-and-space"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-081-factorio-joy-of-automation",
+    "game": "Factorio",
+    "start": "01:44:49",
+    "end": "01:45:42",
+    "tags": [
+      "automation",
+      "factory-building",
+      "problem-solving",
+      "optimisation"
+    ],
+    "problem": "What makes building automated production satisfying.",
+    "mechanic": "After a crash landing the player builds a self-running factory that mines, smelts and manufactures, growing into a planet-wide web of production lines linked by trains and drones; the video likens it to SpaceChem but larger and more open.",
+    "effect": "Players can disappear into it for hundreds of hours, absorbed in solving problems and squeezing out efficiency.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Is the player's main satisfaction building systems that run themselves?",
+    "related": [
+      "gmtk-052-spacechem-open-ended-solutions"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-082-persona-5-genre-alternation",
+    "game": "Persona 5",
+    "start": "01:45:46",
+    "end": "01:46:56",
+    "tags": [
+      "pacing",
+      "genre-blending",
+      "structure",
+      "theme"
+    ],
+    "problem": "Alternating two very different kinds of gameplay without disorienting players.",
+    "mechanic": "A school life simulation (classes, part-time jobs, dates) alternates with a dungeon-crawling RPG, and the same characters are friends in the social half and party members in the fighting half.",
+    "effect": "Switching helps pacing, and a shared central theme keeps the halves connected.",
+    "tradeoffs": "The video warns that if a player prefers one half or stays too long in one, switching to the other can feel irritating or disruptive.",
+    "inference": null,
+    "question": "If your game has two modes, what ties them together?",
+    "related": [
+      "gmtk-030-resident-evil-4-varied-pacing"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-083-hitman-mastery-through-repetition",
+    "game": "Hitman",
+    "start": "01:47:01",
+    "end": "01:48:31",
+    "tags": [
+      "mastery",
+      "replayability",
+      "level-design",
+      "learning-by-repetition"
+    ],
+    "problem": "Making repeated attempts at a level worthwhile.",
+    "mechanic": "Levels run on a fixed routine: events happen at the same times, targets follow looping routes and objects appear in the same places; first attempts usually go wrong and the player tries again.",
+    "effect": "Each replay adds knowledge and moves the player toward flawless execution; repetition can lead to a real sense of mastery.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should levels be predictable enough for players to master through repetition?",
+    "related": [
+      "gmtk-042-spelunky-roguelike-platformer"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-084-overcooked-forced-cooperation",
+    "game": "Overcooked",
+    "start": "01:48:38",
+    "end": "01:49:49",
+    "tags": [
+      "cooperation",
+      "multiplayer",
+      "communication",
+      "emergent-chaos"
+    ],
+    "problem": "Making a co-op game genuinely require cooperation.",
+    "mechanic": "Up to four players run a kitchen; the obvious plan of one fixed job each breaks down because dirty plates arrive at an awkward rate that nobody wants to own, forcing swaps, shouting and warnings.",
+    "effect": "A chaotic, loud and enjoyable game and a model of well-designed co-op.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What will force your players to coordinate rather than work in parallel?",
+    "related": [
+      "gmtk-060-spaceteam-local-cooperation"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-085-furi-teaches-patience",
+    "game": "Furi",
+    "start": "01:49:53",
+    "end": "01:50:54",
+    "tags": [
+      "combat-design",
+      "boss-fights",
+      "skill-teaching",
+      "patience"
+    ],
+    "problem": "Using combat to teach careful play.",
+    "mechanic": "A boss-rush game in which the player dodges patterns, waits for a gap, attacks briefly and retreats; pressing the attack button repeatedly fails, and each boss is a long lesson that must be passed before moving on.",
+    "effect": "Players learn patience and observation; the narrator found the skill transferred to another game.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What habit should your combat teach, and what makes the wrong habit fail?",
+    "related": [
+      "gmtk-050-dark-souls-corpse-run"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-086-breath-of-the-wild-player-directed-quest",
+    "game": "The Legend of Zelda: Breath of the Wild",
+    "start": "01:50:59",
+    "end": "01:52:28",
+    "tags": [
+      "player-freedom",
+      "open-world",
+      "structure",
+      "exploration"
+    ],
+    "problem": "Giving an open world a goal without imposing an order.",
+    "mechanic": "After a short tutorial the player may go anywhere and may confront the final boss at once, though they will almost surely lose; exploring finds gear, each cleared dungeon weakens the boss and some quest lines give items for the assault.",
+    "effect": "The whole game turns into a player-directed preparation for a showdown, which supports a sense of adventure, discovery and surprise.",
+    "tradeoffs": "The video contrasts it with later series entries that followed a stricter, more linear structure.",
+    "inference": null,
+    "question": "Could one clear goal let players choose their own path toward it?",
+    "related": [
+      "gmtk-005-zelda-freedom-and-curiosity",
+      "gmtk-009-super-metroid-explore-and-unlock"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-087-fortnite-constant-reinvention",
+    "game": "Fortnite",
+    "start": "01:52:33",
+    "end": "01:53:35",
+    "tags": [
+      "live-service",
+      "content-updates",
+      "adaptation",
+      "retention"
+    ],
+    "problem": "Keeping a long-running game feeling fresh.",
+    "mechanic": "The developers repeatedly reconsider key mechanics (building became optional), and each season of a few months adds weapons, vehicles, movement options and characters, and has remade the map several times.",
+    "effect": "Returning after a break feels like a different game.",
+    "tradeoffs": "The video says this rate of reinvention is probably unsustainable for most studios, and perhaps for the developer itself.",
+    "inference": null,
+    "question": "Will your game change over time, and can you afford to keep changing it?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-088-getting-over-it-earned-success",
+    "game": "Getting Over It with Bennett Foddy",
+    "start": "01:53:38",
+    "end": "01:54:49",
+    "tags": [
+      "difficulty",
+      "punishment",
+      "control-scheme",
+      "earned-success"
+    ],
+    "problem": "Making success feel earned through harsh failure.",
+    "mechanic": "A single continuous mountain with no checkpoints or save points, climbed using awkward, unconventional mouse motions, where a slip can send the player back to the bottom; the only support is a philosophical narration.",
+    "effect": "Failure hurts, which makes any progress feel earned.",
+    "tradeoffs": null,
+    "inference": "Players who dislike heavy punishment may quit; the video frames it as a deliberate throwback and does not recommend it for everyone.",
+    "question": "How harshly should failure be punished, and who is your audience for that?",
+    "related": [
+      "gmtk-003-rogue-procedural-permadeath",
+      "gmtk-050-dark-souls-corpse-run"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-089-shadow-of-war-nemesis-system",
+    "game": "Middle-earth: Shadow of War",
+    "start": "01:54:53",
+    "end": "01:56:14",
+    "tags": [
+      "emergent-narrative",
+      "procedural-characters",
+      "memory",
+      "enemy-design"
+    ],
+    "problem": "Generating memorable personal stories in a large game.",
+    "mechanic": "Orc captains are randomly created with a name, voice, skills and a record of past encounters with the player, so one the player ran from may taunt them later and one that was burned may return scarred and seeking revenge.",
+    "effect": "Stories unique to each player, driven by which orcs appear and how they react.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should recurring enemies remember what the player did to them?",
+    "related": [
+      "gmtk-068-alien-isolation-one-good-ai"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-090-among-us-social-deduction",
+    "game": "Among Us",
+    "start": "01:56:19",
+    "end": "01:57:18",
+    "tags": [
+      "social-deduction",
+      "multiplayer",
+      "deception",
+      "party-games"
+    ],
+    "problem": "Building a game around deception between players.",
+    "mechanic": "Most players do tasks to keep a ship running while a few secret impostors sabotage and eliminate; anyone can call a meeting to accuse, a vote follows and the outcome is revealed immediately.",
+    "effect": "It encourages social behaviour rarely used in daily life, and because it centres on the people, it stays enjoyable for a very long time.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Would a hidden-role mechanic suit the people who will play together?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-091-celeste-grace-mechanics-and-assist",
+    "game": "Celeste",
+    "start": "01:57:23",
+    "end": "01:58:46",
+    "tags": [
+      "accessibility",
+      "game-feel",
+      "difficulty",
+      "assist-mode"
+    ],
+    "problem": "Making a hard game kind to the player.",
+    "mechanic": "Movement code is full of small forgiving rules (for example coyote time, allowing a jump just after leaving a ledge), and an assist mode provides accessibility options and outright cheats, introduced with an explanation of the game's intent.",
+    "effect": "The game feels responsive and never punitive while staying demanding; most players do not need assist mode unless they have to.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which forgiving details and assist options would help players without changing the challenge you intend?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-092-rimworld-story-generator",
+    "game": "RimWorld",
+    "start": "01:58:49",
+    "end": "01:59:37",
+    "tags": [
+      "emergent-narrative",
+      "simulation",
+      "event-director",
+      "systemic-design"
+    ],
+    "problem": "Making a game that generates and curates stories.",
+    "mechanic": "Many interacting systems create unexpected effects, and an AI storyteller monitors the colony's state and selects events according to which would be the most engaging.",
+    "effect": "Distinctive personal story moments from a survival colony-management game.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should something select the events that happen, and by what measure?",
+    "related": [
+      "gmtk-041-left-4-dead-ai-director",
+      "gmtk-018-the-sims-player-led-play"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-093-florence-interaction-as-metaphor",
+    "game": "Florence",
+    "start": "01:59:42",
+    "end": "02:00:50",
+    "tags": [
+      "narrative",
+      "interaction-metaphor",
+      "mini-games",
+      "emotion"
+    ],
+    "problem": "Conveying feelings through the way the player interacts.",
+    "mechanic": "A love story told through brief mini games with simple touch controls, where actions work as metaphors (scraping to reveal a dream, pushing a character across the screen) and speech bubbles built from puzzle pieces show how well two people communicate.",
+    "effect": "The emotion comes from what the player does rather than from the visuals.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What small interactions could express how a moment feels?",
+    "related": [
+      "gmtk-063-brothers-story-in-the-controller"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-094-into-the-breach-shown-intentions",
+    "game": "Into the Breach",
+    "start": "02:00:55",
+    "end": "02:01:54",
+    "tags": [
+      "information-design",
+      "tactics",
+      "randomness",
+      "puzzle"
+    ],
+    "problem": "What happens when a strategy game hides nothing about the enemy's next move.",
+    "mechanic": "Enemies reveal exactly what they will do next turn, so the player can kill them first, step aside, or push one enemy into another's attack.",
+    "effect": "The game becomes an elegant puzzle about turning enemies against each other, with luck almost removed and nearly everything visible.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should the player know what the opponent will do next?",
+    "related": [
+      "gmtk-058-xcom-output-randomness",
+      "gmtk-055-mark-of-the-ninja-shown-information"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-095-slay-the-spire-synergy",
+    "game": "Slay the Spire",
+    "start": "02:02:00",
+    "end": "02:03:04",
+    "tags": [
+      "synergy",
+      "deck-building",
+      "roguelike",
+      "build-crafting"
+    ],
+    "problem": "Making the combination of options into a build feel great.",
+    "mechanic": "Cards are added to a deck over time, and some work together (one applies poison, another hits poisoned enemies harder); the player shapes a deck and passive relics around a plan.",
+    "effect": "A deck that delivers huge combined damage feels overwhelmingly powerful; this is safe in a roguelike because randomness means a given card or relic can never be guaranteed.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which options should combine, and what stops one combination from always being available?",
+    "related": [
+      "gmtk-017-diablo-2-skill-tree-power-fantasy",
+      "gmtk-096b-vampire-survivors-distilled-loop"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-096-disco-elysium-micro-reactivity",
+    "game": "Disco Elysium",
+    "start": "02:03:08",
+    "end": "02:04:26",
+    "tags": [
+      "choice-and-consequence",
+      "narrative",
+      "reactivity",
+      "rpg"
+    ],
+    "problem": "How small choices can matter without branching endings.",
+    "mechanic": "A combat-free RPG in which everyone follows largely the same story, yet the game tracks and refers to small player behaviour (running everywhere, being rude, walking about in underwear), with a late scene where characters reflect on the player's actions.",
+    "effect": "Small choices become memorable; the game's writer calls this micro-reactivity, a game that notices and responds to small player behaviour.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could the game notice small things the player does, instead of only large branches?",
+    "related": [
+      "gmtk-035-mass-effect-choices-ripple",
+      "gmtk-061-dishonored-world-reacts"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-097-outer-wilds-knowledge-as-progress",
+    "game": "Outer Wilds",
+    "start": "02:04:31",
+    "end": "02:05:37",
+    "tags": [
+      "exploration",
+      "information-game",
+      "progression",
+      "discovery"
+    ],
+    "problem": "Gating progress by knowledge instead of abilities.",
+    "mechanic": "In a simulated solar system with a time loop, progress is blocked not by fights or ability unlocks but by what the player understands; each planet holds clues that open areas on others.",
+    "effect": "A rewarding cycle of exploring and learning; the designer wanted a world that keeps pointing to things players can go and discover.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could what the player knows, rather than what they own, open the next area?",
+    "related": [
+      "gmtk-071-her-story-withheld-information",
+      "gmtk-009-super-metroid-explore-and-unlock"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-098-half-life-alyx-vr-hands",
+    "game": "Half-Life: Alyx",
+    "start": "02:05:42",
+    "end": "02:06:53",
+    "tags": [
+      "vr",
+      "input-design",
+      "emergent-play",
+      "interaction"
+    ],
+    "problem": "What new kinds of play come from tracked hand controllers.",
+    "mechanic": "Controllers that follow hands and fingers let the player crack a door open slightly and fire through it, fumble a reload and spill bullets, or grab an object to knock an enemy away.",
+    "effect": "Emergent play that is not a designed mechanic in the usual sense but a natural result of freeform interaction.",
+    "tradeoffs": "It needs a VR headset, as the video notes.",
+    "inference": null,
+    "question": "What does your input device allow that a standard controller would not?",
+    "related": [
+      "gmtk-046-fruit-ninja-touch-input"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-099-inscryption-layered-surprise",
+    "game": "Inscryption",
+    "start": "02:06:59",
+    "end": "02:07:52",
+    "tags": [
+      "mystery",
+      "meta-narrative",
+      "surprise",
+      "genre-mixing"
+    ],
+    "problem": "Keeping a game surprising throughout.",
+    "mechanic": "A deck-building card battler that blends several genres, visual styles and storytelling methods, moves between the game and a fictional world around it, and places its deepest lore in an alternate reality game outside the game.",
+    "effect": "Players believe they have reached the end and discover they have barely begun.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What could the player discover late that changes how they see the game?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-096b-vampire-survivors-distilled-loop",
+    "game": "Vampire Survivors",
+    "start": "02:07:56",
+    "end": "02:09:04",
+    "tags": [
+      "core-loop",
+      "progression",
+      "synergy",
+      "engagement"
+    ],
+    "problem": "How far a levelling loop can be simplified and still hold players.",
+    "mechanic": "The character attacks automatically so the player only moves near enemies and waits; kills give experience to buy new or stronger attacks, and some attacks strengthen each other.",
+    "effect": "Despite minimal input it is very hard to put down, combining the strongest elements of several earlier games; the video leaves open whether that is good.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which part of a levelling loop is the pleasure, and what could you remove around it?",
+    "related": [
+      "gmtk-017-diablo-2-skill-tree-power-fantasy",
+      "gmtk-064-clicker-games-incremental-progress",
+      "gmtk-095-slay-the-spire-synergy"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-100-tunic-secrets-in-plain-sight",
+    "game": "Tunic",
+    "start": "02:09:08",
+    "end": "02:10:06",
+    "tags": [
+      "secrets",
+      "discovery",
+      "optional-depth",
+      "player-curiosity"
+    ],
+    "problem": "Making secrets satisfying to find.",
+    "mechanic": "Most puzzles use things already visible in the world whose meaning the player has not yet grasped; later, often through pages of an in-game manual, they suddenly make sense; the secrets are never forced and can be ignored.",
+    "effect": "A burst of excitement and understanding when a secret clicks, and a pull toward working it out personally instead of reading about it.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which secrets could be hidden in plain sight and left entirely optional?",
+    "related": [
+      "gmtk-071-her-story-withheld-information"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-101-shadows-of-doubt-procedural-city",
+    "game": "Shadows of Doubt",
+    "start": "02:10:10",
+    "end": "02:11:25",
+    "tags": [
+      "procedural-generation",
+      "simulation",
+      "detective",
+      "emergent-narrative"
+    ],
+    "problem": "What procedural generation can do beyond levels.",
+    "mechanic": "A city block with hundreds of randomly generated residents, each with a job, home, partner, blood type, fingerprints, schedule and motives, one of whom decides to commit a murder; the player follows clues and arranges notes on a pinboard.",
+    "effect": "A complex system that yields endless murders and cases, with stories that feel personal to each detective; the game is still in early access.",
+    "tradeoffs": "The video adds that games need not be full of complex systems; simplicity and elegance are strengths of other games on the list.",
+    "inference": null,
+    "question": "What would you generate instead of hand-authoring, and what would the player do with it?",
+    "related": [
+      "gmtk-003-rogue-procedural-permadeath",
+      "gmtk-089-shadow-of-war-nemesis-system"
+    ],
+    "confidence": "high"
+  }
+]

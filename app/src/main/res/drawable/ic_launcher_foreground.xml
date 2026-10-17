@@ -1,0 +1,15 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Flame (Hot Attic palette) -->
+    <path android:fillColor="#FFFF5A1F"
+        android:pathData="M54,24 C60,34 70,40 70,54 C70,64 63,72 54,72 C45,72 38,64 38,54 C38,47 42,43 45,38 C46,43 49,45 51,45 C50,38 51,30 54,24 Z" />
+    <path android:fillColor="#FFFFC24B"
+        android:pathData="M54,44 C58,50 62,53 62,60 C62,66 58,70 54,70 C50,70 46,66 46,60 C46,56 49,54 50,50 C52,52 53,52 54,52 C53,49 53,47 54,44 Z" />
+    <!-- Controller silhouette under the flame -->
+    <path android:fillColor="#FFF4E6D8"
+        android:pathData="M36,76 C36,72 40,70 44,70 L64,70 C68,70 72,72 72,76 L72,80 C72,84 69,86 66,84 L62,81 L46,81 L42,84 C39,86 36,84 36,80 Z" />
+    <path android:fillColor="#FF130F0C"
+        android:pathData="M42,74.5h1.4v1.4h1.4v1.4h-1.4v1.4h-1.4v-1.4h-1.4v-1.4h1.4z" />
+    <path android:fillColor="#FF130F0C" android:pathData="M63,75.5m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0" />
+    <path android:fillColor="#FF130F0C" android:pathData="M66.5,77.5m-1.3,0a1.3,1.3 0,1 1,2.6 0a1.3,1.3 0,1 1,-2.6 0" />
+</vector>

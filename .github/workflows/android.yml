@@ -1,0 +1,135 @@
+# Android CI - deliberately NOT run on every push (GitHub Actions minutes are a scarce, shared budget; see CLAUDE.md section 32).
+# It checks only what cannot be proven locally: the Android modules (shell, layer, resources) compile, lint passes, the layer unit
+# tests (incl. theme contrast) pass, and the native libraries are 16 KB page-size aligned. JVM tests of :core and :otakit run locally
+# and are repeated inside the OTA and release workflows, so they are not repeated here.
+# Runs: manually (workflow_dispatch), or on pull requests that are READY FOR REVIEW (draft PRs are skipped). Docs/tooling-only changes never run it.
+name: Android CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ["**.md", "docs/**", "tools/models/**", "ota/publish-request.json", ".github/workflows/release-*.yml", ".github/workflows/model-catalog.yml", ".github/workflows/ota-publish.yml"]
+  workflow_dispatch:
+    inputs:
+      test_variant:
+        description: "Leave empty for the normal TEST app. 'test2' builds the one-off side-by-side migration app (com.hotatticgames.gamedesigner.test2, label Game Designer TEST 2)."
+        required: false
+        default: ""
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # Skipped jobs are not billed: draft pull requests never start the runner.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write   # only to create the private draft release holding the test key on the very first run
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Accept Android SDK licenses (SDK is preinstalled on the runner)
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false   # feature branches may save the Gradle cache so later runs are not cold
+      # The side-by-side test build is signed with a PERSISTENT test key kept in the private draft release "gd-test-signing-key" (visible to repository
+      # writers only, never expires). An Actions cache is not used: it did not save (the runner's debug keystore is not at the cached path) and can be evicted.
+      # It is a different key from the production release key and cannot sign production. The step verifies the keystore against its recorded fingerprint.
+      - name: Persistent signing key for the test build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tools/ota/ensure-test-key.sh "$RUNNER_TEMP/testkey" | tee key.log
+          echo "GD_TEST_KEYSTORE=$RUNNER_TEMP/testkey/test.keystore" >> "$GITHUB_ENV"
+          echo "GD_TEST_KEYSTORE_PASSWORD=$(sed -n 's/^password=//p' "$RUNNER_TEMP/testkey/test.properties")" >> "$GITHUB_ENV"
+          echo "GD_TEST_KEY_ALIAS=$(sed -n 's/^alias=//p' "$RUNNER_TEMP/testkey/test.properties")" >> "$GITHUB_ENV"
+          echo "GD_TEST_CERT_SHA256=$(cat "$RUNNER_TEMP/testkey/test.sha256")" >> "$GITHUB_ENV"
+          [ -n "$(cat "$RUNNER_TEMP/testkey/test.sha256")" ] && [ -n "$(sed -n 's/^password=//p' "$RUNNER_TEMP/testkey/test.properties")" ]
+      - name: Test variant (normal TEST app, or the side-by-side TEST 2 migration app)
+        env:
+          VARIANT: ${{ inputs.test_variant }}
+        run: |
+          set -euo pipefail
+          case "$VARIANT" in
+            "")    echo "GD_TEST_VARIANT=" >> "$GITHUB_ENV"; echo "EXPECT_SUFFIX=test" >> "$GITHUB_ENV"; echo "EXPECT_LABEL=Game Designer TEST" >> "$GITHUB_ENV" ;;
+            test2) echo "GD_TEST_VARIANT=test2" >> "$GITHUB_ENV"; echo "EXPECT_SUFFIX=test2" >> "$GITHUB_ENV"; echo "EXPECT_LABEL=Game Designer TEST 2" >> "$GITHUB_ENV" ;;
+            *) echo "unknown test_variant '$VARIANT'"; exit 1 ;;
+          esac
+      - name: Monotonic version code
+        run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
+      - name: Android lint, debug APK, layer unit tests (incl. theme contrast)
+        run: |
+          set -o pipefail
+          ./gradlew :app:lintDebug :app:assembleDebug :applayer:testDebugUnitTest :app:testDebugUnitTest --console=plain 2>&1 | tee build.log
+      - name: Show compiler/lint errors (only on failure)
+        if: failure()
+        run: |
+          { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
+      - name: Release signing guard (a release build without the permanent key must refuse, never fall back to debug signing)
+        run: |
+          set +e
+          out=$(env -u GD_KEYSTORE -u GD_KEYSTORE_PASSWORD -u GD_KEY_ALIAS -u GD_KEY_PASSWORD ./gradlew :app:assembleRelease --console=plain 2>&1); code=$?
+          echo "$out" | grep -E "Refusing to sign|FAILED|BUILD" | head -5
+          [ "$code" -ne 0 ] && echo "$out" | grep -q "Refusing to sign a release build without the permanent signing key"
+      - name: Side-by-side identity of the test APK (must not be the production application id)
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/aapt2" dump badging app/build/outputs/apk/debug/app-debug.apk | tee badging-test.txt | head -4
+          grep -q "package: name='com.hotatticgames.gamedesigner.${EXPECT_SUFFIX}'" badging-test.txt
+          grep -q "versionName='5.0.0-${EXPECT_SUFFIX}'" badging-test.txt
+          grep -q "application-label:'${EXPECT_LABEL}'" badging-test.txt
+          "$BT/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | tee certs-test.txt | grep -E "certificate SHA-256 digest|Signer #1 certificate DN" | head -3
+          # The APK must carry the persistent test certificate: the same one on every build, so each test APK updates the previous one in place.
+          grep -q "certificate SHA-256 digest: ${GD_TEST_CERT_SHA256}" certs-test.txt
+          echo "TEST signing certificate SHA-256: ${GD_TEST_CERT_SHA256}" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Distribution privacy audit (test APK and the OTA application-layer bundle)
+        run: |
+          set -euo pipefail
+          python3 tools/check-distribution-privacy.py --selftest
+          ./gradlew :otabundle:assembleDebug -q -PlayerVersion=0 -PlayerLabel=privacy-audit -PsourceSha=audit --console=plain
+          W=$(mktemp -d); unzip -q -o otabundle/build/outputs/apk/debug/otabundle-debug.apk 'classes*.dex' -d "$W"; (cd "$W" && zip -X -q bundle.zip classes*.dex)
+          python3 tools/check-distribution-privacy.py app/build/outputs/apk/debug/app-debug.apk "$W/bundle.zip"
+      - name: 16 KB page-size qualification of every native library in the debug APK
+        run: python3 tools/check-16kb.py app/build/outputs/apk/debug/app-debug.apk
+      # Private test APK for the owner's phone: a build-system artifact only (zipped by GitHub, visible to repository collaborators), never a release.
+      - name: Upload private debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-designer-debug-apk-${{ inputs.test_variant || 'test' }}-${{ github.sha }}
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
+          if-no-files-found: error
+      # The runner's artifact storage is not reachable from every environment, so the renders are also printed to the log as base64 PNG that a reviewer
+      # can decode: lines "GDRENDER <name> <base64 png>".
+      - name: Print UI renders to the log
+        if: always()
+        run: |
+          for f in applayer/build/ui-renders/*.png; do
+            [ -e "$f" ] || continue
+            echo "GDRENDER $(basename "$f" .png) $(base64 -w0 "$f")"
+          done
+      # Renders of the real question-and-answer components (Robolectric, synthetic data), produced by the applayer unit tests. Not a phone: no soft keyboard.
+      - name: Upload UI renders
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-renders-${{ inputs.test_variant || 'test' }}-${{ github.sha }}
+          path: applayer/build/ui-renders
+          retention-days: 7
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: reports
+          path: |
+            app/build/reports
+            applayer/build/reports

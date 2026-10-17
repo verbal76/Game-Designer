@@ -1,0 +1,19 @@
+build/
+.gradle/
+.kotlin/
+local.properties
+*.iml
+.idea/
+captures/
+*.jks
+*.keystore
+.env
+
+app/src/main/assets/ota/trusted_keys.txt
+
+# Personal project data must never be committed or packaged (see docs/PROJECT_TRANSFER.md)
+recovery-out/
+*_restore_backup.zip
+game-designer-backup*.zip
+*_spec_v*.zip
+**/projects/*/project.json

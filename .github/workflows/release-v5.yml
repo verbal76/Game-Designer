@@ -1,0 +1,111 @@
+# One-shot publication of Game Designer v5 (full release APK: complete application layer, shell API 3).
+# Runs only when THIS file changes (an explicit request), never on ordinary source pushes. Not a store release.
+name: Publish v5 release
+
+on:
+  push:
+    paths: [".github/workflows/release-v5.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: signing-keys
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  TAG: v5
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Monotonic version code
+        run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
+
+      - name: Load persistent signing material
+        run: tools/ota/ensure-keys.sh "$RUNNER_TEMP/keys"
+
+      - name: Pin the OTA trust key into the APK
+        run: |
+          mkdir -p app/src/main/assets/ota
+          { echo "# keys allowed to sign OTA manifests"; cat "$RUNNER_TEMP/keys/ota-public.b64"; echo; } > app/src/main/assets/ota/trusted_keys.txt
+
+      - name: Tests (core, OTA kit, theme contrast, lint)
+        run: ./gradlew :core:test :otakit:test :applayer:testDebugUnitTest :app:lintDebug --stacktrace
+
+      - name: Build signed release APK
+        run: |
+          export GD_KEYSTORE="$RUNNER_TEMP/keys/release.keystore"
+          export GD_KEYSTORE_PASSWORD="$(sed -n 's/^password=//p' "$RUNNER_TEMP/keys/release.properties")"
+          export GD_KEY_PASSWORD="$GD_KEYSTORE_PASSWORD"
+          export GD_KEY_ALIAS=gamedesigner
+          ./gradlew :app:assembleRelease -PsourceSha="$(git rev-parse --short=8 HEAD)" --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk Game-Designer-v5.apk
+
+      - name: Verify the actual APK
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs Game-Designer-v5.apk | tee verify.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true\|Verified using v3 scheme (APK Signature Scheme v3): true" verify.txt
+          "$BT/aapt2" dump badging Game-Designer-v5.apk | tee badging.txt | head -8
+          grep -q "package: name='com.hotatticgames.gamedesigner'" badging.txt
+          grep -q "versionName='5.0.0'" badging.txt
+          grep -q "minSdkVersion:'28'" badging.txt
+          unzip -l Game-Designer-v5.apk | tee contents.txt >/dev/null
+          awk '$1>100000 && /webp$/ {f=1} END{exit !f}' contents.txt
+          grep -q "assets/ota/trusted_keys.txt" contents.txt
+          mkdir -p x && unzip -q -o Game-Designer-v5.apk 'classes*.dex' -d x
+          grep -a -q 'Lcom/hotattic/gamedesigner/applayer/AppLayerEntry;' x/classes*.dex
+          grep -a -q 'Lcom/hotattic/gamedesigner/otakit/OtaSelector;' x/classes*.dex
+          grep -a -q 'Lcom/hotattic/gamedesigner/shell/LiteRtLocalLlm;' x/classes*.dex
+          sha256sum Game-Designer-v5.apk | tee sha.txt
+
+      - name: 16 KB page-size qualification of the release APK
+        run: python3 tools/check-16kb.py Game-Designer-v5.apk
+
+      - name: Upgrade compatibility with the published v4 APK (same signing certificate, higher versionCode)
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          gh release download v4 -p Game-Designer-v4.apk -D old
+          "$BT/apksigner" verify --print-certs old/Game-Designer-v4.apk | grep 'certificate SHA-256 digest' | head -1 | tee old.cert
+          "$BT/apksigner" verify --print-certs Game-Designer-v5.apk | grep 'certificate SHA-256 digest' | head -1 | tee new.cert
+          diff old.cert new.cert
+          OLD=$("$BT/aapt2" dump badging old/Game-Designer-v4.apk | grep -o "versionCode='[0-9]*'" | head -1 | grep -o "[0-9]*")
+          NEW=$(grep -o "versionCode='[0-9]*'" badging.txt | head -1 | grep -o "[0-9]*")
+          echo "v4 versionCode=$OLD, v5 versionCode=$NEW"
+          test "$NEW" -gt "$OLD"
+
+      - name: Publish APK release v5 (does not touch earlier releases or the OTA channels)
+        run: |
+          set -euo pipefail
+          SHA=$(cut -d' ' -f1 sha.txt)
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "release $TAG already exists"; exit 1; fi
+          VC=$(grep -o "versionCode='[0-9]*'" badging.txt | head -1 | grep -o "[0-9]*")
+          FP=$(tools/ota/fingerprint.sh)
+          cat > notes.md <<NOTES
+          **Game Designer v5** (internal physical-test build; NOT a store release). Signed with the same persistent release key as v2, v3 and v4, so it installs over v4 and keeps your projects.
+
+          - Contains the complete current application layer (layer v5.0, sequence 16), built into the APK: Beginner / Advanced selector, plain-English teaching cards, the nine-stage progress strip, multiplayer / OTA / platform discovery, the 14-document development handoff, and the interaction polish pass.
+          - Same native shell API 3 (runtime fingerprint \`$FP\`). The bundled layer is newer than every published OTA (sequence 15), so an install over v4 runs this layer instead of an older stored update. The next OTA must be publish-request version 17 or higher.
+          - Source commit: \`$GITHUB_SHA\`
+          - versionName 5.0.0, versionCode $VC
+          - File: \`Game-Designer-v5.apk\`
+          - SHA-256: \`$SHA\`
+          NOTES
+          sed -i 's/^          //' notes.md
+          gh release create "$TAG" Game-Designer-v5.apk --target "$GITHUB_SHA" --title "Game Designer v5 - complete application layer" --notes-file notes.md
+
+      - name: Step summary
+        run: |
+          { echo '### v5 release'; cat sha.txt; echo '### 16 KB'; echo passed; } >> "$GITHUB_STEP_SUMMARY"
