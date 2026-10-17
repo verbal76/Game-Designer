@@ -23,8 +23,10 @@ data class PanelModel(
     val kind: PanelKind,
     val title: String,
     val why: String?,
-    /** The engine's own wording for questions that are not simple field questions (the review, a conflict). */
+    /** The engine's own wording for questions that are not simple field questions (the review, a conflict): the message body without its teaching card. */
     val detail: String?,
+    /** For a field question: what Bob said just before asking (what the last answer changed). Shown once, in the history. */
+    val notes: String? = null,
     val options: List<PanelOption>,
     val recommendationLabel: String?,
     val recommendationWhy: String?,
@@ -104,12 +106,14 @@ object GuidedPanel {
             else -> parts.after.ifBlank { parts.before }.lines().lastOrNull { it.isNotBlank() }.orEmpty().take(180)
         }
         val detail = if (field == null) parts.before.ifBlank { last.text }.takeIf { it.isNotBlank() && it != title } else null
+        // What Bob said before the question itself (an acknowledgement, a preface), so the question text is never shown twice.
+        val notes = if (field != null) parts.before.let { b -> val i = b.indexOf(title); if (i > 0) b.substring(0, i).trim().takeIf { it.isNotBlank() } else null } else null
         val why = parts.lesson?.why ?: field?.why?.takeIf { it.isNotBlank() }
         val recLabel = suggestion?.value?.split("|")?.mapNotNull { id -> options.firstOrNull { it.id == id }?.label }?.takeIf { it.isNotEmpty() }?.joinToString(", ")
         val current = field?.let { p.decision(it.key) }?.takeIf { it.value.isNotBlank() }?.let { Messages.display(p, field.key, it.value) }
 
         return PanelModel(
-            key, last.id, kind, title, why, detail, options, recLabel, suggestion?.rationale ?: parts.lesson?.recommendation, parts.lesson,
+            key, last.id, kind, title, why, detail, notes, options, recLabel, suggestion?.rationale ?: parts.lesson?.recommendation, parts.lesson,
             canDelegate = spec?.canDelegate == true || quick.any { it.send.trim().lowercase() == "choose for me" },
             canSkip = spec?.canSkip == true || quick.any { it.send.trim().lowercase() == "skip" },
             allowsText = kind in setOf(PanelKind.TEXT, PanelKind.SINGLE, PanelKind.MULTI, PanelKind.OTHER, PanelKind.UPLOAD, PanelKind.CONFLICT, PanelKind.REVIEW, PanelKind.PROPOSALS),
@@ -124,8 +128,8 @@ object GuidedPanel {
     /** Why CONFIRM is not available yet, or null when it is. */
     fun confirmBlocked(model: PanelModel, draft: Set<String>, text: String): String? = when {
         text.isNotBlank() -> null
-        model.options.isEmpty() -> "Type your answer, then confirm."
-        draft.isEmpty() -> if (model.multi) "Pick at least one, or type your own." else "Pick an answer, or type your own, then confirm."
+        model.options.isEmpty() -> "Type your answer to enable Confirm."
+        draft.isEmpty() -> if (model.multi) "Pick one or more answers, or type your own." else "Choose an answer, or type your own."
         else -> null
     }
 
@@ -165,7 +169,7 @@ object GuidedPanel {
         busy -> NextState(false, "Bob is still working on your last answer.")
         p.pendingTurn != null -> NextState(false, "Your last message is saved but not answered yet. Tap Retry in the conversation.")
         accepted != null && stillCurrent(accepted, p) -> NextState(true, if (model?.kind == PanelKind.CONFLICT) "Bob found something to settle before the next question." else null)
-        model != null -> NextState(false, if (model.kind == PanelKind.CONFLICT) "This needs a decision first. Pick one of the options, then confirm." else "Confirm your answer first. NEXT never answers for you.")
+        model != null -> NextState(false, if (model.kind == PanelKind.CONFLICT) "This needs your decision before anything else. Choose an option, then confirm." else "Confirm your answer to move on.")
         else -> NextState(false, "There is no open question right now.")
     }
 }

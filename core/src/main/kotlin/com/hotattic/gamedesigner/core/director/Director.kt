@@ -1197,10 +1197,10 @@ class Director(private val deps: DirectorDeps) {
     fun switchMode(p: Project, settings: AppSettings, to: com.hotattic.gamedesigner.core.model.Experience): Project {
         if (DesignMode.of(p.prefs.experience) == DesignMode.of(to) && p.prefs.experience == to) return p
         val label = if (to == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) "Beginner" else "Advanced"
-        val what = if (to == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) "I'll explain each choice in full and make routine technical decisions for you."
-            else "I'll also ask about the technical choices (engine, saving, builds, signing, distribution, performance) before the final review, and keep explaining every term."
+        val what = if (to == com.hotattic.gamedesigner.core.model.Experience.BEGINNER) "I'll explain each choice and make the routine technical decisions for you."
+            else "I'll also ask the technical questions (engine, saving, builds, distribution) before the final review."
         val switched = p.copy(prefs = p.prefs.copy(experience = to))
-        val msg = "Switched to $label mode. $what All your answers and approved decisions stay exactly as they are. ${DesignMode.BOTH_MODES_NOTE}"
+        val msg = "Switched to $label mode. $what Your answers and approved decisions are unchanged."
         val pending = p.pendingFieldKey
         val f = pending?.takeUnless { it.startsWith("__") }?.let { Fields.get(it) }
         return if (f != null) ProjectOps.setPending(ProjectOps.addMessage(ProjectOps.addMessage(switched, Role.DIRECTOR, msg, deps.clock()), Role.DIRECTOR, Messages.promptFor(f, Traits(switched)), deps.clock(), f.key, quickFor(f, Traits(switched)), specFor(f, Traits(switched))), pending)
