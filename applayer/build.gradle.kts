@@ -60,3 +60,6 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.android)
     testImplementation(libs.androidx.core.ktx)
 }
+
+// The Robolectric UI tests write renders of the real components here; declaring it as an output keeps the renders with a cached test result.
+tasks.withType<Test>().configureEach { outputs.dir("build/ui-renders") }
