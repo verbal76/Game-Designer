@@ -196,15 +196,18 @@ class ConversationUiTest {
     @Test fun newContentIsFollowedAtTheBottomButNotWhileTheOwnerReviewsHistory() {
         val h = Harness(); showFollowed(h); rule.waitUntil(3000) { atBottom(h) }
         h.count = 35; h.key += 1                                  // new content while following
-        rule.waitUntil(3000) { h.state.layoutInfo.totalItemsCount == 35 && atBottom(h) }
-        rule.runOnIdle { runBlocking { h.state.scrollToItem(2) } }                       // the owner scrolls up
+        rule.mainClock.advanceTimeBy(3000); rule.waitForIdle()
+        assertEquals("the new items are laid out", 35, h.state.layoutInfo.totalItemsCount)
+        assertTrue("new content was followed to the bottom (scrolling=${h.state.isScrollInProgress}, first=${h.state.firstVisibleItemIndex})", atBottom(h))
+        rule.runOnUiThread { runBlocking { h.state.scrollToItem(2) } }                   // the owner scrolls up
         h.f.report(ConversationScroll.Event.USER_SCROLLED_AWAY)
         val first = h.state.firstVisibleItemIndex
-        h.count = 38; h.key += 1; rule.waitForIdle(); rule.mainClock.advanceTimeBy(1500)
+        h.count = 38; h.key += 1; rule.mainClock.advanceTimeBy(3000); rule.waitForIdle()
         assertEquals("the reading position is kept", first, h.state.firstVisibleItemIndex)
         assertTrue("and the owner is told something is new", h.f.state.unseen)
         h.f.report(ConversationScroll.Event.CONFIRMED)                                   // an explicit action returns to the newest content
-        rule.waitUntil(3000) { atBottom(h) }
+        rule.mainClock.advanceTimeBy(3000); rule.waitForIdle()
+        assertTrue("confirming returned to the newest content", atBottom(h))
     }
 
     @Test fun theKeyboardResizingKeepsABottomReaderAtTheBottomAndLeavesAReviewerAlone() {
