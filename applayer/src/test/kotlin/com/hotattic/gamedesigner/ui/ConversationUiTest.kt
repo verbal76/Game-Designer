@@ -6,6 +6,22 @@ import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -139,19 +155,109 @@ class ConversationUiTest {
         assertEquals("the typed answer is still there for a retry", "A garden at dusk", text)
     }
 
+    // ---- text clipping: a check that fails when text is actually cut off, in width or in height -----------------------------------------------------
+
+    private companion object { const val TOL = 1f }
+
+    /** The text layout of a Text node, or null when the node has no GetTextLayoutResult action or the action reports failure. */
+    private fun textLayout(node: SemanticsNode): TextLayoutResult? {
+        val action = node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action ?: return null
+        val results = mutableListOf<TextLayoutResult>()
+        return if (action(results)) results.firstOrNull() else null
+    }
+
+    /**
+     * Everything that shows text is not fully visible. Checks the layout's own text (never the caller's label, which may be transformed), then:
+     * ellipsis, characters beyond the last visible line, content wider or taller than the node's box (width and height clipping), and a node larger
+     * than its [container] (which clips it). Returns the problems; empty means the whole text is visible. [expected] only guards against measuring the wrong node.
+     */
+    private fun clippingProblems(node: SemanticsNode, container: SemanticsNode? = null, expected: String? = null, maxLines: Int = 2): List<String> {
+        val r = textLayout(node) ?: return listOf("no GetTextLayoutResult action (or it reported failure), so the text cannot be measured")
+        val out = mutableListOf<String>()
+        val text = r.layoutInput.text.text
+        if (expected != null && !text.contains(expected, ignoreCase = true)) out += "measured text '$text' does not contain the expected '$expected'"
+        val last = r.lineCount - 1
+        val visible = r.getLineEnd(last, visibleEnd = true)
+        if (visible < text.length) out += "cut off: only $visible of ${text.length} characters visible"
+        if ((0..last).any { r.isLineEllipsized(it) }) out += "ellipsized"
+        if (r.lineCount > maxLines) out += "uses ${r.lineCount} lines, more than $maxLines"
+        val contentWidth = (0..last).maxOf { r.getLineRight(it) - r.getLineLeft(it) }
+        if (contentWidth > node.size.width + TOL) out += "wider than its box: content ${contentWidth}px, box ${node.size.width}px"
+        val contentHeight = r.getLineBottom(last)
+        if (contentHeight > node.size.height + TOL) out += "taller than its box: content ${contentHeight}px, box ${node.size.height}px"
+        if (container != null) {
+            if (node.size.width > container.size.width + TOL) out += "wider than its container: ${node.size.width}px in ${container.size.width}px"
+            if (node.size.height > container.size.height + TOL) out += "taller than its container: ${node.size.height}px in ${container.size.height}px"
+        }
+        return out
+    }
+
+    private fun buttonAround(node: SemanticsNode): SemanticsNode? =
+        generateSequence(node.parent) { it.parent }.firstOrNull { it.config.getOrNull(SemanticsProperties.Role) == Role.Button }
+
     private fun assertConfirmLabelFits(label: String) {
         show(w = 320, h = 640) { Column(Modifier.fillMaxSize()) { ActionBar(null, true, {}, label, true, {}, true, {}, false) } }
-        val node = rule.onNodeWithText(label).fetchSemanticsNode()
-        val results = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
-        node.config[androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult].action?.invoke(results)
-        val r = results.first()
-        assertEquals("'$label' must be fully visible, not cut off", label.length, r.getLineEnd(r.lineCount - 1, visibleEnd = true))
-        assertFalse("'$label' must not be ellipsized", (0 until r.lineCount).any { r.isLineEllipsized(it) })
-        assertTrue("'$label' fits in at most two lines", r.lineCount <= 2)
+        val node = rule.onNodeWithText(label, ignoreCase = true, useUnmergedTree = true).fetchSemanticsNode()
+        val button = buttonAround(node)
+        assertTrue("the label '$label' should sit inside a button", button != null)
+        val problems = clippingProblems(node, button, expected = label)
+        assertTrue("'$label' must be fully visible; problems: $problems", problems.isEmpty())
     }
     @Test fun confirmMyAnswerIsNotCutOffOnANarrowPhone() = assertConfirmLabelFits("Confirm my answer")
     @Test fun aLongChoiceLabelOnConfirmIsNotCutOffEither() = assertConfirmLabelFits("Confirm: A calm, cosy world")
     @Test fun aMultiSelectConfirmLabelIsNotCutOff() = assertConfirmLabelFits("Confirm 3 selected")
+
+    // ---- the corrected check fails when text really is clipped (and passes when it is not) ---------------------------------------------------------
+
+    private val sample = "Confirm my answer"
+    private fun problemsFor(tag: String, expected: String? = sample, content: @Composable () -> Unit): List<String> {
+        show(w = 320, h = 640) { Box(Modifier.testTag("outer")) { content() } }
+        val node = rule.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        val container = rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode()
+        return clippingProblems(node, container, expected)
+    }
+
+    @Test fun clippingCheckPassesForTextThatFits() {
+        val problems = problemsFor("t") { Box(Modifier.width(220.dp)) { Text(sample, Modifier.testTag("t")) } }
+        assertTrue("fitting text should report no problems: $problems", problems.isEmpty())
+    }
+
+    @Test fun clippingCheckFailsWhenTextIsWiderThanTheBoxThatClipsIt() {
+        // Laid out at its natural width inside a 60dp box that clips it: every character is "present" in the layout, so a character count alone passes.
+        show(w = 320, h = 640) { Box(Modifier.testTag("outer").width(60.dp)) { Text(sample, Modifier.testTag("t").wrapContentWidth(Alignment.Start, unbounded = true), softWrap = false, maxLines = 1) } }
+        val node = rule.onNodeWithTag("t", useUnmergedTree = true).fetchSemanticsNode()
+        val r = textLayout(node)!!
+        assertEquals("a length-only check would wrongly pass", r.layoutInput.text.length, r.getLineEnd(r.lineCount - 1, visibleEnd = true))
+        val problems = clippingProblems(node, rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode(), sample)
+        assertTrue("width clipping must be reported: $problems", problems.any { it.startsWith("wider than its container") })
+    }
+
+    @Test fun clippingCheckFailsWhenTextIsTallerThanTheBoxThatClipsIt() {
+        // Two wrapped lines forced into an 18dp-high box: the text node is clamped to the box height while the paragraph needs more.
+        val problems = problemsFor("t") { Box(Modifier.width(90.dp).height(18.dp)) { Text(sample, Modifier.testTag("t")) } }
+        assertTrue("height clipping must be reported: $problems", problems.any { it.startsWith("taller than its box") })
+    }
+
+    @Test fun clippingCheckFailsWhenTextOverflowsItsContainerVertically() {
+        val problems = problemsFor("t") { Box(Modifier.width(90.dp).height(18.dp)) { Text(sample, Modifier.testTag("t").wrapContentHeight(unbounded = true)) } }
+        assertTrue("height overflow of the container must be reported: $problems", problems.any { it.startsWith("taller than its container") })
+    }
+
+    @Test fun clippingCheckFailsWhenTextIsEllipsized() {
+        val problems = problemsFor("t") { Box(Modifier.width(60.dp)) { Text(sample, Modifier.testTag("t"), maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+        assertTrue("ellipsis must be reported: $problems", problems.contains("ellipsized"))
+    }
+
+    @Test fun clippingCheckReportsAMissingTextLayoutActionClearly() {
+        val problems = problemsFor("t", expected = null) { Box(Modifier.testTag("t").size(10.dp).semantics { contentDescription = "not a text node" }) }
+        assertEquals(1, problems.size); assertTrue(problems.single().startsWith("no GetTextLayoutResult action"))
+    }
+
+    @Test fun clippingCheckDoesNotAssumeTheRenderedTextEqualsTheLabel() {
+        // Uppercased (a different string from the label), still fully visible: the check measures the layout's own text and reports nothing.
+        val problems = problemsFor("t") { Box(Modifier.width(220.dp)) { Text(sample.uppercase(), Modifier.testTag("t")) } }
+        assertTrue("transformed but visible text should pass: $problems", problems.isEmpty())
+    }
 
     @Test fun anUnavailableConfirmDoesNothing() {
         var confirms = 0
