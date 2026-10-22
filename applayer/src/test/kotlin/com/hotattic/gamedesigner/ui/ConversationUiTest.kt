@@ -228,6 +228,12 @@ class ConversationUiTest {
         val r = textLayout(node)!!
         assertEquals("a length-only check would wrongly pass", r.layoutInput.text.length, r.getLineEnd(r.lineCount - 1, visibleEnd = true))
         val problems = clippingProblems(node, rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode(), sample)
+        assertTrue("width clipping must be reported: $problems (node=${node.size}, container=${rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode().size}, lineRight=${r.getLineRight(0)})", problems.any { it.startsWith("wider than") })
+    }
+
+    @Test fun clippingCheckFailsWhenTextIsClampedInsideANarrowBox() {
+        // The same clamp as the height case, in width: one unwrappable line in a 60dp box.
+        val problems = problemsFor("t") { Box(Modifier.width(60.dp)) { Text(sample, Modifier.testTag("t"), softWrap = false, maxLines = 1) } }
         assertTrue("width clipping must be reported: $problems", problems.any { it.startsWith("wider than") })
     }
 

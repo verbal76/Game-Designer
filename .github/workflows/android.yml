@@ -73,6 +73,7 @@ jobs:
         if: failure()
         run: |
           { grep -E '^e: |^e\\.|Unresolved|error: ' build.log | cut -c1-260 | head -25; grep -A14 'What went wrong' build.log | cut -c1-260 | head -40; } || true
+          { grep -h -A3 '<failure' applayer/build/test-results/testDebugUnitTest/*.xml | cut -c1-400 | head -40; } || true
       - name: Release signing guard (a release build without the permanent key must refuse, never fall back to debug signing)
         run: |
           set +e
