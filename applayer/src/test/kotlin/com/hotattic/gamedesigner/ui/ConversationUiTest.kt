@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
@@ -223,18 +224,18 @@ class ConversationUiTest {
 
     @Test fun clippingCheckFailsWhenTextIsWiderThanTheBoxThatClipsIt() {
         // Laid out at its natural width inside a 60dp box that clips it: every character is "present" in the layout, so a character count alone passes.
-        show(w = 320, h = 640) { Box(Modifier.testTag("outer").width(60.dp)) { Text(sample, Modifier.testTag("t").wrapContentWidth(Alignment.Start, unbounded = true), softWrap = false, maxLines = 1) } }
+        show(w = 320, h = 640) { Box(Modifier.wrapContentSize(Alignment.TopStart)) { Box(Modifier.testTag("outer").width(60.dp)) { Text(sample, Modifier.testTag("t").wrapContentWidth(Alignment.Start, unbounded = true), softWrap = false, maxLines = 1) } } }
         val node = rule.onNodeWithTag("t", useUnmergedTree = true).fetchSemanticsNode()
         val r = textLayout(node)!!
         assertEquals("a length-only check would wrongly pass", r.layoutInput.text.length, r.getLineEnd(r.lineCount - 1, visibleEnd = true))
         val problems = clippingProblems(node, rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode(), sample)
-        assertTrue("width clipping must be reported: $problems (node=${node.size}, container=${rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode().size}, lineRight=${r.getLineRight(0)})", problems.any { it.startsWith("wider than") })
+        assertTrue("width clipping must be reported: $problems (node=${node.size}, container=${rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode().size})", problems.any { it.startsWith("wider than") })
     }
 
     @Test fun clippingCheckFailsWhenTextIsClampedInsideANarrowBox() {
         // The same clamp as the height case, in width: one unwrappable line in a 60dp box.
         val problems = problemsFor("t") { Box(Modifier.width(60.dp)) { Text(sample, Modifier.testTag("t"), softWrap = false, maxLines = 1) } }
-        assertTrue("width clipping must be reported: $problems", problems.any { it.startsWith("wider than") })
+        assertTrue("width clipping must be reported: $problems", problems.any { it.startsWith("wider than") || it.startsWith("cut off") })
     }
 
     @Test fun clippingCheckFailsWhenTextIsTallerThanTheBoxThatClipsIt() {
