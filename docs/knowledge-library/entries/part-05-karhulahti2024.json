@@ -1,0 +1,221 @@
+[
+  {
+    "id": "karh-001-climb",
+    "source": "karhulahti2024",
+    "locator": "Analysis: CLIMB",
+    "classification": "SOURCE_CONSTRUCT",
+    "explicitOnly": true,
+    "game": "CLIMB (vitality structure)",
+    "tags": [
+      "effort-driven-advancement",
+      "ranking",
+      "level-systems"
+    ],
+    "problem": "Naming the feeling of moving upward through effort the player put in, as opposed to drifting forward on their own.",
+    "mechanic": "Ranked ladders and level-up systems are the typical designs behind it. Competitive ranks in several multiplayer titles climb in slow, multi-hour steps, while role-playing games tie it to raising a character or its equipment.",
+    "effect": "The player senses an upward push they caused themselves (making it up the ladder), which the author separates from plain forward progress such as story advancement.",
+    "tradeoffs": "The paper offers this as a hypothesis from one author's play history. It links the experience to problem gaming only as something to test, and does not show that ladders cause it. Ranking and level systems can also frustrate players who stall.",
+    "inference": "Bob's reading: if a design needs a sense of earned advancement, ask whether a visible ladder or level track fits the fantasy. Wanting this feeling is not a decision to add ranks or levels.",
+    "question": "If this feeling appeals, what would 'moving up' mean in your game, and what would the player do to earn it?",
+    "related": [
+      "karh-004-chronotope-scale",
+      "karh-005-meta-spatial",
+      "karh-006-meta-temporal",
+      "karh-002-final-stretch"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-002-final-stretch",
+    "source": "karhulahti2024",
+    "locator": "Analysis: FINAL STRETCH",
+    "classification": "SOURCE_CONSTRUCT",
+    "explicitOnly": true,
+    "game": "FINAL STRETCH (vitality structure)",
+    "tags": [
+      "near-completion",
+      "goal-gradient",
+      "milestones"
+    ],
+    "problem": "Naming the pull a player feels when a goal is nearly done and finishing looks small and sensible.",
+    "mechanic": "Daily reward meters that sit just short of a threshold, level or rank bars close to filling, and progress sliced into small milestones all create it. In competitive mobile titles, nested targets let the feeling recur at several scales within one session.",
+    "effect": "The player feels drawn to close the gap, with the sense that finishing is both possible and reasonable. The paper says it points toward the present or future and has no meaningful past form once the gap is closed.",
+    "tradeoffs": "The same pull can stretch sessions beyond what a player intended, and the paper discusses it alongside problem gaming as a hypothesis, not a proven cause. Using it to hold attention conflicts with a calm, respectful design.",
+    "inference": "Bob's reading: milestones that mark real accomplishment can give healthy closure points. Meters engineered to stay just out of reach are a retention tactic and should only be chosen deliberately.",
+    "question": "Where in your game should a player reach a natural stopping point, and should the game make stopping easy there?",
+    "related": [
+      "karh-001-climb",
+      "karh-006-meta-temporal",
+      "karh-007-design-experience-bond"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-003-alert",
+    "source": "karhulahti2024",
+    "locator": "Analysis: ALERT",
+    "classification": "SOURCE_CONSTRUCT",
+    "explicitOnly": true,
+    "game": "ALERT (vitality structure)",
+    "tags": [
+      "attention-signals",
+      "notifications",
+      "signal-cues"
+    ],
+    "problem": "Naming the quick jolt of attention when a player notices a signal that offers instantly accessible information.",
+    "mechanic": "Blinking level-up indicators, highlighted reward buttons, sound cues for invitations and red marks on a home screen all trigger it. It is always a brief moment, and the player may act on it now or postpone it.",
+    "effect": "The player feels a short pull to look and settle the uncertainty. Most uses the paper describes simply tell players what they can do; stacking many signals on one screen turns it into constant interruption.",
+    "tradeoffs": "Presented as a hypothesis from one author's play history. Too many signals feel excessive or stressful, and frequent short returns can add up to a large share of play time. In the games analysed, the author found it less central to serious gaming problems than the other two.",
+    "inference": "Bob's reading: signals earn their place when they communicate something the player wants to know. This does not authorise notifications, daily prompts, or purchase nudges.",
+    "question": "Which moments in your game does the player truly need to be told about, and how should the game stay quiet the rest of the time?",
+    "related": [
+      "karh-004-chronotope-scale",
+      "karh-006-meta-temporal",
+      "karh-007-design-experience-bond"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-004-chronotope-scale",
+    "source": "karhulahti2024",
+    "locator": "Analysis",
+    "classification": "SOURCE_FRAMEWORK",
+    "explicitOnly": true,
+    "game": "Micro, meso and macro time scales",
+    "tags": [
+      "experience-time-scale",
+      "feeling-scale"
+    ],
+    "problem": "Describing how long or large an experienced feeling is, so the same feeling can be compared across designs.",
+    "mechanic": "The paper places a feeling on a continuum: macro is slow and drawn out (a rank that takes weeks), meso is faster and sharper (a ladder that resets monthly), and micro is immediate (a signal that lands in the moment). One construct may appear at more than one scale.",
+    "effect": "It gives designers a vocabulary for asking how fast a reward or goal should be felt, instead of only asking whether it exists.",
+    "tradeoffs": "The scales are loose points on a continuum, not measured categories, and the author notes his wording cannot fully convey the intended feeling.",
+    "inference": "Bob's reading: when discussing pacing, it can help to say whether a goal is meant to be felt within a moment, a session or a season.",
+    "question": "Should the main goals in your game be felt within a moment, within one session, or over many sessions?",
+    "related": [
+      "karh-001-climb",
+      "karh-003-alert",
+      "karh-005-meta-spatial"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-005-meta-spatial",
+    "source": "karhulahti2024",
+    "locator": "Analysis",
+    "classification": "SOURCE_FRAMEWORK",
+    "explicitOnly": true,
+    "game": "Self, avatar or object perspective",
+    "tags": [
+      "perspective-distance",
+      "avatar-identification"
+    ],
+    "problem": "Describing whether a feeling is attached to the player, to their character, or to something the character owns.",
+    "mechanic": "The paper's example is advancement: a rank belongs to the player themselves, a character level belongs to the avatar a step away, and upgrading a weapon sits even further out on an object.",
+    "effect": "The same structure of feeling stays recognisable, but it feels closer or more distant depending on what carries it.",
+    "tradeoffs": "This is a descriptive lens from the author's own examples, not a tested prediction of how strongly players respond.",
+    "inference": "Bob's reading: choosing whether progress belongs to the player, the character or the gear changes how personal it feels, which can matter for tone.",
+    "question": "Should progress in your game belong to the player, to their character, or to their equipment?",
+    "related": [
+      "karh-001-climb",
+      "karh-004-chronotope-scale",
+      "karh-006-meta-temporal"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-006-meta-temporal",
+    "source": "karhulahti2024",
+    "locator": "Analysis",
+    "classification": "SOURCE_FRAMEWORK",
+    "explicitOnly": true,
+    "game": "Past, present and future perspective",
+    "tags": [
+      "temporal-perspective",
+      "anticipation"
+    ],
+    "problem": "Describing whether a feeling looks back at something done, sits in the action itself, or anticipates something ahead.",
+    "mechanic": "Advancement can be felt in all three ways: looking down at the distance covered, taking the step now, or looking up at what is next. The paper says the near-completion pull has no past form, and the attention jolt is restricted to the moment with no past form.",
+    "effect": "It helps separate satisfaction in hindsight from anticipation and from the immediate action.",
+    "tradeoffs": "The author uses these as working descriptions and says they await empirical refinement.",
+    "inference": "Bob's reading: a design can deliberately favour reflection, action or anticipation; mixing them without intent can blur what the player feels.",
+    "question": "Do you want players mainly to enjoy looking back at what they achieved, the action itself, or what comes next?",
+    "related": [
+      "karh-001-climb",
+      "karh-002-final-stretch",
+      "karh-003-alert",
+      "karh-005-meta-spatial"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-007-design-experience-bond",
+    "source": "karhulahti2024",
+    "locator": "Vitality Structures",
+    "classification": "SOURCE_FRAMEWORK",
+    "explicitOnly": true,
+    "game": "Design and experience as a pair",
+    "tags": [
+      "design-experience-pairing",
+      "player-variation"
+    ],
+    "problem": "Avoiding the assumption that a design feature always produces one particular feeling.",
+    "mechanic": "The paper treats a construct as the pairing of a specific design with a specific experience. Either side can occur without the other: a player may use a ranking screen without feeling any ascent, and may feel ascent in life outside games.",
+    "effect": "It reminds designers that players may react to the same feature in different ways, so the intended feeling needs checking with real players.",
+    "tradeoffs": "The paper presents this as a conceptual proposal. It explicitly calls for later empirical studies to test it and gives no measured effect sizes.",
+    "inference": "Bob's reading: when borrowing a mechanic from another game, plan to observe how your own players feel instead of assuming the same result.",
+    "question": "What feeling do you want a given feature to create, and how will you find out whether players actually feel it?",
+    "related": [
+      "karh-002-final-stretch",
+      "karh-003-alert",
+      "karh-008-source-limits"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-008-source-limits",
+    "source": "karhulahti2024",
+    "locator": "Methods",
+    "classification": "SOURCE_CAVEAT",
+    "explicitOnly": true,
+    "game": "What the source does and does not establish",
+    "tags": [
+      "evidence-status",
+      "limitations"
+    ],
+    "problem": "Knowing how much weight these constructs can bear.",
+    "mechanic": "The three constructs come from one author's recalled play of a small set of titles that treatment-seekers named, written down retrospectively without a formal qualitative method. The clinical links the paper raises are labelled hypotheses to be tested.",
+    "effect": "Readers should treat the constructs as useful vocabulary for describing experiences, not as proven causes of gaming problems.",
+    "tradeoffs": "Several reviewers of the paper raised concerns about method and engagement with related literature. The author states the constructs are starting points, not final.",
+    "inference": "Bob's reading: use these ideas to talk about player feelings and to prompt questions, never as a reason to add or avoid a mechanic on their own.",
+    "question": "Would you like me to treat these as discussion prompts only, so that nothing here changes your design unless you choose it?",
+    "related": [
+      "karh-007-design-experience-bond"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "karh-009-signal-density-and-session-shape",
+    "source": "karhulahti2024",
+    "locator": "Analysis: ALERT",
+    "classification": "SOURCE_OBSERVATION",
+    "explicitOnly": true,
+    "game": "Signal density and session length",
+    "tags": [
+      "play-rhythm",
+      "notifications",
+      "signal-cues"
+    ],
+    "problem": "Matching how many attention signals a game shows to how long its sessions are meant to last.",
+    "mechanic": "A mobile card game with timed chests and short return visits shows many highlighted signals on its home screen, while a series of long, focused single-player action games shows almost none and reserves them for essential information.",
+    "effect": "The author notes that signal density tracks session shape: short frequent visits go with many cues, long absorbed sessions go with very few.",
+    "tradeoffs": "In the mobile example the author considers the signal load excessive, and the busier design also carries purchase promotion. A comparison of two games is not a tested rule.",
+    "inference": "Bob's reading: decide the intended session shape first, then let the interface be as quiet as that shape allows.",
+    "question": "Should your game be played in short returns during the day or in longer focused sittings?",
+    "related": [
+      "karh-003-alert",
+      "karh-004-chronotope-scale"
+    ],
+    "confidence": "medium"
+  }
+]

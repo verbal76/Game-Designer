@@ -1,0 +1,28 @@
+{
+  "note": "Entries active in the pilot. All others are validated and kept in the library but never retrieved until listed here.",
+  "active": [
+    "gmtk-001-space-invaders-difficulty-curve",
+    "gmtk-005-zelda-freedom-and-curiosity",
+    "gmtk-002-pac-man-role-reversal",
+    "gmtk-018-the-sims-player-led-play",
+    "gmtk-047-amnesia-no-combat-horror",
+    "gmtk-041-left-4-dead-ai-director",
+    "gmtk-034-portal-genre-mashup",
+    "gmtk-035-mass-effect-choices-ripple",
+    "gmtk-092-rimworld-story-generator",
+    "gmtk-081-factorio-joy-of-automation",
+    "gmtk-091-celeste-grace-mechanics-and-assist",
+    "gmtk-096b-vampire-survivors-distilled-loop",
+    "gmtk-046-fruit-ninja-touch-input",
+    "gmtk-096-disco-elysium-micro-reactivity",
+    "karh-001-climb",
+    "karh-002-final-stretch",
+    "karh-003-alert",
+    "karh-004-chronotope-scale",
+    "karh-005-meta-spatial",
+    "karh-006-meta-temporal",
+    "karh-007-design-experience-bond",
+    "karh-008-source-limits",
+    "karh-009-signal-density-and-session-shape"
+  ]
+}

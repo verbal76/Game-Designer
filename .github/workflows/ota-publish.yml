@@ -1,0 +1,66 @@
+# Publishes an OTA bundle to the dev or stable channel. Triggered ONLY by an explicit change to ota/publish-request.json
+# (or a manual dispatch once this file is on the default branch). Ordinary source pushes never publish.
+name: Publish OTA bundle
+
+on:
+  push:
+    paths: ["ota/publish-request.json"]
+  workflow_dispatch:
+    inputs:
+      channel: { description: "dev or stable", required: true, default: "dev" }
+      version: { description: "bundle version (must exceed the channel's current one)", required: true }
+      label: { description: "version name", required: true }
+      confirm: { description: "type PUBLISH-STABLE to publish to stable", required: false, default: "" }
+
+permissions:
+  contents: write
+
+concurrency:
+  group: signing-keys
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+      - name: Read request
+        id: req
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "channel=${{ inputs.channel }}" >> "$GITHUB_OUTPUT"; echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "label=${{ inputs.label }}" >> "$GITHUB_OUTPUT"; echo "confirm=${{ inputs.confirm }}" >> "$GITHUB_OUTPUT"
+          else
+            for k in channel version label confirm; do echo "$k=$(python3 -c "import json;print(json.load(open('ota/publish-request.json')).get('$k',''))")" >> "$GITHUB_OUTPUT"; done
+          fi
+      - name: Guard
+        run: |
+          set -euo pipefail
+          CH="${{ steps.req.outputs.channel }}"; V="${{ steps.req.outputs.version }}"
+          [[ "$CH" =~ ^(dev|stable)$ ]] || { echo "channel must be dev or stable"; exit 1; }
+          [[ "$V" =~ ^[0-9]+$ && "$V" -ge 2 ]] || { echo "version must be an integer >= 2"; exit 1; }
+          if [ "$CH" = "stable" ] && [ "${{ steps.req.outputs.confirm }}" != "PUBLISH-STABLE" ]; then echo "stable requires confirm=PUBLISH-STABLE"; exit 1; fi
+          cur=$(curl -sfL "https://github.com/$GITHUB_REPOSITORY/releases/download/ota-$CH/manifest.json" | python3 -c "import sys,json;print(json.load(sys.stdin)['bundleVersion'])" 2>/dev/null || echo 0)
+          [ "$V" -gt "$cur" ] || { echo "version $V must exceed the channel's current version $cur"; exit 1; }
+      - name: Load signing key
+        run: tools/ota/ensure-keys.sh "$RUNNER_TEMP/keys"
+      - name: Tests
+        run: ./gradlew :core:test :otakit:test :applayer:testDebugUnitTest --stacktrace
+      - name: Build, sign, verify
+        run: |
+          set -euo pipefail
+          tools/ota/build-bundle.sh "${{ steps.req.outputs.version }}" "${{ steps.req.outputs.label }}" "${{ steps.req.outputs.channel }}" "$RUNNER_TEMP/out" "$RUNNER_TEMP/keys/ota-private.b64" "$GITHUB_SHA"
+          ./gradlew -q :otakit:run --args="verify-channel --dir $RUNNER_TEMP/out --public-key $RUNNER_TEMP/keys/ota-public.b64 --api $(tools/ota/shellapi.sh) --fingerprint $(tools/ota/fingerprint.sh)"
+      - name: Publish
+        run: tools/ota/publish.sh "${{ steps.req.outputs.channel }}" "$RUNNER_TEMP/out"

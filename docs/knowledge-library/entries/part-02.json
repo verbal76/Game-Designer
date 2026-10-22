@@ -1,0 +1,589 @@
+[
+  {
+    "id": "gmtk-025-warioware-instant-communication",
+    "game": "WarioWare",
+    "start": "00:34:11",
+    "end": "00:35:16",
+    "tags": [
+      "onboarding",
+      "communication",
+      "short-session",
+      "pacing"
+    ],
+    "problem": "Teaching a game's rules in a moment.",
+    "mechanic": "A rapid series of tiny games, each conveyed through colour, shape, layout and a one-word instruction, so the player must change skills every few seconds.",
+    "effect": "Players stay alert and reactive, and it shows how much can be done with a very small idea.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Can a player understand what to do within a few seconds, and how would you show it?",
+    "related": [
+      "gmtk-015-crazy-taxi-concentrated-loop"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-026-september-12th-serious-game",
+    "game": "September 12th",
+    "start": "00:35:19",
+    "end": "00:36:17",
+    "tags": [
+      "serious-games",
+      "message",
+      "mechanics-as-argument",
+      "player-interpretation"
+    ],
+    "problem": "Using a game to make a point about a serious or political topic.",
+    "mechanic": "The player is told to bomb militants in a village but cannot do so without killing civilians; mourners appear and some villagers become militants, so the only way out is to stop.",
+    "effect": "The mechanics themselves lead players to question the approach and to talk about it.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Does your game have a point to make, and could its rules carry it?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-027-prince-of-persia-rewind-failure",
+    "game": "Prince of Persia: The Sands of Time",
+    "start": "00:36:19",
+    "end": "00:37:30",
+    "tags": [
+      "failure",
+      "recovery",
+      "resource-management",
+      "narrative"
+    ],
+    "problem": "Handling failure in both mechanics and story.",
+    "mechanic": "A magic hourglass lets the player rewind time to undo mistakes in hard platforming, and the story is framed as a tale told by the Prince, so deaths read as slips in the telling.",
+    "effect": "Recovering from failure becomes a limited resource the player decides when to spend, and the framing gives deaths a reason.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What should happen when the player fails, and should recovery be something they spend?",
+    "related": [
+      "gmtk-003-rogue-procedural-permadeath"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-028-katamari-visible-growth",
+    "game": "Katamari Damacy",
+    "start": "00:37:34",
+    "end": "00:38:24",
+    "tags": [
+      "progression",
+      "power-fantasy",
+      "feedback",
+      "visible-growth"
+    ],
+    "problem": "Making the experience of getting stronger feel good.",
+    "mechanic": "The player rolls up ever larger objects, starting with tiny items and ending with huge structures and animals.",
+    "effect": "Growth is seen and felt directly; starting small and finishing huge, then looking back, is enjoyable.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "How could the player see their growth instead of just reading a number?",
+    "related": [
+      "gmtk-017-diablo-2-skill-tree-power-fantasy"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-029-devil-may-cry-3-scoring-mastery",
+    "game": "Devil May Cry 3",
+    "start": "00:38:31",
+    "end": "00:39:40",
+    "tags": [
+      "scoring",
+      "mastery",
+      "depth",
+      "accessibility"
+    ],
+    "problem": "Rewarding deep mastery of a complex system without demanding it of everyone.",
+    "mechanic": "A detailed combat system is graded for style from a low rank to a top rank; the top grade requires hard moves, variety and an unbroken combo, while most fights can be passed with basic play.",
+    "effect": "Scoring gives engaged players a goal and pushes them to learn the whole system, while others can ignore it.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should depth be optional, and how would the game reward the players who pursue it?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-030-resident-evil-4-varied-pacing",
+    "game": "Resident Evil 4",
+    "start": "00:39:46",
+    "end": "00:41:00",
+    "tags": [
+      "pacing",
+      "variety",
+      "tension-and-release",
+      "engagement"
+    ],
+    "problem": "Keeping players engaged without boring or overwhelming them.",
+    "mechanic": "Intense battles alternate with quieter stretches for puzzles, scouting and scavenging, story scenes, shopping and upgrading, and boss encounters, switching before any element becomes stale.",
+    "effect": "The player is rarely bored or overloaded, so the game is hard to put down.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which kinds of moments will you alternate, and when should the game change gear?",
+    "related": [
+      "gmtk-001-space-invaders-difficulty-curve"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-031-geometry-wars-juice",
+    "game": "Geometry Wars: Retro Evolved",
+    "start": "00:41:16",
+    "end": "00:42:55",
+    "tags": [
+      "juice",
+      "feedback",
+      "presentation",
+      "game-feel"
+    ],
+    "problem": "Making a familiar mechanic stand out.",
+    "mechanic": "A twin-stick shooter (a polished descendant of an older design) with bright colours, enemies bursting into particles, a bomb that distorts the arena and a driving electronic soundtrack; one stick moves and the other aims.",
+    "effect": "The presentation, often called juice, draws the player in as much as the mechanics do.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which moments deserve extra visual and audio feedback?",
+    "related": [
+      "gmtk-022-rez-synchronised-audio"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-032-dead-rising-time-limit",
+    "game": "Dead Rising",
+    "start": "00:42:59",
+    "end": "00:44:19",
+    "tags": [
+      "time-limit",
+      "pressure",
+      "tradeoffs",
+      "risk-management"
+    ],
+    "problem": "Deciding whether to put a clock on the player.",
+    "mechanic": "A 72-hour countdown runs throughout, so time cannot be wasted, not every character can be rescued, and improving means managing time and learning the mall's layout.",
+    "effect": "A constant feeling of being under pressure.",
+    "tradeoffs": "The video notes that time limits can be a drag, and that in games with one, many players complain or look for ways to remove it.",
+    "inference": null,
+    "question": "Would a time limit add the pressure you want, and would some players resent it?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-033-call-of-duty-4-perks-progression",
+    "game": "Call of Duty 4",
+    "start": "00:44:24",
+    "end": "00:45:48",
+    "tags": [
+      "progression",
+      "multiplayer",
+      "customisation",
+      "unlocks",
+      "balance"
+    ],
+    "problem": "Giving a competitive shooter a sense of long-term progress.",
+    "mechanic": "Experience from matches unlocks weapons, kill-streak rewards and perks; none is strictly superior, each has drawbacks and counters, and together they allow a loadout matching the player's style; the final reward is resetting to start again.",
+    "effect": "Every match moves the player closer to the next unlock, which makes online play compelling.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What should each session bring the player closer to?",
+    "related": [
+      "gmtk-017-diablo-2-skill-tree-power-fantasy",
+      "gmtk-037-team-fortress-2-counters"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-034-portal-genre-mashup",
+    "game": "Portal",
+    "start": "00:45:58",
+    "end": "00:47:26",
+    "tags": [
+      "genre-mashup",
+      "puzzle",
+      "approachability",
+      "developer-commentary"
+    ],
+    "problem": "Finding a fresh game idea and widening a genre's audience.",
+    "mechanic": "A puzzle game built with shooter tools: free movement in 3D and a portal gun that is aimed like a firearm, plus light combat that rewards outwitting enemies.",
+    "effect": "New puzzles around aim, movement and momentum, and an audience of shooter fans who might not otherwise try a puzzle game.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Which two genres or toolsets could you combine, and what new problems would that create?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-035-mass-effect-choices-ripple",
+    "game": "Mass Effect",
+    "start": "00:47:30",
+    "end": "00:48:42",
+    "tags": [
+      "choice-and-consequence",
+      "narrative",
+      "persistence",
+      "branching"
+    ],
+    "problem": "Making the story respond to what the player decides.",
+    "mechanic": "The player shapes the hero's character and relationships and makes plot choices; in one scene a dispute with a squad member can be talked out or end in a fight that kills him for good, and he is then absent from the sequels.",
+    "effect": "Players get distinct personal stories, with consequences that carry across three games.",
+    "tradeoffs": "The video says the third game could not give a satisfying ending for every possible combination of choices.",
+    "inference": null,
+    "question": "Which player choices should have lasting consequences?",
+    "related": [
+      "gmtk-048-fallout-new-vegas-side-quests"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-036-skate-realistic-vs-arcade",
+    "game": "Skate (contrasted with Tony Hawk's)",
+    "start": "00:48:53",
+    "end": "00:50:07",
+    "tags": [
+      "control-scheme",
+      "realism-vs-arcade",
+      "design-angles",
+      "input-design"
+    ],
+    "problem": "Approaching the same subject from a different direction.",
+    "mechanic": "Skate favours realism and mimics the physical kick of a board with a stick flick down and up, with complex tricks needing harder stick motions, whereas Tony Hawk's is exaggerated and ignores real physics.",
+    "effect": "Two quite different games from one sport, raising the question of what other sports could look like if approached differently.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What would a very different take on your subject look like?",
+    "related": [
+      "gmtk-020-tony-hawk-feel-on-the-thumbs"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-037-team-fortress-2-counters",
+    "game": "Team Fortress 2",
+    "start": "00:50:10",
+    "end": "00:51:08",
+    "tags": [
+      "multiplayer",
+      "balance",
+      "counters",
+      "class-design"
+    ],
+    "problem": "Keeping a complex multiplayer game fair and balanced.",
+    "mechanic": "Nine classes form a web of strengths and weaknesses so that each option has an answer; for example turrets deter fast scouts, grenades destroy turrets, and scouts overwhelm the grenade user.",
+    "effect": "The game stays balanced and enjoyable after almost two decades.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "For each strong option in your game, what counters it?",
+    "related": [
+      "gmtk-033-call-of-duty-4-perks-progression"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-038-bioshock-audio-diaries",
+    "game": "BioShock",
+    "start": "00:51:11",
+    "end": "00:52:33",
+    "tags": [
+      "environmental-storytelling",
+      "narrative",
+      "exploration",
+      "lore"
+    ],
+    "problem": "Telling a story in a world whose inhabitants are gone or mad.",
+    "mechanic": "Recordings made during the city's collapse are scattered around, so the player finds and plays them; they also hold side stories, character background and lore. The video notes the device came from earlier games, but this implementation inspired many others.",
+    "effect": "The player assembles the story from what they find, almost like uncovering the past.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could the player discover the story in the world instead of being told it?",
+    "related": [
+      "gmtk-065-gone-home-found-objects"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-039-burnout-paradise-open-racing",
+    "game": "Burnout Paradise",
+    "start": "00:52:38",
+    "end": "00:53:59",
+    "tags": [
+      "open-world",
+      "racing",
+      "freedom",
+      "social-design"
+    ],
+    "problem": "Building an open world that never interrupts play.",
+    "mechanic": "An arcade racer in an open map where the player is always driving; races begin at any junction, leaderboards for each street weave competition into the world, and event rules do not use invisible walls or restrictive fail states, so any route to the destination is allowed.",
+    "effect": "Play is continuous: always racing, driving and crashing.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should structured events interrupt free play, or sit inside it?",
+    "related": [
+      "gmtk-019-gta-3-missions-and-sandbox"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-040-far-cry-2-friction",
+    "game": "Far Cry 2",
+    "start": "00:54:04",
+    "end": "00:55:06",
+    "tags": [
+      "friction",
+      "immersion",
+      "fantasy-fit",
+      "quality-of-life"
+    ],
+    "problem": "Deciding whether to remove every irritation or keep some for the sake of the fantasy.",
+    "mechanic": "Weapons corrode and jam, the player has a disease needing regular medicine, the map is a paper held up in real time, and fires can destroy cover.",
+    "effect": "The player feels isolated in hostile territory, short of firepower and support.",
+    "tradeoffs": "The video contrasts this with common practice, where playtesting removes annoyances and quietly helps the player.",
+    "inference": null,
+    "question": "Where would friction support your fantasy, and where would it just annoy?",
+    "related": [
+      "gmtk-012-resident-evil-scarce-resources"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-041-left-4-dead-ai-director",
+    "game": "Left 4 Dead",
+    "start": "00:55:27",
+    "end": "00:56:50",
+    "tags": [
+      "dynamic-difficulty",
+      "pacing",
+      "tension-and-release",
+      "adaptive-systems"
+    ],
+    "problem": "Keeping a game interesting by responding to the players' state.",
+    "mechanic": "A hidden director spawns enemies, tracks each player's intensity from health, incapacitation and time spent fighting, and at a peak starts a quiet phase with no spawns and maybe extra supplies before building tension again.",
+    "effect": "Pace and difficulty rise and fall with what the players are doing, instead of being fixed in advance.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should difficulty be fixed ahead of time or respond to how the player is doing?",
+    "related": [
+      "gmtk-001-space-invaders-difficulty-curve",
+      "gmtk-007-tetris-two-kinds-of-difficulty"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-042-spelunky-roguelike-platformer",
+    "game": "Spelunky",
+    "start": "00:57:02",
+    "end": "00:58:19",
+    "tags": [
+      "procedural-generation",
+      "permadeath",
+      "replayability",
+      "genre-mashup"
+    ],
+    "problem": "Carrying a genre's core ideas into a different kind of game.",
+    "mechanic": "Rogue's generated levels and permanent death are placed in a platformer, so the player cannot memorise a level and must improve general skills such as jumping, handling enemies, blasting walls and using ropes.",
+    "effect": "A fresh take on an old genre that began a wave of roguelikes; the video raises whether progress should persist between runs.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should progress carry over between runs, or should each run start from scratch?",
+    "related": [
+      "gmtk-003-rogue-procedural-permadeath"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-043-dead-space-diegetic-interface",
+    "game": "Dead Space",
+    "start": "00:58:39",
+    "end": "00:59:28",
+    "tags": [
+      "interface",
+      "diegetic-ui",
+      "immersion",
+      "presentation"
+    ],
+    "problem": "Showing information without breaking immersion.",
+    "mechanic": "All interface elements live in the world: health is a meter on the suit's back, ammunition is shown on each weapon, and inventory and shop screens appear as projected holograms.",
+    "effect": "A highly immersive horror game, helped by strong sound design and no control-removing cutscenes.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Could your interface exist inside your game world?",
+    "related": [
+      "gmtk-013-half-life-no-cutscenes"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-044-batman-arkham-asylum-fantasy",
+    "game": "Batman: Arkham Asylum",
+    "start": "00:59:35",
+    "end": "01:00:31",
+    "tags": [
+      "fantasy-fulfilment",
+      "combat-feel",
+      "stealth",
+      "assisted-input"
+    ],
+    "problem": "Making the player feel like a specific character.",
+    "mechanic": "Combat pulls the hero toward nearby enemies and performs finishing moves automatically, and in stealth the guards are made unlikely to look up or turn round so the hero can stalk them.",
+    "effect": "Players get to live out the role of the hero, and the game became the benchmark for superhero adaptations.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What fantasy should every decision in your game support?",
+    "related": [
+      "gmtk-017-diablo-2-skill-tree-power-fantasy"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-045-plants-vs-zombies-simple-genre-entry",
+    "game": "Plants vs. Zombies",
+    "start": "01:00:38",
+    "end": "01:02:02",
+    "tags": [
+      "genre-learning",
+      "economy",
+      "unit-roles",
+      "simplicity"
+    ],
+    "problem": "Learning, or teaching, a complex genre.",
+    "mechanic": "A casual tower defence game described as a hidden real-time strategy game: every plant and zombie type has a distinct job, and sunflowers produce the currency to buy more, so players balance offence against economy.",
+    "effect": "A clear lesson in unit variety, enemy differentiation and economic balance, accessible to anyone.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What is the simplest version of your genre, and what would you keep from it?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-046-fruit-ninja-touch-input",
+    "game": "Fruit Ninja",
+    "start": "01:02:07",
+    "end": "01:03:14",
+    "tags": [
+      "input-design",
+      "touch",
+      "platform",
+      "hardware"
+    ],
+    "problem": "Designing for a new input method.",
+    "mechanic": "Fruit flies into the air and the player cuts it by swiping a finger across the screen, a game made for touch with no buttons, sticks or d-pad.",
+    "effect": "A simple game that stays enjoyable largely through the physical feel of touching the screen.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What is the most natural way to interact on the device your players use?",
+    "related": [
+      "gmtk-020-tony-hawk-feel-on-the-thumbs"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-047-amnesia-no-combat-horror",
+    "game": "Amnesia: The Dark Descent",
+    "start": "01:03:14",
+    "end": "01:04:12",
+    "tags": [
+      "horror",
+      "powerlessness",
+      "sanity-mechanic",
+      "no-combat"
+    ],
+    "problem": "Pushing player powerlessness further in horror.",
+    "mechanic": "Fighting is removed completely, leaving only running and hiding. A sanity meter drops in darkness and recovers when the player looks at the creatures, so staying composed means staying exposed.",
+    "effect": "A genuinely frightening game that influenced both indie and large-studio horror.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Would taking away the player's ability to fight make your game stronger?",
+    "related": [
+      "gmtk-012-resident-evil-scarce-resources"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-048-fallout-new-vegas-side-quests",
+    "game": "Fallout: New Vegas",
+    "start": "01:04:15",
+    "end": "01:05:09",
+    "tags": [
+      "quest-design",
+      "choice-and-consequence",
+      "rpg",
+      "multiple-solutions"
+    ],
+    "problem": "Designing side quests worth playing.",
+    "mechanic": "Quests are varied in tone and can usually be solved several ways: choices that shift karma and faction standing, skill checks that skip steps, outcomes that change with the companion present, and room for the player's own idea.",
+    "effect": "Each quest is a small lesson in RPG design, and it strongly influenced another studio's quest design.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should side quests offer more than one way to be solved?",
+    "related": [
+      "gmtk-035-mass-effect-choices-ripple",
+      "gmtk-016-deus-ex-player-freedom"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-049-civilization-inverted-pyramid",
+    "game": "Civilization V",
+    "start": "01:05:09",
+    "end": "01:06:35",
+    "tags": [
+      "onboarding",
+      "complexity-management",
+      "theme",
+      "accessibility"
+    ],
+    "problem": "Making a very large game approachable.",
+    "mechanic": "Following what its designers call an inverted pyramid of decision making, the player first makes a single choice (where to found a city), then two, then dozens per turn, by when they know the rules; the history theme also uses knowledge players already have.",
+    "effect": "A big strategy game that is surprisingly easy to start.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "How many decisions does the player face at the start, and how quickly should that grow?",
+    "related": [],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-050-dark-souls-corpse-run",
+    "game": "Dark Souls",
+    "start": "01:06:40",
+    "end": "01:08:00",
+    "tags": [
+      "death",
+      "risk-and-reward",
+      "tension",
+      "currency"
+    ],
+    "problem": "Making death costly without ending the game.",
+    "mechanic": "When the player dies they drop the souls they carry, which are both experience and money; they must return to the spot to recover them and, if they die first, the souls are lost for good.",
+    "effect": "Constant tension: a large stash makes a safe resting point urgent and the trip back dangerous. The video says it popularised this recovery idea, now common.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "What does the player lose when they die, and can they win it back?",
+    "related": [
+      "gmtk-003-rogue-procedural-permadeath",
+      "gmtk-027-prince-of-persia-rewind-failure"
+    ],
+    "confidence": "high"
+  },
+  {
+    "id": "gmtk-051-minecraft-player-set-goals",
+    "game": "Minecraft",
+    "start": "01:08:07",
+    "end": "01:09:12",
+    "tags": [
+      "sandbox",
+      "player-goals",
+      "creativity",
+      "emergent-play"
+    ],
+    "problem": "Supporting players who prefer to choose their own objectives.",
+    "mechanic": "The game sets no rules or structure; it can be used as a building toy with no enemies, health or hunger, as a survival challenge, or together with others.",
+    "effect": "A long-lived game that shows many players enjoy creating and defining their own goals.",
+    "tradeoffs": null,
+    "inference": null,
+    "question": "Should the player choose their own objectives, and what tools would they need?",
+    "related": [
+      "gmtk-018-the-sims-player-led-play"
+    ],
+    "confidence": "high"
+  }
+]

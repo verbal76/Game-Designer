@@ -1,0 +1,113 @@
+# One-shot publication of Game Designer v4 (internal physical-test APK: update lines, shell API 3).
+# Runs only when THIS file changes (an explicit request), never on ordinary source pushes. Not a store release.
+name: Publish v4 release
+
+on:
+  push:
+    paths: [".github/workflows/release-v4.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: signing-keys
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  TAG: v4
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: "17" }
+      - run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Monotonic version code
+        run: echo "GD_VERSION_CODE=$(( $(date +%s) / 60 ))" >> "$GITHUB_ENV"
+
+      - name: Load persistent signing material
+        run: tools/ota/ensure-keys.sh "$RUNNER_TEMP/keys"
+
+      - name: Pin the OTA trust key into the APK
+        run: |
+          mkdir -p app/src/main/assets/ota
+          { echo "# keys allowed to sign OTA manifests"; cat "$RUNNER_TEMP/keys/ota-public.b64"; echo; } > app/src/main/assets/ota/trusted_keys.txt
+
+      - name: Tests (core, OTA kit, theme contrast, lint)
+        run: ./gradlew :core:test :otakit:test :applayer:testDebugUnitTest :app:lintDebug --stacktrace
+
+      - name: Build signed release APK
+        run: |
+          export GD_KEYSTORE="$RUNNER_TEMP/keys/release.keystore"
+          export GD_KEYSTORE_PASSWORD="$(sed -n 's/^password=//p' "$RUNNER_TEMP/keys/release.properties")"
+          export GD_KEY_PASSWORD="$GD_KEYSTORE_PASSWORD"
+          export GD_KEY_ALIAS=gamedesigner
+          ./gradlew :app:assembleRelease -PsourceSha="$(git rev-parse --short=8 HEAD)" --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk Game-Designer-v4.apk
+
+      - name: Verify the actual APK
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs Game-Designer-v4.apk | tee verify.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true\|Verified using v3 scheme (APK Signature Scheme v3): true" verify.txt
+          "$BT/aapt2" dump badging Game-Designer-v4.apk | tee badging.txt | head -8
+          grep -q "package: name='com.hotatticgames.gamedesigner'" badging.txt
+          grep -q "versionName='4.0.0'" badging.txt
+          grep -q "minSdkVersion:'28'" badging.txt
+          unzip -l Game-Designer-v4.apk | tee contents.txt >/dev/null
+          awk '$1>100000 && /webp$/ {f=1} END{exit !f}' contents.txt
+          grep -q "assets/ota/trusted_keys.txt" contents.txt
+          mkdir -p x && unzip -q -o Game-Designer-v4.apk 'classes*.dex' -d x
+          grep -a -q 'Lcom/hotattic/gamedesigner/applayer/AppLayerEntry;' x/classes*.dex
+          grep -a -q 'Lcom/hotattic/gamedesigner/otakit/OtaSelector;' x/classes*.dex
+          grep -a -q 'Lcom/hotattic/gamedesigner/shell/LiteRtLocalLlm;' x/classes*.dex
+          sha256sum Game-Designer-v4.apk | tee sha.txt
+
+      - name: 16 KB page-size qualification of the release APK
+        run: python3 tools/check-16kb.py Game-Designer-v4.apk
+
+      - name: Upgrade compatibility with the published v3 APK (same signing certificate, higher versionCode)
+        run: |
+          set -euo pipefail
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          gh release download v3 -p Game-Designer-v3.apk -D old
+          "$BT/apksigner" verify --print-certs old/Game-Designer-v3.apk | grep 'certificate SHA-256 digest' | head -1 | tee old.cert
+          "$BT/apksigner" verify --print-certs Game-Designer-v4.apk | grep 'certificate SHA-256 digest' | head -1 | tee new.cert
+          diff old.cert new.cert
+          OLD=$("$BT/aapt2" dump badging old/Game-Designer-v3.apk | grep -o "versionCode='[0-9]*'" | head -1 | grep -o "[0-9]*")
+          NEW=$(grep -o "versionCode='[0-9]*'" badging.txt | head -1 | grep -o "[0-9]*")
+          echo "v3 versionCode=$OLD, v4 versionCode=$NEW"
+          test "$NEW" -gt "$OLD"
+
+      - name: Publish APK release v4 (does not touch earlier releases or the OTA channels)
+        run: |
+          set -euo pipefail
+          SHA=$(cut -d' ' -f1 sha.txt)
+          if gh release view "$TAG" >/dev/null 2>&1; then echo "release $TAG already exists"; exit 1; fi
+          VC=$(grep -o "versionCode='[0-9]*'" badging.txt | head -1 | grep -o "[0-9]*")
+          FP=$(tools/ota/fingerprint.sh)
+          cat > notes.md <<NOTES
+          **Game Designer v4 - update lines** (internal physical-test build; NOT a store release). Signed with the same persistent release key as v2 and v3, so it installs over either.
+
+          - Dev line: new builds are checked on every launch, downloaded and scheduled automatically; an "Update ready - Restart now" banner applies them at once.
+          - Stable line: a drop-down of the last 10 published builds. Choosing one downloads and verifies it and applies it on restart; nothing on stable is automatic.
+          - New native shell API 3 (runtime fingerprint \`$FP\`). The first v4-line OTA needs publish-request version 8 or higher; v2/v3-line bundles are rejected by this APK by design.
+          - Includes the bundled application layer v4.0 (new genres, Back button, per-game reference questions, OTA question for designed games, fixes).
+          - Source commit: \`$GITHUB_SHA\`
+          - versionName 4.0.0, versionCode $VC
+          - File: \`Game-Designer-v4.apk\`
+          - SHA-256: \`$SHA\`
+          NOTES
+          sed -i 's/^          //' notes.md
+          gh release create "$TAG" Game-Designer-v4.apk --target "$GITHUB_SHA" --title "Game Designer v4 - update lines" --notes-file notes.md
+
+      - name: Step summary
+        run: |
+          { echo '### v4 release'; cat sha.txt; echo '### 16 KB'; echo passed; } >> "$GITHUB_STEP_SUMMARY"
