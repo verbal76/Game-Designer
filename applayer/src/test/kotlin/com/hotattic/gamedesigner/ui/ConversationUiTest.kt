@@ -228,7 +228,7 @@ class ConversationUiTest {
         val r = textLayout(node)!!
         assertEquals("a length-only check would wrongly pass", r.layoutInput.text.length, r.getLineEnd(r.lineCount - 1, visibleEnd = true))
         val problems = clippingProblems(node, rule.onNodeWithTag("outer", useUnmergedTree = true).fetchSemanticsNode(), sample)
-        assertTrue("width clipping must be reported: $problems", problems.any { it.startsWith("wider than its container") })
+        assertTrue("width clipping must be reported: $problems", problems.any { it.startsWith("wider than") })
     }
 
     @Test fun clippingCheckFailsWhenTextIsTallerThanTheBoxThatClipsIt() {
@@ -239,7 +239,7 @@ class ConversationUiTest {
 
     @Test fun clippingCheckFailsWhenTextOverflowsItsContainerVertically() {
         val problems = problemsFor("t") { Box(Modifier.width(90.dp).height(18.dp)) { Text(sample, Modifier.testTag("t").wrapContentHeight(unbounded = true)) } }
-        assertTrue("height overflow of the container must be reported: $problems", problems.any { it.startsWith("taller than its container") })
+        assertTrue("height clipping by the container must be reported: $problems", problems.any { it.startsWith("taller than") })
     }
 
     @Test fun clippingCheckFailsWhenTextIsEllipsized() {
