@@ -14,7 +14,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -193,7 +192,7 @@ class ConversationUiTest {
     }
 
     private fun buttonAround(node: SemanticsNode): SemanticsNode? =
-        generateSequence(node.parent) { it.parent }.firstOrNull { it.config.getOrNull(SemanticsProperties.Role) == Role.Button }
+        generateSequence(node.parent) { it.parent }.firstOrNull { it.config.getOrNull(SemanticsProperties.Role) == androidx.compose.ui.semantics.Role.Button }
 
     private fun assertConfirmLabelFits(label: String) {
         show(w = 320, h = 640) { Column(Modifier.fillMaxSize()) { ActionBar(null, true, {}, label, true, {}, true, {}, false) } }
